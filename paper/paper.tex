@@ -52,9 +52,10 @@ restructurings that target it. One we carry to completion: a total-coefficient-i
 replaces a $\sim$3000-obligation SAW unrolling with an eight-step proof running in seconds. For a second,
 an unbounded-integer reformulation, we show the integer core discharges and only the bitvector bridge
 remains; a third, a compositional specification, we identify. We also report
-two off-by-one defects in the reference's documented contracts, disclosed upstream. The development uses
-no vendor verification artifacts; the main proof pipeline runs from a single command, and the timeout and
-encoding experiments are reproduced by self-contained scripts.
+two off-by-one defects in the reference's documented contracts, disclosed upstream. The toolchain's
+maintainers independently confirm both the boundary and the integer-reformulation escape. The development
+uses no vendor verification artifacts; the main proof pipeline runs from a single command, and the
+timeout and encoding experiments are reproduced by self-contained scripts.
 \end{abstract}
 
 \medskip
@@ -391,8 +392,10 @@ bit-vector form times out, so what remains is mechanizing the bit-vector-to-inte
 Isabelle, not the arithmetic. (3) A \emph{compositional specification}: build the layer specification from
 the same override terms the implementation uses, so the two sides are syntactically the same term and the
 obligation discharges by rewriting rather than bit-blasting 256 independent remainders; this one we
-identify but have not yet realized. Mechanizing the transform layer through these escapes is the immediate
-next step.
+identify but have not yet realized. The maintainers of SAW endorse this route --- the same
+\code{mir\_unsafe\_assume\_spec}-to-\code{Integer} plus goal-rewriting technique they applied to
+Montgomery reduction~\cite{saw3306}; mechanizing the transform layer through these escapes is the
+immediate next step.
 
 \section{Findings}\label{sec:findings}
 
@@ -482,6 +485,15 @@ primitive, show that the same symptom persists across two frontends, isolate eag
 cause by a same-goal integer-versus-bit-vector contrast, and pair the measurement with a completed escape
 and a partially-realized one. That measurement and those escapes are the contribution.
 
+The boundary and the escape route are corroborated by the toolchain's maintainers. In response to our
+report of this case, a SAW maintainer confirmed that ``proving the implementation of Barrett reduction
+is one of those things that SMT-based tools like SAW fundamentally struggle with,'' and identified the
+same remedy we pursue --- expressing the low-level operations in terms of unbounded \code{Integer}
+arithmetic (via \code{mir\_unsafe\_assume\_spec}) and rewriting the goal into a shape the solver can
+discharge, the technique they used for Montgomery reduction~\cite{saw3306}. This independently supports
+both halves of our finding: that the wall is a property of the goal class rather than our setup, and that
+the integer reformulation is the principled way across it.
+
 \section{Conclusion}\label{sec:conclusion}
 
 Whether a machine-checked equivalence proof for ML-DSA's modular arithmetic discharges depends, steeply
@@ -515,6 +527,9 @@ discharged it.
   \url{https://github.com/RustCrypto/signatures}.
 \bibitem{mldsanative} The PQ Code Package project. \emph{mldsa-native: Isabelle/HOL proofs.}
   \url{https://github.com/pq-code-package/mldsa-native/tree/main/proofs/isabelle}.
+\bibitem{saw3306} R.\ Scott (Galois, Inc.) and A.\ Akshat. \emph{SAW/MIR: idiomatic way to prove
+  Barrett reduction over $x < 2^{46}$ without bit-blasting?} saw-script discussion \#3306, 2026.
+  \url{https://github.com/GaloisInc/saw-script/discussions/3306}.
 \bibitem{eprint1032} Sunwoo Lee, Hyuk Lim, and Seunghyun Yoon.
   \emph{When Removing Reductions Goes Wrong: Auditing Reduction Placement in Production ML-DSA
   Implementations.} IACR Cryptology ePrint Archive, Paper 2026/1032, 2026.
