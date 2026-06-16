@@ -20,9 +20,37 @@ What this settles and what it does NOT:
 - **Still OPEN (the real blocker):** the **BV↔Integer bridge** — proving the Rust
   `barrett_reduce` (u128 multiply + `>>46`) equals `barrettInt` under zext, *inside*
   `mir_verify`, without bit-blasting the wide multiply. This is the subject of
-  saw-script discussion **#3306** (0 replies as of 2026-06-16). The narrow-domain
+  saw-script discussion **#3306**. The narrow-domain
   `field_ops.saw` `barrett_reduce` override at `x<2^46` is the goal that needs it.
   Until the bridge lands, `field_ops.saw`'s `mul` override remains BLOCKED.
+
+### Bridge attempt 2026-06-16 — Galois replied; stock tactics still time out
+
+**#3306 reply (RyanGlScott, SAW maintainer, 2026-06-16):** confirms Barrett is
+something "SMT-based tools like SAW **fundamentally struggle with**" (direct
+endorsement of the paper's boundary thesis). Recommended route = the one we
+proposed: `{llvm,mir}_unsafe_assume_spec` to express the low-level ops in terms
+of `Integer`, then **rewrites to shape the goal** — the technique they used for
+Montgomery reduction. "Usually possible if careful," not free.
+
+**Obstacle found (verified):** RustCrypto's `barrett_reduce` has the wide u128
+multiply as an **inline MIR `BinaryOp(Mul)`** (2 Mul + 1 Shr + 1 Sub inline; no
+`__multi3`/`mul` callee — checked the linked MIR). So there is **no callable op
+to `mir_unsafe_assume_spec`** — Ryan's Montgomery precedent had a callable op;
+this code inlines it. The bridge must instead come from goal rewrites.
+
+**Stock goal-rewrite tactics TIMED OUT (x<2^46, 150s cap, this box):**
+- `do { goal_eval_unint []; z3; }` → timeout
+- `do { simplify (cryptol_ss ()); z3; }` → timeout (exit 124)
+Neither lifts BV→Integer; both still bit-blast the wide multiply.
+
+**Therefore the real remaining work (NOT a one-shot):** build a small simpset of
+**BV↔Integer rewrite rules** (e.g. `bvToInt (bvMul a b) == (bvToInt a * bvToInt b)
+% 2^n`, `bvToInt (bvLShr x k) == bvToInt x / 2^k`), prove them sound once, `addsimp`
+them, simplify the `mir_verify` goal into Integer shape, then `z3` (the Integer
+core already discharges — see `escape2_core.saw`). This is the concrete next
+sprint. NOT attempted to completion; do not report barrett_reduce@2^46 as proven.
+Baseline this box: narrow x<2^28 proves in 4.2s; integer core in 0.7s.
 
 ## What this task is
 
