@@ -1,9 +1,28 @@
-# NTT layer proof — handoff (2026-06-12)
+# NTT layer proof — handoff (2026-06-12, updated 2026-06-16)
 
 > **Verification status: UNVERIFIED.** The three files in this directory were
 > *written* this session but **not yet run to a `saw` exit-0 in this session**.
 > Per the repo prime directive (CLAUDE.md): a `.saw`/`.cry` that "looks
 > complete" is **not a proof**. The first job below is to actually run them.
+
+## UPDATE 2026-06-16 — escape-2 integer core VERIFIED in SAW
+
+`escape2_core.saw` (+ `escape2_bridge.cry`) runs to **saw exit 0** on this box:
+`prove_print z3 (barrettInt x == x % q)` over all `x in [0, 2^46)` → Valid, ~0.7s.
+Non-vacuity: the `q+1` mutation reports `Invalid: [x = 70368744144908]` (an
+in-domain counterexample). MIR baseline re-validated: narrow `barrett_reduce ==
+x mod q` for `x < 2^28` proves in 4.2s (`mir_verify`, z3).
+
+What this settles and what it does NOT:
+- **Settled:** lifting `(x*M)>>k` to unbounded **Integer** arithmetic dodges the
+  bit-blasting wall — the math core of escape 2 is mechanized in SAW, not just a
+  raw `.smt2`. (Same identity bit-vector form: timeout — see `repro_barrett_2p46.saw`.)
+- **Still OPEN (the real blocker):** the **BV↔Integer bridge** — proving the Rust
+  `barrett_reduce` (u128 multiply + `>>46`) equals `barrettInt` under zext, *inside*
+  `mir_verify`, without bit-blasting the wide multiply. This is the subject of
+  saw-script discussion **#3306** (0 replies as of 2026-06-16). The narrow-domain
+  `field_ops.saw` `barrett_reduce` override at `x<2^46` is the goal that needs it.
+  Until the bridge lands, `field_ops.saw`'s `mul` override remains BLOCKED.
 
 ## What this task is
 

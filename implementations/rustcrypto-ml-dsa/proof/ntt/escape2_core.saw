@@ -1,0 +1,26 @@
+// Escape-2 (integer core), verified IN SAW.
+//
+// VERIFIED THIS RUN (saw exit 0): the Barrett identity over the full product
+// domain discharges as an Integer goal where the bit-vector form times out.
+//   prove_print z3  barrettInt x == x % q   for all x in [0, 2^46)   -> Valid, ~0.7s
+// Non-vacuity: replacing q by q+1 makes prove_print report
+//   Invalid: [x = 70368744144908]   (an in-domain counterexample).
+//
+// WHAT THIS IS / IS NOT:
+//  - IS: the math core of escape 2, mechanized in SAW (not just a raw .smt2),
+//    confirming that lifting (x*M)>>k to unbounded-integer arithmetic dodges the
+//    bit-blasting wall that defeats the x<2^46 bit-vector goal (see field_ops.saw,
+//    repro_barrett_2p46.saw, and the paper's tractability boundary).
+//  - IS NOT: a proof that the Rust `barrett_reduce` equals x % q at x<2^46. That
+//    needs the BV<->Integer BRIDGE (impl u128 multiply/shift == barrettInt under
+//    zext), which is the open step — the subject of saw-script discussion #3306.
+//
+// Run:  saw escape2_core.saw      (no MIR needed; pure Cryptol/Integer goal)
+
+import "escape2_bridge.cry";
+
+let core = {{ \(x : Integer) ->
+      ((0 <= x) /\ (x < 2^^46)) ==> (barrettInt x == x % 8380417) }};
+
+e2_core_thm <- prove_print z3 core;
+print "VERIFIED (SAW/z3): barrettInt x == x mod q for all x in [0, 2^46)  -- escape-2 integer core";

@@ -1,0 +1,25 @@
+// Integer-sort model of RustCrypto's barrett_reduce, for the escape-2 bridge.
+// The escape-2 experiment (escape2_barrett_int.smt2) showed the IDENTITY below
+// discharges in z3 NIA in 0.04s, where the bit-vector form times out.
+// Question this file probes: can SAW discharge the mir_verify goal by routing
+// through this Integer model instead of bit-blasting the u128 multiply/shift?
+module escape2_bridge where
+
+q : Integer
+q = 8380417
+
+barrettMult : Integer
+barrettMult = 8396807          // floor(2^46 / q)
+
+// Integer reduction exactly mirroring the impl's arithmetic (u128 product,
+// >>46 = floor-div by 2^46, one conditional subtraction).
+barrettInt : Integer -> Integer
+barrettInt x = if rem >= q then rem - q else rem
+  where
+    prod = x * barrettMult
+    quot = prod / (2 ^^ 46)     // Integer floor division
+    rem  = x - quot * q
+
+// The math fact escape-2 proved (here as a Cryptol property over the domain).
+property barrettInt_correct x =
+    (0 <= x) /\ (x < 2 ^^ 46) ==> (barrettInt x == x % q)
