@@ -49,21 +49,21 @@ The whole strategy is **depth, scoped tight**. One finished proof beats three ha
   a model ≡ spec proof for the NTT itself (we have functional equivalence to the Cryptol model and now
   overflow-freedom, but not yet model ≡ FIPS-spec for the transform as we have for `reduce.c`).
 
-## v2 — verify a used-but-unverified implementation (the finding + paper step)
+## v2 — verify a used-but-unverified implementation
 **Target chosen by survey (2026-06-11): the RustCrypto `ml-dsa` crate.** Rationale over the earlier
 `mldsa-native` plan: `mldsa-native` is a verification flagship (CBMC for the C, HOL-Light/s2n-bignum
 for the asm, even an `isabelle/` proof dir), so re-doing it with SAW is redundant and finds nothing.
 The RustCrypto `ml-dsa` crate is the opposite: the de-facto Rust ML-DSA crate (large supply-chain
 reach), **explicitly never independently audited** (its own docs say so for all RustCrypto PQC), and
-with a **track record of real defects still being found** — a timing side-channel in `decompose`
-(RUSTSEC-2025-0144) and a correctness bug where verification accepted duplicate hint indices because a
-`<` became `<=`, violating FIPS 204 (GHSA-5x2r-hc65-25f9). That last one is exactly a spec-conformance
-defect a verify-against-FIPS-204 pipeline catches, and it slipped in via a one-character change, so
-there is plausibly more to find. SAW reaches Rust via `mir-json` + `crucible-mir` (maintained, schema
-v11). Disclosure routes cleanly through RustCrypto's RUSTSEC/GHSA process (per CLAUDE.md: recorded
-privately, human-routed, never auto-filed).
+with a **history of advisories in non-trivial paths** — a timing side-channel in `decompose`
+(RUSTSEC-2025-0144) and a correctness issue where verification accepted duplicate hint indices because a
+`<` became `<=`, violating FIPS 204 (GHSA-5x2r-hc65-25f9). That last one is exactly the spec-conformance
+class a verify-against-FIPS-204 pipeline checks, and it slipped in via a one-character change — evidence
+the arithmetic is subtle enough to warrant independent machine-checking. SAW reaches Rust via `mir-json`
++ `crucible-mir` (maintained, schema v11). Any issue is handled by coordinated disclosure through
+RustCrypto's RUSTSEC/GHSA process (per CLAUDE.md: recorded privately, human-routed, never auto-filed).
 
-Crate layout maps to targets (bug-richest first):
+Crate layout maps to targets (highest-risk first):
 - `hint.rs` (hint encode/decode/use-hint — home of the duplicate-index bug), `verifying.rs`
   (norm + hint checks), `algebra.rs` + `ntt.rs` (the arithmetic, analogous to our v1 work),
   `signing.rs` (`decompose`, home of the timing bug), `sampling.rs`, `encode.rs`.
@@ -78,13 +78,13 @@ Phased (multi-month):
 - **v2.2 — arithmetic.** `algebra.rs`/`ntt.rs` reduce + NTT: functional correctness against a Cryptol
   model, plus the overflow/coefficient-bound reasoning (reuse the v1.5 Isabelle machinery; Rust
   release-mode arithmetic wraps, so overflow bugs are possible).
-- **Outcomes, honestly:** a finding routes to RUSTSEC/GHSA and anchors a paper; a clean result is the
-  *first formal verification of the de-facto Rust ML-DSA crate*. Either is publishable (TCHES-class)
-  and noticeable. **Risk:** SAW-Rust is more experimental than SAW-C, and RustCrypto's generics/traits
-  can be awkward for MIR; budget for tooling friction. Fallback target if Rust fights us: wolfSSL
-  `wolfcrypt/src/dilithium.c` (own implementation, deployed in wolfBoot, C = best SAW fit, unverified).
-- Note: the heavily-verified targets (`mldsa-native`, Apple corecrypto, OpenSSL/BoringSSL/AWS-LC) have
-  anchor value, not finding value; v2 deliberately avoids them.
+- **Outcomes, honestly:** any issue is routed through coordinated disclosure (RUSTSEC/GHSA); a clean
+  result is an independent formal-verification record for the de-facto Rust ML-DSA crate. **Risk:**
+  SAW-Rust is more experimental than SAW-C, and RustCrypto's generics/traits can be awkward for MIR;
+  budget for tooling friction. Fallback target if Rust fights us: wolfSSL `wolfcrypt/src/dilithium.c`
+  (own implementation, deployed in wolfBoot, C = best SAW fit, not independently machine-verified).
+- Note: the already heavily-verified targets (`mldsa-native`, Apple corecrypto, OpenSSL/BoringSSL/AWS-LC)
+  add little from independent re-verification; v2 deliberately avoids them.
 
 ## v3 — constant-time / secret-independence (frontier)
 - **Different tool, not this pipeline.** SAW≡Cryptol functional equivalence is not the CT tool; use

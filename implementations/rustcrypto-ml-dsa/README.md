@@ -7,14 +7,15 @@ Verification target: the [RustCrypto `ml-dsa`](https://crates.io/crates/ml-dsa) 
 - **Used:** the canonical Rust ML-DSA crate; broad supply-chain reach.
 - **Unverified:** its own docs state it has *never been independently audited*, and no RustCrypto
   post-quantum package has.
-- **Defect history (bugs are still being found):**
+- **Non-trivial arithmetic (prior advisories):** the implementation is subtle enough that issues have
+  needed advisories, which makes independent machine-checking worthwhile:
   - `decompose` timing side-channel — [RUSTSEC-2025-0144](https://rustsec.org/advisories/RUSTSEC-2025-0144.html).
   - Verification accepted **duplicate hint indices** because a `<` became `<=`, violating FIPS 204 —
     [GHSA-5x2r-hc65-25f9](https://github.com/RustCrypto/signatures/security/advisories/GHSA-5x2r-hc65-25f9).
-    Exactly the spec-conformance class a verify-against-FIPS-204 pipeline catches.
+    Exactly the spec-conformance class a verify-against-FIPS-204 pipeline checks.
 - **Reachable:** SAW analyzes Rust via `mir-json` + `crucible-mir` (schema v11, matches our SAW 1.5.1).
 
-## Source layout → verification targets (bug-richest first)
+## Source layout → verification targets (highest-risk first)
 | File | What | Target phase |
 |---|---|---|
 | `hint.rs` | hint encode/decode, `MakeHint`/`UseHint` (home of the duplicate-index bug) | v2.1 |
@@ -34,10 +35,10 @@ Verification target: the [RustCrypto `ml-dsa`](https://crates.io/crates/ml-dsa) 
   overflow/coefficient-bound reasoning (reuse the v1.5 Isabelle machinery; Rust release arithmetic
   wraps, so overflow defects are possible).
 
-## Outcomes (honestly)
-A finding routes to RUSTSEC/GHSA (recorded here first, human-routed, never auto-filed) and anchors a
-paper. A clean result is the *first formal verification of the de-facto Rust ML-DSA crate*. Either is
-publishable and noticeable. Risk: SAW-Rust is more experimental than SAW-C; RustCrypto's
+## Outcomes
+Any issue found is recorded here first and routed through coordinated disclosure (RUSTSEC/GHSA,
+human-routed, never auto-filed). A clean result is an independent formal-verification record for the
+de-facto Rust ML-DSA crate. Risk: SAW-Rust is more experimental than SAW-C; RustCrypto's
 generics/traits can be awkward for MIR.
 
 ## Status
@@ -63,8 +64,8 @@ generics/traits can be awkward for MIR.
   base unchanged (same two CT-layer assumed specs). The MIR build is now repo-local (`build/`,
   gitignored) behind a stable symlink, so rebuilds/reboots no longer break the proof script. Scope:
   ML-DSA-65/87's 2·γ₂ = 523776 is a different monomorphization, not in this MIR, not claimed.
-- **Focused audit of the bug-prone surface** (not the whole crate). Three targets, chosen because
-  they are exactly where defects have historically appeared:
+- **Focused audit of the highest-risk surface** (not the whole crate). Three targets, chosen because
+  they are exactly where subtle issues have historically appeared:
   1. `ct_div` Barrett precision (`algebra.rs`) — **DONE 2026-06-12, CLEAN.** SAW-verified
      `ct_div(x) == floor(x/190464)` for all `x < Q` (the documented contract; `proof/ctdiv/`).
      The `x < Q` precondition is load-bearing — precision genuinely breaks ~283× above Q — but all
