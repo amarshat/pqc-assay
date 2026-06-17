@@ -66,6 +66,14 @@ jobs:
       - name: Prove power2round/infinity_norm/mod_plus_minus(q) == FIPS 204 Alg 35 / Sec 2.3 (SAW)
         run: .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/scalar/scalar.saw
 
+      - name: Prove escape-2 Barrett integer core + BV-model evidence (SAW)
+        run: |
+          .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/escape2_core.saw
+          .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/barrett_bridge_evidence.saw
+
+      - name: Prove Elem neg/add/sub/mul == mod q (NTT field core; wide-Barrett spec ASSUMED — see docs/ASSUMPTIONS.md)
+        run: .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/field_ops_bridged.saw
+
       - name: Check const zetas table in the artifact == FIPS 204 Appendix B
         run: |
           cd implementations/rustcrypto-ml-dsa
@@ -87,3 +95,13 @@ jobs:
             echo "::error::Mutated spec verified — the proof is vacuous."; exit 1
           fi
           echo "Mutated spec correctly rejected."
+
+      - name: Non-vacuity guard for NTT field core (SAW must reject mutated q)
+        run: |
+          sed 's/8380417/8380416/g' \
+              implementations/rustcrypto-ml-dsa/proof/ntt/field_ops_bridged.saw \
+              > implementations/rustcrypto-ml-dsa/proof/ntt/field_ops_bridged_mutated_ci.saw
+          if .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/field_ops_bridged_mutated_ci.saw; then
+            echo "::error::Mutated field-core spec verified — the proof is vacuous."; exit 1
+          fi
+          echo "Mutated field-core spec correctly rejected."

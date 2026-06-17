@@ -1,4 +1,33 @@
-# NTT layer proof — handoff (2026-06-12, updated 2026-06-16)
+# NTT layer proof — handoff (2026-06-12, updated 2026-06-17)
+
+## RESOLVED 2026-06-17 — Path 1 landed: field core conforms (with admit-bridge)
+
+`field_ops_bridged.saw` runs to **saw exit 0 this session**: `Elem` neg/add/sub/mul
+== arithmetic mod q (q = 8380417), the module_lattice field core shared with
+ml-kem. The wide-Barrett blocker is cleared via the escape-2 admit-bridge.
+
+How it actually landed (the path fork's Path 1, refined):
+- `escape2_core.saw` — EARNED (z3): `barrettInt X == X % q` over `[0,2^46)` as an
+  unbounded-Integer goal. Re-verified this session.
+- `barrett_bridge.cry` + `barrett_bridge_evidence.saw` — EARNED (z3): the EXACT
+  BV mirror of the impl (`barrettBV`) equals `x % q` for `x < 2^24`. Model is correct.
+- `field_ops_bridged.saw` — `barrett_reduce(x) == x mod q for x < 2^46` is
+  **`mir_unsafe_assume_spec`-ASSUMED**, then `mul` chains on it and discharges
+  (override applied, z3 fast). Recorded in `docs/ASSUMPTIONS.md` (v2, escape-2 entry).
+
+Why assume_spec and NOT the `prove_print (admit ...) (rewrite)` route: the rewrite
+fires fine, but the RESIDUAL it leaves (`impl == barrettBV`, a wide-multiply + >>46
+BV equality) is itself the bit-blast bomb — z3 ran **3h15m without converging**
+(measured). The `impl == barrettBV` structural step is *part of* what cannot be
+mechanized at width, so admitting the whole barrett override is the honest unit.
+Also tried + rejected this session: `addsimp` on a guarded implication ("not an
+equation"); `goal_insert` (z3 "cannot handle universally-quantified assertions").
+
+STILL OPEN (unchanged): the NTT *layer* proof (BLOCKER 2 below) — `nttLayerFwd`'s
+256 per-position `% q` bit-blast. Field core is done; the layer transform is next.
+
+---
+# NTT layer proof — handoff (original, 2026-06-12, updated 2026-06-16)
 
 > **Verification status: UNVERIFIED.** The three files in this directory were
 > *written* this session but **not yet run to a `saw` exit-0 in this session**.

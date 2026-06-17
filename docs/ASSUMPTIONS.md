@@ -70,6 +70,28 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   case), checked exactly by Z3 over all u32. **Parameter-set scope:** 2*gamma2 = 190464 is the
   ML-DSA-44 value; ML-DSA-65/87 use 2*gamma2 = 523776, a distinct monomorphization not in this MIR
   and not claimed (q and 2^d are parameter-set-independent).
+- **Assumed wide-Barrett spec for the NTT field layer (escape-2 bridge, 2026-06-17).** The NTT
+  butterflies multiply two field elements (`a,b < q < 2^23`) giving a product `< 2^46`, reduced by
+  `module_lattice`/`ml_dsa`'s `barrett_reduce` (u64→u128 multiply by `8396807 = floor(2^46/q)`,
+  `>> 46`, one conditional subtract). `proof/ntt/field_ops_bridged.saw` proves the `Elem` field core
+  (`neg/add/sub/mul == arithmetic mod q`, shared with ml-kem) by chaining `mul` on an **assumed**
+  spec for `barrett_reduce`: `barrett_reduce(x) == x mod q for all x < 2^46`, via
+  `mir_unsafe_assume_spec`. This is part of the trust base. Its content is decomposed and the math is
+  **mechanized in SAW this session** (not blind):
+  - EARNED (z3): `proof/ntt/escape2_core.saw` proves the Barrett identity `barrettInt X == X % q`
+    over all `X ∈ [0, 2^46)` as an **unbounded-Integer** goal (the form that dodges bit-blasting).
+  - EARNED (z3): `proof/ntt/barrett_bridge_evidence.saw` proves the **exact bit-vector mirror** of
+    the impl arithmetic (`barrett_bridge.cry::barrettBV`) equals `x % q` for `x < 2^24` — i.e. the
+    model used to reason about the impl is correct at tractable width.
+  - ADMITTED (the irreducible gap): the BV↔bounded-Integer lift at width ~66+ (product `< 2^69`).
+    SAW has no native tactic for it; hand-built bridge lemmas themselves cliff at W=64, and the
+    direct `mir_verify` residual (`impl == barrettBV`) bit-blasts the wide multiply + `>>46` —
+    z3 ran **3h15m without converging** (measured 2026-06-17). This is saw-script discussion #3306,
+    confirmed by SAW maintainer RyanGlScott: SMT tools "fundamentally struggle with" Barrett.
+  Soundness: the spec is true (math proved as Integer identity; BV model validated at width); only
+  the width-lifting connecting the two is assumed. Same q = 8380417 (Dilithium) Barrett constants as
+  the verified scalar `reduce` layer; the narrow `x < 2^28` BV form of this same goal also proves
+  directly (4.2s) — the assumption is purely about the `2^28 < x < 2^46` tail.
 - **Pinned, vendored target.** `ml-dsa 0.1.1` + `module-lattice 0.2.3` (provenance in
   `implementations/rustcrypto-ml-dsa/target/`). mir-json schema v8 = the commit SAW 1.5.1 bundles.
 

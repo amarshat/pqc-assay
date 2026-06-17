@@ -1,0 +1,15 @@
+// Evidence that barrett_bridge::barrettBV is the CORRECT model (the admitted
+// full-width identity is true), checked at a tractable width where the BV form
+// still discharges. This is the small-width witness referenced in
+// docs/ASSUMPTIONS.md for the admitted bridge rule.
+//
+// Run:  saw barrett_bridge_evidence.saw   (no MIR needed)
+import "barrett_bridge.cry";
+
+// Narrow domain x < 2^24 (BV form is tractable here; cliffs above ~2^32 / W=64
+// per HANDOFF.md). barrettBV x == x mod q must hold.
+let evidence = {{ \(x : [64]) ->
+      (x < (1 << 24)) ==> (barrettBV x == drop`{96} ((zext x : [128]) % q)) }};
+
+ev_thm <- prove_print z3 evidence;
+print "EVIDENCE (SAW/z3): barrettBV x == x mod q for all x < 2^24 (bridge model is correct at width)";

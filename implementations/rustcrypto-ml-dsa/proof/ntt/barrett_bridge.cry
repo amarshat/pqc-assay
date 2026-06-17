@@ -1,0 +1,44 @@
+// Bit-vector model of RustCrypto/module_lattice `barrett_reduce` (Dilithium
+// field, q = 8380417), mirroring the impl arithmetic EXACTLY:
+//
+//   fn barrett_reduce(x: u64) -> u32 {
+//       let x: u128       = x.into();
+//       let product       = x * BARRETT_MULTIPLIER;   // 8396807 = 2^46 / q
+//       let quotient      = product >> BARRETT_SHIFT;  // 46
+//       let remainder     = x - quotient * QLL;        // u128
+//       small_reduce(truncate(remainder))              // u128 -> u32
+//   }
+//
+// This is the *bit-vector* side of the escape-2 bridge. The companion
+// integer model is escape2_bridge::barrettInt, whose correctness
+// (barrettInt X == X % q over X < 2^46) is PROVED in escape2_core.saw.
+//
+// The width-66+ BV<->Integer link between this and `x % q` is the step SAW
+// cannot discharge at width (saw-script #3306; bridge lemmas themselves cliff
+// at W=64 -- see HANDOFF.md). It is admitted at full width and recorded in
+// docs/ASSUMPTIONS.md as trust base; small-width evidence is checked below.
+module barrett_bridge where
+
+q : [128]
+q = 8380417
+
+barrettMult : [128]
+barrettMult = 8396807          // floor(2^46 / q)
+
+// u32 conditional subtraction (small_reduce): if x >= q then x - q else x.
+smallReduce : [32] -> [32]
+smallReduce x = if x >= 8380417 then x - 8380417 else x
+
+// Exact bit-vector mirror of barrett_reduce on a u64 input.
+barrettBV : [64] -> [32]
+barrettBV x = smallReduce (drop`{96} remainder)
+  where
+    xll       = zext x : [128]
+    prod      = xll * barrettMult
+    quotient  = prod >> 46
+    remainder = xll - quotient * q
+
+// THE BRIDGE IDENTITY (admitted at full width in field_ops_bridged.saw):
+//   over the product domain x < 2^46, the BV barrett model equals x mod q.
+property barrettBV_bridge x =
+    (x < (1 << 46)) ==> (barrettBV x == drop`{96} ((zext x : [128]) % q))
