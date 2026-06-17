@@ -52,6 +52,27 @@ core already discharges — see `escape2_core.saw`). This is the concrete next
 sprint. NOT attempted to completion; do not report barrett_reduce@2^46 as proven.
 Baseline this box: narrow x<2^28 proves in 4.2s; integer core in 0.7s.
 
+### Bridge-rule scaling experiment 2026-06-17 — the rules THEMSELVES cliff at W=64
+
+Tested the atomic SHIFT bridge `toInteger (x >> 46) == toInteger x / 2^46` via
+`prove_print z3` across widths (no multiply, no MIR): W=16/48/56 PROVED (rule is
+true); **W=64/72/80/96/128 TIMEOUT (>40s).** So a hand-assembled BV->Integer
+bridge is NOT viable — the bridge lemmas hit the same bit-blast wall (BV+Integer
+mix) at exactly the width Barrett needs (product < 2^69 => ~70 bits). Empirically
+confirms sauclovian-g (#3306): SAW lacks a native BV->bounded-int lifting tactic,
+and you can't cheaply prove one by rewriting. (yices not retested at width;
+`yices-smt2` must be on PATH.)
+
+**Two honest paths to land barrett@2^46 (pick deliberately — trust-base impact):**
+1. **`admit` the bridge identities** (ECDSA precedent: `ecdsa.saw` has
+   `assume_rule = prove_print (admit "assume rule") (rewrite ss0 t)`). Each bridge
+   rule is a genuinely-true BV<->Int identity (verify at small width as evidence),
+   admitted at full width, recorded in `docs/ASSUMPTIONS.md` as auditable trust
+   base (like the 3 CT leaves). Rewrite the goal into Integer shape -> z3 discharges
+   (escape-2 core). LANDS the result; EXPANDS the trust base.
+2. **Native SAW lifting tactic** (the missing primitive) — no new trust, bigger
+   effort, candidate upstream SAW contribution.
+
 ## What this task is
 
 v2 (RustCrypto ml-dsa 0.1.1, SAW-Rust via mir-json) currently has the scalar
