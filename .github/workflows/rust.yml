@@ -74,6 +74,15 @@ jobs:
       - name: Prove Elem neg/add/sub/mul == mod q (NTT field core; wide-Barrett spec ASSUMED — see docs/ASSUMPTIONS.md)
         run: .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/field_ops_bridged.saw
 
+      - name: Check compositional NTT spec == independent FIPS transcription (faithfulness, SAW)
+        run: .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/comp_faithful.saw
+
+      - name: Prove all 8 forward NTT layers == FIPS 204 Algorithm 41 (SAW; incl. non-vacuity)
+        run: .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/layer_ntt_fwd.saw
+
+      - name: Prove all 8 inverse NTT layers == FIPS 204 Algorithm 42 (SAW; incl. non-vacuity)
+        run: .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/layer_ntt_inv.saw
+
       - name: Check const zetas table in the artifact == FIPS 204 Appendix B
         run: |
           cd implementations/rustcrypto-ml-dsa

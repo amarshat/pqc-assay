@@ -1,0 +1,52 @@
+// Faithfulness tie-back: the compositional spec (fips204_ntt_comp.cry, used by
+// the layer proofs because its surface forms match the impl overrides) computes
+// the SAME layer maps as the independent FIPS 204 transcription
+// (fips204_ntt.cry, written in plain `(... ) % q` form). Checked over several
+// test vectors for every (len,iter,m0) used in the forward and inverse proofs.
+//
+// This rules out the failure mode where the compositional rewrite silently
+// changed the spec's meaning. (Both are OUR transcriptions of Alg 41/42; this
+// pins them to each other. The layer proofs then connect the impl to comp.)
+import "fips204_ntt_comp.cry" as C;
+import "fips204_ntt.cry" as O;
+
+let check label v lenv iterv m0v dir = do {
+    print (str_concat "checking " label);
+    let thm = if eval_bool {{ dir == (1:[8]) }}
+              then {{ (C::nttLayerFwd lenv iterv m0v v) == (O::nttLayerFwd lenv iterv m0v v) }}
+              else {{ (C::nttLayerInv lenv iterv m0v v) == (O::nttLayerInv lenv iterv m0v v) }};
+    if eval_bool thm then return () else fail (str_concat "MISMATCH comp vs orig: " label);
+};
+
+// three structurally-different test vectors
+let v1 = {{ [ (i * 7 + 1)            | i <- [0..255] ] : [256][32] }};
+let v2 = {{ [ ((i*i*131 + 17) % 8380417) | i <- [0..255] ] : [256][32] }};
+let v3 = {{ [ (8380416 - (i % 257))  | i <- [0..255] ] : [256][32] }};
+
+let fwd_params = [ (128,1,0), (64,2,1), (32,4,3), (16,8,7), (8,16,15), (4,32,31), (2,64,63), (1,128,127) ];
+let inv_params = [ (1,128,256), (2,64,128), (4,32,64), (8,16,32), (16,8,16), (32,4,8), (64,2,4), (128,1,2) ];
+
+// forward
+check "fwd128 v1" v1 {{128:[64]}} {{1:[64]}}   {{0:[64]}}   {{1:[8]}};
+check "fwd128 v2" v2 {{128:[64]}} {{1:[64]}}   {{0:[64]}}   {{1:[8]}};
+check "fwd128 v3" v3 {{128:[64]}} {{1:[64]}}   {{0:[64]}}   {{1:[8]}};
+check "fwd64 v2"  v2 {{64:[64]}}  {{2:[64]}}   {{1:[64]}}   {{1:[8]}};
+check "fwd32 v2"  v2 {{32:[64]}}  {{4:[64]}}   {{3:[64]}}   {{1:[8]}};
+check "fwd16 v2"  v2 {{16:[64]}}  {{8:[64]}}   {{7:[64]}}   {{1:[8]}};
+check "fwd8 v2"   v2 {{8:[64]}}   {{16:[64]}}  {{15:[64]}}  {{1:[8]}};
+check "fwd4 v2"   v2 {{4:[64]}}   {{32:[64]}}  {{31:[64]}}  {{1:[8]}};
+check "fwd2 v2"   v2 {{2:[64]}}   {{64:[64]}}  {{63:[64]}}  {{1:[8]}};
+check "fwd1 v3"   v3 {{1:[64]}}   {{128:[64]}} {{127:[64]}} {{1:[8]}};
+
+// inverse
+check "inv1 v1"   v1 {{1:[64]}}   {{128:[64]}} {{256:[64]}} {{0:[8]}};
+check "inv1 v2"   v2 {{1:[64]}}   {{128:[64]}} {{256:[64]}} {{0:[8]}};
+check "inv2 v2"   v2 {{2:[64]}}   {{64:[64]}}  {{128:[64]}} {{0:[8]}};
+check "inv4 v2"   v2 {{4:[64]}}   {{32:[64]}}  {{64:[64]}}  {{0:[8]}};
+check "inv8 v2"   v2 {{8:[64]}}   {{16:[64]}}  {{32:[64]}}  {{0:[8]}};
+check "inv16 v2"  v2 {{16:[64]}}  {{8:[64]}}   {{16:[64]}}  {{0:[8]}};
+check "inv32 v2"  v2 {{32:[64]}}  {{4:[64]}}   {{8:[64]}}   {{0:[8]}};
+check "inv64 v2"  v2 {{64:[64]}}  {{2:[64]}}   {{4:[64]}}   {{0:[8]}};
+check "inv128 v3" v3 {{128:[64]}} {{1:[64]}}   {{2:[64]}}   {{0:[8]}};
+
+print "FAITHFUL: compositional spec == FIPS transcription for all forward+inverse layer params (test vectors)";

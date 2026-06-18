@@ -1,5 +1,44 @@
 # NTT layer proof — handoff (2026-06-12, updated 2026-06-17)
 
+## RESOLVED 2026-06-18 — BLOCKER 2 cracked: ALL 16 NTT layers verified
+
+Both `layer_ntt_fwd.saw` (8 forward layers == FIPS 204 Alg 41) and
+`layer_ntt_inv.saw` (8 inverse layers == Alg 42) run to **saw exit 0 this
+session**, each with a built-in non-vacuity `fails` guard (perturbed spec
+rejected). This is the forward NTT (the project's v1 goal) mechanized for v2.
+
+The winning technique (after the original `% q` spec bit-blasted for 1h42m):
+- **Compositional spec** (`fips204_ntt_comp.cry`): each butterfly built from the
+  same surface forms (`addS/subS/mulS/negS`) the Elem overrides return.
+- **Field ops kept UNINTERPRETED** (`w4_unint_z3 ["addS","subS","mulS"]`, negS
+  interpreted on the inverse side — see below) → the layer goal is the
+  *structural butterfly routing*, not 256× modular bit-blasts. `simplify
+  (cryptol_ss ())` discharges the array equality by term-matching.
+- **Op overrides carry no precondition** (opaque routing symbols; their `==mod q`
+  correctness is the separate `field_ops_bridged.saw` obligation). With preconds,
+  the input-bound safety goals `w[j]<q` were the only obstacle.
+- **Faithfulness** (`comp_faithful.saw`): the compositional spec == the
+  independent `fips204_ntt.cry` FIPS transcription across all 16 (len,iter,m0)
+  on test vectors — rules out the rewrite silently changing meaning.
+
+Two debugging facts worth keeping:
+- SBV `unint_z3` crashes on multi-arg uninterpreted fns ("get-value ... expected
+  a function value"); **use What4 `w4_unint_z3`**.
+- On the inverse side the impl const-folds `-ZETA[m]` to a concrete literal, so
+  `negS` must stay **interpreted** (it only ever wraps concrete zetas) — keeping
+  it uninterpreted made `negS(zeta) != <literal>` and the proof failed.
+
+Layer→inst map (LEN,ITER → hash; forward & inverse share const-generic hashes):
+(128,1)=4c08bb…, (64,2)=afa961…, (32,4)=ddc4e2…, (16,8)=a45600…, (8,16)=9471…,
+(4,32)=66b65a…, (2,64)=48c7fd…, (1,128)=c07487…. Forward m0=0,1,3,7,15,31,63,127;
+inverse m0=256,128,64,32,16,8,4,2 (m decrements).
+
+STILL OPEN: Isabelle model≡FIPS-spec for the NTT *transform composition* (the 8
+layers compose to the negacyclic map) — the layers are proven equal to Alg 41/42
+bodies; composing them into the full Alg 41/42 transform + the 256^-1 scaling is
+the next rung. v1 did the analogous overflow-freedom composition in Isabelle.
+
+---
 ## RESOLVED 2026-06-17 — Path 1 landed: field core conforms (with admit-bridge)
 
 `field_ops_bridged.saw` runs to **saw exit 0 this session**: `Elem` neg/add/sub/mul

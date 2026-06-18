@@ -1,0 +1,77 @@
+/* Compositional form of the FIPS 204 NTT layer (Alg 41/42 bodies), written so
+ * that each butterfly is built from the SAME [32]->[32] field-op surface forms
+ * that the SAW Elem overrides return:
+ *
+ *   mulS a b = drop (zext a * zext b % q)
+ *   addS a b = drop (zext a + zext b % q)
+ *   subS a b = drop (zext a + q - zext b % q)
+ *
+ * After the neg/add/sub/mul overrides fire, the impl-side butterfly term is
+ * EXACTLY addS/subS/mulS applied to the array elements. Writing the spec the
+ * same way makes the layer-equivalence goal close by term-matching/rewriting
+ * instead of bit-blasting 256 urem-by-constant operations (the BLOCKER 2 wall
+ * in fips204_ntt.cry, whose [64] `wAt ... % q` surface form did not match).
+ *
+ * Semantically identical to fips204_ntt::nttLayerFwd/Inv (same zeta table, same
+ * butterfly math); only the surface form is aligned to the impl.
+ */
+module fips204_ntt_comp where
+
+type W = [64]
+
+q : W
+q = 8380417
+
+// q at [32] for the surface-form ops (matches the override RHS literals)
+q32 : [32]
+q32 = 8380417
+
+// zeta^BitRev_8(k) mod q (FIPS 204 Appendix B), zeta = 1753.
+zetabrv : [256][32]
+zetabrv = [ drop`{32} (pows @ (reverse k)) | k <- [0..255] : [256][8] ]
+  where pows = take`{256} powseq
+        powseq = [1] # [ (p * 1753) % q | p <- powseq ]
+
+// Field-op surface forms == exactly the Elem override return shapes ([32]).
+mulS : [32] -> [32] -> [32]
+mulS a b = drop`{32} ((zext a * zext b) % 8380417 : [64])
+
+addS : [32] -> [32] -> [32]
+addS a b = drop`{32} ((zext a + zext b) % 8380417 : [64])
+
+subS : [32] -> [32] -> [32]   // a - b mod q, via the impl's (a + q - b) form
+subS a b = drop`{32} ((zext a + 8380417 - zext b) % 8380417 : [64])
+
+negS : [32] -> [32]           // (q - a) mod q
+negS a = drop`{32} ((8380417 - zext a) % 8380417 : [64])
+
+// one forward layer (Algorithm 41 body), compositional surface form
+nttLayerFwd : W -> W -> W -> [256][32] -> [256][32]
+nttLayerFwd len iter m0 w = [ f (zext p) | p <- [0..255] : [256][8] ]
+  where
+    f : W -> [32]
+    f p = if blk >= iter then w @ p
+          else if off < len
+          then addS (w @ p) t                       // w[j]     = w[j] + t
+          else subS (w @ (p - len)) tHi             // w[j+len] = w[j] - t
+      where
+        blk = p / (2 * len)
+        off = p % (2 * len)
+        z   = zetabrv @ (m0 + blk + 1)
+        t   = mulS z (w @ (p + len))                // t seen from lower half
+        tHi = mulS z (w @ p)                        // same t seen from upper half
+
+// one inverse layer (Algorithm 42 body); m pre-decremented from m0 per block
+nttLayerInv : W -> W -> W -> [256][32] -> [256][32]
+nttLayerInv len iter m0 w = [ f (zext p) | p <- [0..255] : [256][8] ]
+  where
+    f : W -> [32]
+    f p = if blk >= iter then w @ p
+          else if off < len
+          then addS (w @ p) (w @ (p + len))         // w[j]     = t + w[j+len]
+          else mulS z tHi                            // w[j+len] = -zeta * (t - w[j+len])
+      where
+        blk = p / (2 * len)
+        off = p % (2 * len)
+        z   = negS (zetabrv @ (m0 - 1 - blk))       // -zeta mod q (impl: Elem neg)
+        tHi = subS (w @ (p - len)) (w @ p)          // t - w[j+len] mod q

@@ -92,6 +92,24 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   the width-lifting connecting the two is assumed. Same q = 8380417 (Dilithium) Barrett constants as
   the verified scalar `reduce` layer; the narrow `x < 2^28` BV form of this same goal also proves
   directly (4.2s) — the assumption is purely about the `2^28 < x < 2^46` tail.
+- **NTT layer proofs treat the field ops as uninterpreted routing symbols (2026-06-18).**
+  `proof/ntt/layer_ntt_fwd.saw` / `layer_ntt_inv.saw` prove all 8 forward (`ntt_layer`) and 8 inverse
+  (`ntt_inverse_layer`) layers equal to the FIPS 204 Alg 41/42 butterfly bodies. To make the goal
+  tractable, the four `Elem` field ops are replaced (via `mir_unsafe_assume_spec`, no precondition)
+  with **named, uninterpreted** Cryptol functions `addS/subS/mulS/negS`, and the proof is the
+  *structural butterfly routing* (`w4_unint_z3`). What this means for the trust base:
+  - The layer theorem says: *with each field op treated as an opaque function, `ntt_layer` wires the
+    butterflies exactly as Alg 41/42 specifies* (correct indices, operand order, zeta selection,
+    `m`-counter sequencing). It does NOT, by itself, assert the ops compute mod-q arithmetic.
+  - The ops' arithmetic correctness (`add/sub/neg/mul == · mod q`) is the SEPARATE, **proven**
+    obligation in `field_ops_bridged.saw` (which carries the escape-2 barrett assumption above).
+    The two compose: proven routing ∘ proven (mod-q) leaves = the layer computes the Alg 41/42 map.
+  - `negS` is kept *interpreted* on the inverse side (the impl const-folds `-ZETA[m]` to a literal).
+  - Faithfulness of the compositional spec to the independent FIPS transcription (`fips204_ntt.cry`)
+    is checked in `comp_faithful.saw` over test vectors for all 16 (len,iter,m0). Non-vacuity:
+    each layer file rejects a +1-perturbed spec (`fails`). NOT assumed beyond the above; the
+    coefficient-stays-in-range (no Elem invariant violation) property is the v1 overflow-freedom
+    story, not re-established here.
 - **Pinned, vendored target.** `ml-dsa 0.1.1` + `module-lattice 0.2.3` (provenance in
   `implementations/rustcrypto-ml-dsa/target/`). mir-json schema v8 = the commit SAW 1.5.1 bundles.
 
