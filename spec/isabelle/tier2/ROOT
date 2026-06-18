@@ -3,6 +3,9 @@
    (the make-verify no-sorry gate) until the theorem is discharged. *)
 session Tier2 = "Number_Theoretic_Transform" +
   options [document = false]
+  sessions
+    Cryptol
   theories
     Bitrev
     Negacyclic_NTT
+    "fips204_ntt_lift"
