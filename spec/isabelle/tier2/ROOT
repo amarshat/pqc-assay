@@ -4,4 +4,5 @@
 session Tier2 = "Number_Theoretic_Transform" +
   options [document = false]
   theories
+    Bitrev
     Negacyclic_NTT
