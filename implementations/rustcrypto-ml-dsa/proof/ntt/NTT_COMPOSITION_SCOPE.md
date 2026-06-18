@@ -164,6 +164,41 @@ SPEC side: no callable `ntt()`, no pinned-target patch, no MIR. Clean.
 - Confirm cryptol-to-isabelle lifts `fips204_ntt.cry`'s foldl/comprehension cleanly
   (the `@`/index forms; v1 hit `nth_seq`/SeqOOB quirks — see memory).
 
+### AFP RECON RESULT (2026-06-18) — GO, with two bridge layers
+
+AFP entry **`Number_Theoretic_Transform`** (`.tools/afp-2026-06-05/thys/Number_Theoretic_Transform`,
+3 thys: `Preliminary_Lemmas`, `NTT`, `Butterfly`; session on `HOL-Number_Theory` + `Berlekamp_Zassenhaus`)
+exists and **already proves the hard theorem** (step 3 = the FFT-correctness identity).
+
+What it gives us, free:
+- **Cyclic NTT spec**: `ntt x i = (Σ j<n. x!j · ω^(i·j))`, `ω` a primitive n-th root (`ω^n=1`,
+  `ω≠1`, minimal), over `'a mod_ring` with `prime_card`. ML-DSA `q=8380417` is prime; `256 | q-1`
+  and `512 | q-1` both hold, so the needed roots exist.
+- **Cooley–Tukey recursive FFT** `FNTT` (radix-2 even/odd split) proven **`FNTT_correct`** (`= NTT`),
+  inverse `IFNTT_correct`, and **round-trip** `FNTT_inv_IFNTT` / `IFNTT_inv_FNTT`. The root-of-unity
+  bookkeeping, geometric-sum lemmas (`Preliminary_Lemmas`), and the decimation induction are all done.
+- Built on the **same `Berlekamp_Zassenhaus` cone we already build** for the Cryptol session — adding
+  this session is light on top of existing heaps.
+
+Two GAPS remain — these are the real Tier-2 work, but they are *bridges*, not the FFT theorem:
+1. **Cyclic → negacyclic.** AFP is cyclic (modulus `x^n−1`, `ω^n=1`). ML-DSA is **negacyclic**
+   (`x^256+1`), evaluating at odd powers `ζ^((2·brv8(k)+1)·j)` with `ζ` a primitive **2n=512th** root.
+   Standard bridge: negacyclic transform = cyclic transform after a **twist** (input `x[j] ↦ ψ^j·x[j]`,
+   `ψ^2=ω`). ML-DSA folds `ψ` into the zeta table ("merged" NTT), so the bridge must show our
+   `nttFwdAll` zetas == the twisted cyclic form. [M]
+2. **Iterative-in-place + bit-reversal ↔ recursive.** AFP `FNTT` is recursive even/odd; our
+   `nttFwdAll` is the iterative 8-layer in-place foldl with a **bit-reversed** zeta order. Same values,
+   different control structure. Need: `nttFwdAll == NTT_gen` (or `== FNTT`) modulo the bit-reversal
+   permutation. This is index/bitrev algebra. [M, the bulk of the new work]
+
+**Verdict: feasibility GO.** The weeks-long, high-risk piece (Cooley–Tukey value identity) is reused
+from AFP; Tier-2 becomes "write the negacyclic twist bridge + the iterative↔recursive/bit-reversal
+bridge, then chain onto `FNTT_correct`." Re-estimate step 3: **M–L (days), not weeks.** Steps 1,2,4,5
+unchanged. Remaining risk concentrated in gap 2 (bit-reversal index bookkeeping).
+
+Still TODO before coding: confirm cryptol-to-isabelle lifts `fips204_ntt.cry` foldl/`@` cleanly
+(v1 `nth_seq`/SeqOOB quirks), and add the `Number_Theoretic_Transform` session to our Isabelle ROOT.
+
 **Effort/risk.** Step 3 is L / high-risk (it's a real theorem; weeks without an AFP
 base, days with one). Steps 1-2,4-5 are S-M. Recommend the AFP recon BEFORE
 committing — it's the swing factor.

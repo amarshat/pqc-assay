@@ -1,0 +1,23 @@
+/* Faithfulness check for the Tier-2 lift: the finite zeta table used by
+ * fips204_ntt_lift is identical to the infinite-stream table in fips204_ntt.
+ *   cryptol> :l lift_table_eq.cry
+ *   cryptol> :prove tables_equal      => Q.E.D.
+ */
+module lift_table_eq where
+
+type W = [64]
+q : W
+q = 8380417
+
+zetabrv_inf : [256][32]
+zetabrv_inf = [ drop`{32} (pows @ (reverse k)) | k <- [0..255] : [256][8] ]
+  where pows = take`{256} powseq
+        powseq = [1] # [ (p * 1753) % q | p <- powseq ]
+
+zetabrv_fin : [256][32]
+zetabrv_fin = [ drop`{32} (pows @ (reverse k)) | k <- [0..255] : [256][8] ]
+  where pows = powseq
+        powseq : [256][64]
+        powseq = [1] # [ (p * 1753) % q | p <- take`{255} powseq ]
+
+property tables_equal = zetabrv_inf == zetabrv_fin
