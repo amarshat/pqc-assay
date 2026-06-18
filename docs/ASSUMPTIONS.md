@@ -110,6 +110,21 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
     each layer file rejects a +1-perturbed spec (`fails`). NOT assumed beyond the above; the
     coefficient-stays-in-range (no Elem invariant violation) property is the v1 overflow-freedom
     story, not re-established here.
+- **NTT composition: layers mechanized, 8-layer call order by-inspection (2026-06-18, Tier 1).**
+  The full forward/inverse NTT is the 8-fold composition of the verified layers. Mechanized
+  (saw exit 0): each of the 16 layers (impl == FIPS Alg 41/42 body), and the *composed spec* is
+  faithful to the independent `% q` transcription plus round-trip-consistent (`inv(fwd(w)) == 256·w
+  mod q`, the 256^-1 tail scaling being outside the layers) — `proof/ntt/ntt_full_check.saw`.
+  NOT mechanized: that the pinned `ntt()` invokes those 8 layers *in that exact order*. The
+  implementation's `Polynomial::ntt` / `NttPolynomial::ntt_inverse` are `pub(crate)` (correct
+  encapsulation, not a defect) and the full transform is inlined, so there is no callable entry to
+  SAW-verify without modifying the vendored, pinned target — which we deliberately do NOT do (the
+  pin is the value: we verify the crate as published). The call order is therefore taken
+  **by inspection** of the pinned source (`ml-dsa-0.1.1/src/ntt.rs:80-87` forward / `142-149`
+  inverse). This is the SAME category of trust as the existing "the harness's sign/verify entry
+  points force the monomorphizations" reachability assumption above — cheap to eyeball, pin-breaking
+  to mechanize. It is NOT a correctness gap in the layers; it is a reachability/wiring fact about
+  which verified pieces run in which order.
 - **Pinned, vendored target.** `ml-dsa 0.1.1` + `module-lattice 0.2.3` (provenance in
   `implementations/rustcrypto-ml-dsa/target/`). mir-json schema v8 = the commit SAW 1.5.1 bundles.
 

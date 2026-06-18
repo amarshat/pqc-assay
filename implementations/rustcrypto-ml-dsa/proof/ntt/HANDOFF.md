@@ -1,5 +1,18 @@
 # NTT layer proof — handoff (2026-06-12, updated 2026-06-17)
 
+## 2026-06-18 — composition: Tier-1 closed (honest boundary), Tier-2 scoped
+
+See `NTT_COMPOSITION_SCOPE.md`. Tier-1 (operational, full Alg 41/42 loop): the
+composed transform is mechanized at the spec level (`ntt_full_check.saw`:
+faithfulness + `inv(fwd(w))==256·w` round-trip, saw exit 0) and CI-wired. The
+8-layer *call order* is by-inspection of pinned `ntt.rs:80-87`/`142-149` —
+`Polynomial::ntt` is `pub(crate)`+inlined, so a callable entry would require
+patching the pinned target, which we deliberately do NOT do. Recorded in
+ASSUMPTIONS as a reachability fact. (The `pub(crate)` boundary is correct
+encapsulation, not an upstream bug — nothing to disclose.) Next real mechanization
+= Tier-2 Isabelle FFT-correctness theorem (spec-side, no patch); AFP-reuse recon
+is the feasibility swing factor.
+
 ## RESOLVED 2026-06-18 — BLOCKER 2 cracked: ALL 16 NTT layers verified
 
 Both `layer_ntt_fwd.saw` (8 forward layers == FIPS 204 Alg 41) and
