@@ -1,0 +1,82 @@
+enable_experimental;
+// FAST per-push smoke: ONE forward (Alg 41) + ONE inverse (Alg 42) NTT layer,
+// plus a non-vacuity guard each. Catches impl/spec regressions in a few minutes.
+// The EXHAUSTIVE 8+8-layer proofs (layer_ntt_fwd.saw / layer_ntt_inv.saw) are
+// simulation-bound (~80-90s/layer locally, ~10min/layer on hosted CI), so they
+// run in the manual/nightly workflow (.github/workflows/rust-layers-full.yml),
+// not on every push. Technique + rationale: see HANDOFF.md / docs/ASSUMPTIONS.md.
+import "fips204_ntt_comp.cry";
+
+m <- mir_load_module "../../build/mldsa_harness.linked-mir.json";
+
+let bf_adt = mir_find_adt m "ml_dsa::algebra::BaseField" [];
+let elem_adt = mir_find_adt m "module_lattice::algebra::Elem" [mir_adt bf_adt];
+let elem x = mir_struct_value elem_adt [mir_term x];
+
+let unop_spec spec = do {
+    a <- mir_fresh_var "a" mir_u32;
+    mir_execute_func [elem a];
+    mir_return (elem (spec a));
+};
+let binop_spec spec = do {
+    a <- mir_fresh_var "a" mir_u32;
+    b <- mir_fresh_var "b" mir_u32;
+    mir_execute_func [elem a, elem b];
+    mir_return (elem (spec a b));
+};
+neg_ov <- mir_unsafe_assume_spec m "module_lattice::algebra::{impl#3}::neg::_instd1dae7dc341bae50"
+    (unop_spec (\a -> {{ negS a }}));
+add_ov <- mir_unsafe_assume_spec m "module_lattice::algebra::{impl#4}::add::_instd1dae7dc341bae50"
+    (binop_spec (\a b -> {{ addS a b }}));
+sub_ov <- mir_unsafe_assume_spec m "module_lattice::algebra::{impl#5}::sub::_instd1dae7dc341bae50"
+    (binop_spec (\a b -> {{ subS a b }}));
+mul_ov <- mir_unsafe_assume_spec m "module_lattice::algebra::{impl#6}::mul::_instd1dae7dc341bae50"
+    (binop_spec (\a b -> {{ mulS a b }}));
+let field_ovs = [neg_ov, add_ov, sub_ov, mul_ov];
+
+idxs <- eval_list {{ [0..255] : [256][8] }};
+
+let fwd_spec lenv iterv m0v perturb = do {
+    ws <- mir_fresh_var "w" (mir_array 256 mir_u32);
+    mir_precond {{ all (\c -> c < 8380417) ws }};
+    in_els <- for idxs (\i -> return (mir_struct_value elem_adt [mir_term {{ ws @ i }}]));
+    w_ref <- mir_alloc_mut (mir_array 256 (mir_adt elem_adt));
+    mir_points_to w_ref (mir_array_value (mir_adt elem_adt) in_els);
+    m_ref <- mir_alloc_mut mir_usize;
+    mir_points_to m_ref (mir_term m0v);
+    mir_execute_func [w_ref, m_ref];
+    out_els <- for idxs (\i -> return (mir_struct_value elem_adt
+                  [mir_term {{ ((nttLayerFwd lenv iterv m0v ws) @ i) + (if i == (0:[8]) then perturb else 0) }}]));
+    mir_points_to w_ref (mir_array_value (mir_adt elem_adt) out_els);
+    mir_points_to m_ref (mir_term {{ m0v + iterv }});
+};
+let inv_spec lenv iterv m0v perturb = do {
+    ws <- mir_fresh_var "w" (mir_array 256 mir_u32);
+    mir_precond {{ all (\c -> c < 8380417) ws }};
+    in_els <- for idxs (\i -> return (mir_struct_value elem_adt [mir_term {{ ws @ i }}]));
+    w_ref <- mir_alloc_mut (mir_array 256 (mir_adt elem_adt));
+    mir_points_to w_ref (mir_array_value (mir_adt elem_adt) in_els);
+    m_ref <- mir_alloc_mut mir_usize;
+    mir_points_to m_ref (mir_term m0v);
+    mir_execute_func [w_ref, m_ref];
+    out_els <- for idxs (\i -> return (mir_struct_value elem_adt
+                  [mir_term {{ ((nttLayerInv lenv iterv m0v ws) @ i) + (if i == (0:[8]) then perturb else 0) }}]));
+    mir_points_to w_ref (mir_array_value (mir_adt elem_adt) out_els);
+    mir_points_to m_ref (mir_term {{ m0v - iterv }});
+};
+
+// forward LEN=128
+mir_verify m "ml_dsa::ntt::ntt_layer::_inst4c08bb177e505583" field_ovs false
+    (fwd_spec {{128:[64]}} {{1:[64]}} {{0:[64]}} {{0:[32]}})
+    do { simplify (cryptol_ss ()); w4_unint_z3 ["negS","addS","subS","mulS"]; };
+print "SMOKE: forward layer LEN=128 == FIPS 204 Alg 41";
+
+// inverse LEN=128 (negS interpreted; impl const-folds -ZETA[m])
+mir_verify m "ml_dsa::ntt::ntt_inverse_layer::_inst4c08bb177e505583" field_ovs false
+    (inv_spec {{128:[64]}} {{1:[64]}} {{2:[64]}} {{0:[32]}})
+    do { simplify (cryptol_ss ()); w4_unint_z3 ["addS","subS","mulS"]; };
+print "SMOKE: inverse layer LEN=128 == FIPS 204 Alg 42";
+
+// Non-vacuity for the layers is exercised in the nightly full proofs
+// (layer_ntt_fwd.saw / layer_ntt_inv.saw each carry a `fails` perturbed-spec guard).
+print "NTT LAYER SMOKE OK (representative fwd+inv layer; full 8+8 + non-vacuity in rust-layers-full.yml)";

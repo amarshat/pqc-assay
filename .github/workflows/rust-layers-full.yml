@@ -1,0 +1,63 @@
+name: rust-layers-full
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * *"   # nightly 07:00 UTC
+
+# Exhaustive NTT layer proofs: ALL 8 forward (FIPS 204 Alg 41) + ALL 8 inverse
+# (Alg 42) layers, each with a non-vacuity guard. These are simulation-bound
+# (~10 min/layer on hosted macos-15), so they run nightly / on demand rather than
+# on every push. The fast per-push gate (rust.yml) runs a 1-fwd+1-inv smoke.
+# Setup steps mirror rust.yml exactly.
+jobs:
+  ntt-layers-full:
+    runs-on: macos-15
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache toolchain (.tools — SAW + mir-json checkout + translated rlibs)
+        uses: actions/cache@v4
+        with:
+          path: .tools
+          key: tools-rust-${{ runner.os }}-${{ hashFiles('scripts/setup.sh', 'scripts/setup_rust.sh') }}
+          restore-keys: |
+            tools-saw1.5.1-${{ runner.os }}-
+
+      - name: Cache Rust toolchain (pinned nightly + mir-json binaries)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.rustup/toolchains/nightly-2025-09-14-aarch64-apple-darwin
+          key: mirjson-${{ runner.os }}-${{ hashFiles('scripts/setup_rust.sh') }}
+
+      - name: Set up SAW (Isabelle skipped)
+        run: |
+          SKIP_ISABELLE=1 ./scripts/setup.sh
+          echo "$PWD/.tools/bin" >> "$GITHUB_PATH"
+
+      - name: Set up SAW-Rust toolchain (pinned nightly + mir-json, skipped when cached)
+        run: |
+          if [ -x "$HOME/.cargo/bin/mir-json" ] \
+             && [ -d "$HOME/.rustup/toolchains/nightly-2025-09-14-aarch64-apple-darwin" ] \
+             && [ -e .tools/rlibs/libcore.mir ]; then
+            echo "mir-json toolchain restored from cache; skipping setup_rust.sh"
+          else
+            ./scripts/setup_rust.sh
+          fi
+
+      - name: Build harness MIR (repo-local) and refresh the stable symlink
+        run: |
+          export SAW_RUST_LIBRARY_PATH="$PWD/.tools/rlibs"
+          cd implementations/rustcrypto-ml-dsa/harness
+          CARGO_TARGET_DIR="$PWD/../build" cargo +nightly-2025-09-14 saw-build
+          cd ../build
+          ln -sf aarch64-apple-darwin/debug/deps/mldsa_harness-*.linked-mir.json mldsa_harness.linked-mir.json
+          ls -l mldsa_harness.linked-mir.json
+
+      - name: Prove all 8 forward NTT layers == FIPS 204 Algorithm 41 (SAW; incl. non-vacuity)
+        run: .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/layer_ntt_fwd.saw
+
+      - name: Prove all 8 inverse NTT layers == FIPS 204 Algorithm 42 (SAW; incl. non-vacuity)
+        run: .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/layer_ntt_inv.saw

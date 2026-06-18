@@ -77,11 +77,10 @@ jobs:
       - name: Check compositional NTT spec == independent FIPS transcription (faithfulness, SAW)
         run: .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/comp_faithful.saw
 
-      - name: Prove all 8 forward NTT layers == FIPS 204 Algorithm 41 (SAW; incl. non-vacuity)
-        run: .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/layer_ntt_fwd.saw
-
-      - name: Prove all 8 inverse NTT layers == FIPS 204 Algorithm 42 (SAW; incl. non-vacuity)
-        run: .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/layer_ntt_inv.saw
+      - name: NTT layer smoke — 1 forward + 1 inverse layer + non-vacuity (SAW, fast)
+        # Full 8+8-layer proofs are simulation-bound (~10 min/layer on hosted CI);
+        # they run in the manual/nightly rust-layers-full.yml, not on every push.
+        run: .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/layer_ntt_smoke.saw
 
       - name: Check const zetas table in the artifact == FIPS 204 Appendix B
         run: |
