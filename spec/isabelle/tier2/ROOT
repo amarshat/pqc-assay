@@ -1,0 +1,7 @@
+(* WIP — Tier-2 FFT-correctness (negacyclic NTT == ML-DSA layer composition).
+   SEPARATE session: may contain `sorry` during development; NOT part of `Assay`
+   (the make-verify no-sorry gate) until the theorem is discharged. *)
+session Tier2 = "Number_Theoretic_Transform" +
+  options [document = false]
+  theories
+    Negacyclic_NTT
