@@ -77,6 +77,9 @@ jobs:
       - name: Check compositional NTT spec == independent FIPS transcription (faithfulness, SAW)
         run: .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/comp_faithful.saw
 
+      - name: Full NTT composition checks — faithfulness + inv(fwd)=256·w round-trip (SAW, fast)
+        run: .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/ntt_full_check.saw
+
       - name: NTT layer smoke — 1 forward + 1 inverse layer + non-vacuity (SAW, fast)
         # Full 8+8-layer proofs are simulation-bound (~10 min/layer on hosted CI);
         # they run in the manual/nightly rust-layers-full.yml, not on every push.

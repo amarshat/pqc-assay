@@ -1,0 +1,36 @@
+// Tier-1 composition checks for the full FIPS 204 Alg 41/42 loops.
+//
+//  (1) FAITHFULNESS: the compositional full transform (fips204_ntt_comp.cry
+//      nttFwdAll/nttInvAll, used by the SAW impl proof) equals the independent
+//      plain-`% q` FIPS transcription (fips204_ntt.cry nttFwdAllRef/nttInvAllRef).
+//  (2) ROUND-TRIP: nttInvAll (nttFwdAll w) == 256 * w (mod q), componentwise.
+//      The layers omit the 256^-1 tail scaling (it lives in Alg 42's caller), so
+//      a correct forward-then-inverse must scale by 256. This is an INDEPENDENT
+//      semantic sanity on the composition (it would fail for almost any wrong
+//      layer order / m-threading / zeta indexing), short of the full FFT proof.
+//
+// Checked on several structurally-different test vectors. Run:  saw ntt_full_check.saw
+import "fips204_ntt_comp.cry" as C;
+import "fips204_ntt.cry" as O;
+
+let v1 = {{ [ (i * 7 + 1)                  | i <- [0..255] ] : [256][32] }};
+let v2 = {{ [ ((i*i*131 + 17) % 8380417)   | i <- [0..255] ] : [256][32] }};
+let v3 = {{ [ (8380416 - (i % 257))        | i <- [0..255] ] : [256][32] }};
+
+let chk lbl thm = if eval_bool thm then return () else fail (str_concat "FAILED: " lbl);
+
+// (1) faithfulness: comp full transform == reference transcription
+chk "fwd faithful v1" {{ C::nttFwdAll v1 == O::nttFwdAllRef v1 }};
+chk "fwd faithful v2" {{ C::nttFwdAll v2 == O::nttFwdAllRef v2 }};
+chk "fwd faithful v3" {{ C::nttFwdAll v3 == O::nttFwdAllRef v3 }};
+chk "inv faithful v2" {{ C::nttInvAll v2 == O::nttInvAllRef v2 }};
+chk "inv faithful v3" {{ C::nttInvAll v3 == O::nttInvAllRef v3 }};
+print "OK (1): compositional full Alg 41/42 == independent FIPS transcription";
+
+// (2) round-trip: inverse(forward(w)) == 256 * w mod q  (256^-1 scaling omitted)
+chk "roundtrip v1" {{ C::nttInvAll (C::nttFwdAll v1) == C::scale256 v1 }};
+chk "roundtrip v2" {{ C::nttInvAll (C::nttFwdAll v2) == C::scale256 v2 }};
+chk "roundtrip v3" {{ C::nttInvAll (C::nttFwdAll v3) == C::scale256 v3 }};
+print "OK (2): inv(fwd(w)) == 256*w mod q  (composition order / m-threading / zetas consistent)";
+
+print "TIER-1 COMPOSITION CHECKS PASS: full forward+inverse NTT loops faithful + round-trip-consistent";

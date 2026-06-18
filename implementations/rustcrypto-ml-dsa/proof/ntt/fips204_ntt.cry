@@ -69,3 +69,21 @@ nttLayerInv len iter m0 w = [ f (zext p) | p <- [0..255] : [256][8] ]
         off = p % (2 * len)
         z   = (q - zext (zetabrv @ (m0 - 1 - blk))) % q
         tHi = (wAt (p - len) + q - wAt p) % q
+
+// Reference (plain `% q` transcription) full Alg 41/42 loops, for the Tier-1
+// composition faithfulness check against the compositional version.
+fwdParamsRef : [8]([64], [64], [64])
+fwdParamsRef = [ (128,1,0), (64,2,1), (32,4,3), (16,8,7),
+                 (8,16,15), (4,32,31), (2,64,63), (1,128,127) ]
+
+invParamsRef : [8]([64], [64], [64])
+invParamsRef = [ (1,128,256), (2,64,128), (4,32,64), (8,16,32),
+                 (16,8,16), (32,4,8), (64,2,4), (128,1,2) ]
+
+nttFwdAllRef : [256][32] -> [256][32]
+nttFwdAllRef w0 = foldl step w0 fwdParamsRef
+  where step w (len, iter, m0) = nttLayerFwd len iter m0 w
+
+nttInvAllRef : [256][32] -> [256][32]
+nttInvAllRef w0 = foldl step w0 invParamsRef
+  where step w (len, iter, m0) = nttLayerInv len iter m0 w

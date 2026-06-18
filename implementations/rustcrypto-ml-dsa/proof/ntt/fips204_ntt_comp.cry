@@ -75,3 +75,28 @@ nttLayerInv len iter m0 w = [ f (zext p) | p <- [0..255] : [256][8] ]
         off = p % (2 * len)
         z   = negS (zetabrv @ (m0 - 1 - blk))       // -zeta mod q (impl: Elem neg)
         tHi = subS (w @ (p - len)) (w @ p)          // t - w[j+len] mod q
+
+// ---- Tier-1 composition: the full FIPS 204 Alg 41/42 loops ----------------
+// The complete forward NTT = the 8 layer maps composed in the order the impl
+// calls them (LEN = 128,64,...,1; m threads 0 -> 128). Inverse = Alg 42 order
+// (LEN = 1,2,...,128; m threads 256 -> 1). The 256^-1 final scaling lives
+// OUTSIDE the layers (in Alg 42's caller) and is NOT applied here.
+fwdParams : [8](W, W, W)   // (len, iter, m0)
+fwdParams = [ (128,1,0), (64,2,1), (32,4,3), (16,8,7),
+              (8,16,15), (4,32,31), (2,64,63), (1,128,127) ]
+
+invParams : [8](W, W, W)
+invParams = [ (1,128,256), (2,64,128), (4,32,64), (8,16,32),
+              (16,8,16), (32,4,8), (64,2,4), (128,1,2) ]
+
+nttFwdAll : [256][32] -> [256][32]
+nttFwdAll w0 = foldl step w0 fwdParams
+  where step w (len, iter, m0) = nttLayerFwd len iter m0 w
+
+nttInvAll : [256][32] -> [256][32]   // without the 256^-1 tail scaling
+nttInvAll w0 = foldl step w0 invParams
+  where step w (len, iter, m0) = nttLayerInv len iter m0 w
+
+// componentwise 256 * v mod q, for the inv(fwd(w)) == 256*w round-trip check
+scale256 : [256][32] -> [256][32]
+scale256 v = [ drop`{32} ((256 * zext (v @ i)) % 8380417 : [64]) | i <- [0..255] : [256][8] ]
