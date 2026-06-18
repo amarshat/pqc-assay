@@ -27,3 +27,17 @@ paper/*.zip
 implementations/**/target/
 implementations/rustcrypto-ml-dsa/build/
 *.linked-mir.json
+
+# Scratch proof logs / experimental saw runs (underscore-prefixed)
+implementations/**/proof/**/_*.log
+implementations/**/proof/**/_*.saw
+
+# Blog drafts / generated images (kept local; public repo, private framing)
+**/BLOG_*.md
+**/blog_*.png
+
+# Local tooling / agent dirs
+/.agents/
+/.kiro/
+/build/
+/skills-lock.json
