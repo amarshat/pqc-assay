@@ -2,7 +2,7 @@
    nttFwdAllRef. First brick: the lifted foldl over the 8 (len,iter,m0) tuples
    unfolds to the explicit 8-layer composition. *)
 theory Bridge_Word
-  imports "fips204_ntt_lift" Bitrev Negacyclic_NTT
+  imports "Tier2_Base.fips204_ntt_lift" "Tier2_Base.Bitrev" "Tier2_Base.Negacyclic_NTT"
 begin
 
 context includes cryptol_syntax begin
