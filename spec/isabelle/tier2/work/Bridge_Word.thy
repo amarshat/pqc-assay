@@ -45,14 +45,63 @@ lemma mul_mod_aux:
   assumes "0 \<le> A" "A < 8380417" "0 \<le> B" "B < 8380417"
   shows "A * B mod 18446744073709551616 mod 8380417 = (A * B) mod 8380417"
 proof -
-  have "A * B < 18446744073709551616" using assms by (smt (verit) mult_strict_mono)
+  have "A * B < 8380417 * 8380417" using assms by (intro mult_strict_mono) auto
+  hence "A * B < 18446744073709551616" by simp
   moreover have "0 \<le> A * B" using assms by simp
   ultimately have "A * B mod 18446744073709551616 = A * B"
     by (simp add: mod_pos_pos_trivial)
   thus ?thesis by simp
 qed
 
+text \<open>No-overflow integer fact behind the 64-bit subtract (computed as
+  \<open>(x + q - y) mod q\<close> to stay non-negative): \<open>x + q < 2q < 2^64\<close>.\<close>
+lemma sub_mod_aux:
+  fixes A B :: int
+  assumes "0 \<le> A" "A < 8380417" "0 \<le> B" "B < 8380417"
+  shows "take_bit 32 ((A + 8380417 - B) mod 18446744073709551616 mod 8380417)
+         = (A + 8380417 - B) mod 8380417"
+proof -
+  have c0: "0 \<le> A + 8380417 - B" using assms by simp
+  have c1: "A + 8380417 - B < 18446744073709551616" using assms by simp
+  from c0 c1 have m: "(A + 8380417 - B) mod 18446744073709551616 = A + 8380417 - B"
+    by (simp add: mod_pos_pos_trivial)
+  have lt: "(A + 8380417 - B) mod 8380417 < 2 ^ 32"
+    using pos_mod_bound[of 8380417 "A + 8380417 - B"] by simp
+  have ge: "0 \<le> (A + 8380417 - B) mod 8380417" by simp
+  show ?thesis using m lt ge by (simp add: take_bit_int_eq_self)
+qed
+
 context includes cryptol_translation_syntax begin
+
+lemma zext_uint:
+  fixes a :: "[32]"
+  shows "uint_seq (zext`{64,32} a) = uint_seq a"
+  apply (simp add: cryptol_prim_defs word_seq_convs)
+  apply (simp add: uint_up_ucast is_up)
+  done
+
+lemma drop_uint:
+  fixes v :: "W"
+  assumes "uint_seq v < 4294967296"
+  shows "uint_seq (drop`{32,32,Bit} v) = uint_seq v"
+  using assms
+  apply (simp add: cryptol_prim_defs word_seq_convs)
+  apply (simp add: unsigned_ucast_eq unsigned_take_bit_eq take_bit_int_eq_self)
+  done
+
+lemma red_sub:
+  fixes x y :: "W"
+  assumes "uint_seq x < 8380417" and "uint_seq y < 8380417"
+  shows "uint_seq (drop`{32,32,Bit}
+            (((x +`{[64]} q) -`{[64]} y) %`{[64]} q))
+         = (uint_seq x + 8380417 - uint_seq y) mod 8380417"
+  using assms
+  apply (simp add: cryptol_prim_defs word_seq_convs q_def)
+  apply (simp add: unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                   uint_mod_distrib uint_word_ariths)
+  apply (rule sub_mod_aux)
+  apply simp_all
+  done
 
 lemma red_mul:
   fixes x y :: "W"
