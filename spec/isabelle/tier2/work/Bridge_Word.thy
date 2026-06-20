@@ -103,6 +103,14 @@ lemma red_sub:
   apply simp_all
   done
 
+text \<open>Per-position unfold (recipe, demonstrated): with @{term "n < 256"},
+  \<open>simp add: nttLayerFwd_def fromTo_def map_seq_nth upto_seq_nth\<close> reduces
+  \<open>nth_seq (nttLayerFwd len iter m0 w) n\<close> to the let-bound butterfly body
+  (blk/off/z, the \<open>iter \<le> blk\<close> untouched branch, and the lower/upper add/mul/sub
+  branches that op_add/red_mul/red_sub bridge). Assembling this into a clean
+  coefficient lemma needs the index arithmetic (to_nat/pos_nat/zext, div/mod on
+  [64] words) and is the next step toward the CT routing.\<close>
+
 lemma red_mul:
   fixes x y :: "W"
   assumes "uint_seq x < 8380417" and "uint_seq y < 8380417"
