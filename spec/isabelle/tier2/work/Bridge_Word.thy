@@ -460,5 +460,106 @@ lemma layer2_coeff:
                   * uint_seq (nth_seq w n) mod 8380417) mod 8380417)"
   using layer2_lo[OF _ n bw] layer2_hi[OF _ n bw] by simp
 
+lemma layer3_lo:
+  fixes w :: "[256][32]"
+  assumes hlo: "n mod 64 < 32" and n2: "n < (256::nat)"
+  assumes bw: "\<And>i. i < 256 \<Longrightarrow> uint_seq (nth_seq w i) < 8380417"
+  shows "uint_seq (nth_seq (nttLayerFwd 32 4 3 w) n)
+       = (uint_seq (nth_seq w n)
+          + uint_seq (nth_seq zetabrv (n div 64 + 4))
+            * uint_seq (nth_seq w (n + 32)) mod 8380417) mod 8380417"
+proof -
+  have np: "n + 32 < 256" using hlo n2 by presburger
+  have nd: "n div 64 + 4 < 256" using n2 by linarith
+  have ndle: "\<not> 4 \<le> n div 64" using n2 by linarith
+  have zc: "(4::nat) + n div 64 = n div 64 + 4" by simp
+  have e1: "n mod 18446744073709551616 = n" using n2 by simp
+  have e2: "(n + 32) mod 18446744073709551616 = n + 32" using np by simp
+  have bn: "uint (seq_to_word (nth_seq w n)) < 8380417"
+    using bw[OF n2] by (simp add: uint_seq_conv)
+  have bn32: "uint (seq_to_word (nth_seq w (n + 32))) < 8380417"
+    using bw[OF np] by (simp add: uint_seq_conv)
+  have bz: "uint (seq_to_word (nth_seq zetabrv (n div 64 + 4))) < 8380417"
+    using zeta_bound[of "n div 64 + 4"] nd by (simp add: uint_seq_conv)
+  have tb: "take_bit 64 (uint x) = uint x" for x :: "32 word"
+  proof -
+    have "uint x < 18446744073709551616" using uint_lt2p[of x] by simp
+    thus ?thesis by (simp add: take_bit_int_eq_self)
+  qed
+  show ?thesis
+    using hlo n2
+    apply (simp add: nttLayerFwd_def fromTo_def Let_def n2)
+    apply (simp add: cryptol_prim_defs word_seq_convs q_def
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     uint_mod_distrib uint_word_ariths unat_of_nat unat_word_ariths
+                     n2 uint_seq_conv)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 e2 hlo ndle zc)
+    apply (simp add: tb bn bn32 bz mul_mod_aux)
+    apply (simp add: add_mod_aux3 bn)
+    done
+qed
+
+lemma layer3_hi:
+  fixes w :: "[256][32]"
+  assumes hhi: "\<not> n mod 64 < 32" and n2: "n < (256::nat)"
+  assumes bw: "\<And>i. i < 256 \<Longrightarrow> uint_seq (nth_seq w i) < 8380417"
+  shows "uint_seq (nth_seq (nttLayerFwd 32 4 3 w) n)
+       = (uint_seq (nth_seq w (n - 32)) + 8380417
+          - uint_seq (nth_seq zetabrv (n div 64 + 4))
+            * uint_seq (nth_seq w n) mod 8380417) mod 8380417"
+proof -
+  have nge: "32 \<le> n" using hhi by (cases "n < 32") auto
+  have nm: "n - 32 < 256" using n2 by simp
+  have nd: "n div 64 + 4 < 256" using n2 by linarith
+  have ndle: "\<not> 4 \<le> n div 64" using n2 by linarith
+  have zc: "(4::nat) + n div 64 = n div 64 + 4" by simp
+  have e1: "n mod 18446744073709551616 = n" using n2 by simp
+  have bn: "uint (seq_to_word (nth_seq w n)) < 8380417"
+    using bw[OF n2] by (simp add: uint_seq_conv)
+  have bnm: "uint (seq_to_word (nth_seq w (n - 32))) < 8380417"
+    using bw[OF nm] by (simp add: uint_seq_conv)
+  have bz: "uint (seq_to_word (nth_seq zetabrv (n div 64 + 4))) < 8380417"
+    using zeta_bound[of "n div 64 + 4"] nd by (simp add: uint_seq_conv)
+  have es: "unat (word_of_nat n - (0x20::64 word)) = n - 32"
+    using nge n2 by (simp add: unat_sub word_le_nat_alt unat_of_nat)
+  have em: "(uint (seq_to_word (nth_seq w (n - 32))) + 8380417) mod 18446744073709551616
+            = uint (seq_to_word (nth_seq w (n - 32))) + 8380417"
+    using bnm by (simp add: mod_pos_pos_trivial)
+  have tb: "take_bit 64 (uint x) = uint x" for x :: "32 word"
+  proof -
+    have "uint x < 18446744073709551616" using uint_lt2p[of x] by simp
+    thus ?thesis by (simp add: take_bit_int_eq_self)
+  qed
+  show ?thesis
+    using hhi n2
+    apply (simp add: nttLayerFwd_def fromTo_def Let_def n2)
+    apply (simp add: cryptol_prim_defs word_seq_convs q_def
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     uint_mod_distrib uint_word_ariths unat_of_nat unat_word_ariths
+                     n2 uint_seq_conv)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 hhi ndle es zc)
+    apply (simp add: tb bn bnm bz mul_mod_aux)
+    apply (simp add: em sub_mod_aux bnm)
+    done
+qed
+
+lemma layer3_coeff:
+  fixes w :: "[256][32]"
+  assumes n: "n < (256::nat)"
+  assumes bw: "\<And>i. i < 256 \<Longrightarrow> uint_seq (nth_seq w i) < 8380417"
+  shows "uint_seq (nth_seq (nttLayerFwd 32 4 3 w) n)
+       = (if n mod 64 < 32
+          then (uint_seq (nth_seq w n)
+                + uint_seq (nth_seq zetabrv (n div 64 + 4))
+                  * uint_seq (nth_seq w (n + 32)) mod 8380417) mod 8380417
+          else (uint_seq (nth_seq w (n - 32)) + 8380417
+                - uint_seq (nth_seq zetabrv (n div 64 + 4))
+                  * uint_seq (nth_seq w n) mod 8380417) mod 8380417)"
+  using layer3_lo[OF _ n bw] layer3_hi[OF _ n bw] by simp
+
 end
 end
