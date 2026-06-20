@@ -37,7 +37,33 @@ proof -
   show ?thesis using tA tB s lt ge by (simp add: take_bit_int_eq_self)
 qed
 
+text \<open>No-overflow integer fact behind the 64-bit multiply-then-reduce: the
+  product of two coefficients in \<open>[0,q)\<close> is below \<open>q^2 < 2^64\<close>, so the 64-bit
+  multiply never wraps.\<close>
+lemma mul_mod_aux:
+  fixes A B :: int
+  assumes "0 \<le> A" "A < 8380417" "0 \<le> B" "B < 8380417"
+  shows "A * B mod 18446744073709551616 mod 8380417 = (A * B) mod 8380417"
+proof -
+  have "A * B < 18446744073709551616" using assms by (smt (verit) mult_strict_mono)
+  moreover have "0 \<le> A * B" using assms by simp
+  ultimately have "A * B mod 18446744073709551616 = A * B"
+    by (simp add: mod_pos_pos_trivial)
+  thus ?thesis by simp
+qed
+
 context includes cryptol_translation_syntax begin
+
+lemma red_mul:
+  fixes x y :: "W"
+  assumes "uint_seq x < 8380417" and "uint_seq y < 8380417"
+  shows "uint_seq ((x *`{[64]} y) %`{[64]} q) = (uint_seq x * uint_seq y) mod 8380417"
+  using assms
+  apply (simp add: cryptol_prim_defs word_seq_convs q_def)
+  apply (simp add: uint_mod_distrib uint_word_ariths)
+  apply (rule mul_mod_aux)
+  apply simp_all
+  done
 
 lemma op_add:
   fixes a b :: "[32]"
