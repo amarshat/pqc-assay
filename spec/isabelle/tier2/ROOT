@@ -20,3 +20,4 @@ session Tier2 in "work" = Tier2_Base +
   options [document = false]
   theories
     CT_Routing
+    Negacyclic_Bridge
