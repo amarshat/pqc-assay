@@ -214,4 +214,111 @@ next
   finally show ?case .
 qed
 
+text \<open>Evaluate \<open>inv_form\<close> at a position written as \<open>a\<cdot>B + c\<close> with \<open>c < B\<close>
+  (\<open>B = 2^(8-s)\<close>): the div/mod resolve to \<open>a\<close> and \<open>c\<close> exactly. Done once here so
+  the recursion lemmas avoid repeating it.\<close>
+lemma inv_form_ac:
+  assumes c: "c < 2^(8-s)"
+  shows "inv_form s g (a * 2^(8-s) + c)
+       = (\<Sum>m<2^s. g (c + m * 2^(8-s)) * zr ^ ((2 * brv s a + 1) * m * 2^(8-s)))"
+  using c by (simp add: inv_form_def)
+
+text \<open>Lower-leg recursion (exact identity): for \<open>off < 2^(7-s)\<close>, one step of the
+  invariant at the even output block \<open>2a\<close> is the additive butterfly leg.\<close>
+lemma inv_form_lower:
+  fixes g :: "nat \<Rightarrow> int"
+  assumes s: "s < 8" and off: "off < 2 ^ (7 - s)"
+  shows "inv_form (Suc s) g (a * 2 ^ (8 - s) + off)
+       = inv_form s g (a * 2 ^ (8 - s) + off)
+         + zr ^ ((2 * brv s a + 1) * 2 ^ (7 - s))
+           * inv_form s g (a * 2 ^ (8 - s) + off + 2 ^ (7 - s))"
+proof -
+  define e where "e = 2 * brv s a + 1"
+  have suc:  "8 - s = Suc (7 - s)" using s by linarith
+  have ssuc: "8 - Suc s = 7 - s"   using s by simp
+  have B2L:  "(2::nat) ^ (8 - s) = 2 * 2 ^ (7 - s)" by (simp add: suc)
+  have accL: "off < 2 ^ (8 - Suc s)" using off by (simp add: ssuc)
+  have offB: "off < 2 ^ (8 - s)" using off by (simp add: B2L)
+  have offLB: "off + 2 ^ (7 - s) < 2 ^ (8 - s)" using off by (simp add: B2L)
+  have arw: "a * 2 ^ (8 - s) = (2 * a) * 2 ^ (8 - Suc s)" by (simp add: ssuc B2L)
+  \<comment> \<open>Step 1: unfold LHS at level \<open>Suc s\<close>, block \<open>2a\<close>.\<close>
+  have L1: "inv_form (Suc s) g (a * 2 ^ (8 - s) + off)
+        = (\<Sum>m'<2 ^ Suc s. g (off + m' * 2 ^ (7 - s)) * zr ^ (e * m' * 2 ^ (7 - s)))"
+  proof -
+    have "inv_form (Suc s) g (a * 2 ^ (8 - s) + off)
+        = inv_form (Suc s) g ((2 * a) * 2 ^ (8 - Suc s) + off)" by (simp add: arw)
+    also have "\<dots> = (\<Sum>m'<2 ^ Suc s. g (off + m' * 2 ^ (8 - Suc s))
+                      * zr ^ ((2 * brv (Suc s) (2 * a) + 1) * m' * 2 ^ (8 - Suc s)))"
+      by (rule inv_form_ac[OF accL])
+    also have "\<dots> = (\<Sum>m'<2 ^ Suc s. g (off + m' * 2 ^ (7 - s)) * zr ^ (e * m' * 2 ^ (7 - s)))"
+      by (simp add: ssuc brv_double e_def)
+    finally show ?thesis .
+  qed
+  \<comment> \<open>Step 2: even/odd split.\<close>
+  have L2: "(\<Sum>m'<2 ^ Suc s. g (off + m' * 2 ^ (7 - s)) * zr ^ (e * m' * 2 ^ (7 - s)))
+        = (\<Sum>m<2 ^ s. g (off + (2*m) * 2 ^ (7 - s)) * zr ^ (e * (2*m) * 2 ^ (7 - s)))
+        + (\<Sum>m<2 ^ s. g (off + (2*m+1) * 2 ^ (7 - s)) * zr ^ (e * (2*m+1) * 2 ^ (7 - s)))"
+    using sum_pair_split[where A = "2 ^ s"
+            and f = "\<lambda>m'. g (off + m' * 2 ^ (7-s)) * zr ^ (e * m' * 2 ^ (7-s))"]
+    by simp
+  \<comment> \<open>Step 3: first half = invariant at \<open>off\<close>.\<close>
+  have FIRST: "(\<Sum>m<2 ^ s. g (off + (2*m) * 2 ^ (7 - s)) * zr ^ (e * (2*m) * 2 ^ (7 - s)))
+        = inv_form s g (a * 2 ^ (8 - s) + off)"
+  proof -
+    have iac: "inv_form s g (a * 2 ^ (8 - s) + off)
+        = (\<Sum>m<2 ^ s. g (off + m * 2 ^ (8 - s)) * zr ^ (e * m * 2 ^ (8 - s)))"
+      using inv_form_ac[OF offB, of g a] by (simp add: e_def)
+    have "(\<Sum>m<2 ^ s. g (off + (2*m) * 2 ^ (7 - s)) * zr ^ (e * (2*m) * 2 ^ (7 - s)))
+        = (\<Sum>m<2 ^ s. g (off + m * 2 ^ (8 - s)) * zr ^ (e * m * 2 ^ (8 - s)))"
+    proof (rule sum.cong[OF refl])
+      fix m :: nat assume "m \<in> {..<2 ^ s}"
+      have b1: "off + (2*m) * 2 ^ (7-s) = off + m * 2 ^ (8-s)" by (simp add: B2L)
+      have b2: "e * (2*m) * 2 ^ (7-s) = e * m * 2 ^ (8-s)" by (simp add: B2L)
+      show "g (off + (2*m) * 2 ^ (7-s)) * zr ^ (e * (2*m) * 2 ^ (7-s))
+          = g (off + m * 2 ^ (8-s)) * zr ^ (e * m * 2 ^ (8-s))"
+        by (simp add: b1 b2)
+    qed
+    thus ?thesis by (simp add: iac)
+  qed
+  \<comment> \<open>Step 4: second half = twiddle times invariant at \<open>off + 2^(7-s)\<close>.\<close>
+  have SECOND: "(\<Sum>m<2 ^ s. g (off + (2*m+1) * 2 ^ (7 - s)) * zr ^ (e * (2*m+1) * 2 ^ (7 - s)))
+        = zr ^ (e * 2 ^ (7 - s)) * inv_form s g (a * 2 ^ (8 - s) + off + 2 ^ (7 - s))"
+  proof -
+    have iac: "inv_form s g (a * 2 ^ (8 - s) + off + 2 ^ (7 - s))
+        = (\<Sum>m<2 ^ s. g ((off + 2 ^ (7-s)) + m * 2 ^ (8-s)) * zr ^ (e * m * 2 ^ (8-s)))"
+    proof -
+      have eq: "a * 2 ^ (8-s) + off + 2 ^ (7-s) = a * 2 ^ (8-s) + (off + 2 ^ (7-s))"
+        by (simp add: add.assoc)
+      show ?thesis unfolding eq using inv_form_ac[OF offLB, of g a] by (simp add: e_def)
+    qed
+    have "(\<Sum>m<2 ^ s. g (off + (2*m+1) * 2 ^ (7 - s)) * zr ^ (e * (2*m+1) * 2 ^ (7 - s)))
+        = (\<Sum>m<2 ^ s. zr ^ (e * 2 ^ (7-s))
+              * (g ((off + 2 ^ (7-s)) + m * 2 ^ (8-s)) * zr ^ (e * m * 2 ^ (8-s))))"
+    proof (rule sum.cong[OF refl])
+      fix m :: nat assume "m \<in> {..<2 ^ s}"
+      have a1: "off + (2*m+1) * 2 ^ (7-s) = (off + 2 ^ (7-s)) + m * 2 ^ (8-s)"
+        by (simp add: B2L algebra_simps)
+      have a2: "e * (2*m+1) * 2 ^ (7-s) = e * 2 ^ (7-s) + e * m * 2 ^ (8-s)"
+        by (simp add: B2L algebra_simps)
+      show "g (off + (2*m+1) * 2 ^ (7-s)) * zr ^ (e * (2*m+1) * 2 ^ (7-s))
+          = zr ^ (e * 2 ^ (7-s)) * (g ((off + 2 ^ (7-s)) + m * 2 ^ (8-s)) * zr ^ (e * m * 2 ^ (8-s)))"
+        unfolding a1 a2 by (simp add: power_add mult.assoc mult.left_commute mult.commute)
+    qed
+    also have "\<dots> = zr ^ (e * 2 ^ (7-s))
+          * (\<Sum>m<2 ^ s. g ((off + 2 ^ (7-s)) + m * 2 ^ (8-s)) * zr ^ (e * m * 2 ^ (8-s)))"
+      by (simp add: sum_distrib_left)
+    also have "\<dots> = zr ^ (e * 2 ^ (7-s)) * inv_form s g (a * 2 ^ (8-s) + off + 2 ^ (7-s))"
+      by (simp add: iac)
+    finally show ?thesis .
+  qed
+  have "inv_form (Suc s) g (a * 2 ^ (8-s) + off)
+      = (\<Sum>m<2 ^ s. g (off + (2*m) * 2 ^ (7-s)) * zr ^ (e * (2*m) * 2 ^ (7-s)))
+      + (\<Sum>m<2 ^ s. g (off + (2*m+1) * 2 ^ (7-s)) * zr ^ (e * (2*m+1) * 2 ^ (7-s)))"
+    using L1 L2 by simp
+  also have "\<dots> = inv_form s g (a * 2 ^ (8-s) + off)
+      + zr ^ (e * 2 ^ (7-s)) * inv_form s g (a * 2 ^ (8-s) + off + 2 ^ (7-s))"
+    using FIRST SECOND by simp
+  finally show ?thesis by (simp add: e_def)
+qed
+
 end
