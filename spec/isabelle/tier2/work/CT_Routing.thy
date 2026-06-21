@@ -123,13 +123,154 @@ definition fwdBfly :: "(nat \<Rightarrow> int) \<Rightarrow> (nat \<Rightarrow> 
   "fwdBfly = bflyLayer 1 127 \<circ> bflyLayer 2 63 \<circ> bflyLayer 4 31 \<circ> bflyLayer 8 15
            \<circ> bflyLayer 16 7 \<circ> bflyLayer 32 3 \<circ> bflyLayer 64 1 \<circ> bflyLayer 128 0"
 
-text \<open>TODO (next increment): prove
-  \<open>bounded w \<Longrightarrow> n < 256 \<Longrightarrow> cf (nttFwdAllRef w) n = fwdBfly (cf w) n\<close>
-  by chaining abs_* outermost-in under bound preservation, using an
-  \<open>agree-below-256\<close> congruence for \<open>bflyLayer\<close> (each layer reads only n, n\<plusminus>L,
-  all < 256 for the well-formed strides). Then the remaining work is purely on
-  \<open>fwdBfly\<close>: derive the bit-reversal permutation from the m0 schedule and chain
-  onto Bridge-1 (NNTT_eq_FNTT_twist).\<close>
+end \<comment> \<open>close cryptol_translation_syntax: the routing lemmas below are pure
+  nat/int reasoning.\<close>
 
-end
+text \<open>The Cryptol setup leaves automatic coercion insertion globally enabled,
+  which makes \<open>f m\<close> accept a coercible \<open>m\<close> and so defeats the \<open>nat\<close> typing of the
+  bounded quantifiers below (\<open>\<forall>m<256\<close>). Disable it: these lemmas are pure nat/int.\<close>
+declare [[coercion_enabled = false]]
+
+text \<open>Transitivity of agreement on positions below 256.\<close>
+lemma agree_trans:
+  fixes f g h :: "nat \<Rightarrow> int"
+  assumes "\<forall>m. (m::nat) < 256 \<longrightarrow> f m = g m" and "\<forall>m. (m::nat) < 256 \<longrightarrow> g m = h m"
+  shows "\<forall>m. (m::nat) < 256 \<longrightarrow> f m = h m"
+proof (intro allI impI)
+  fix m :: nat assume m: "m < 256"
+  from assms(1) m have "f m = g m" by blast
+  moreover from assms(2) m have "g m = h m" by blast
+  ultimately show "f m = h m" by simp
+qed
+
+text \<open>Agree-below-256 congruence for one abstract layer. A layer reads its input
+  only at \<open>n\<close>, \<open>n+L\<close> (lower leg) and \<open>n-L\<close> (upper leg). \<open>n-L \<le> n < 256\<close> is free;
+  the lower-leg partner bound \<open>n+L < 256\<close> is the only side condition, discharged
+  per concrete stride by \<open>presburger\<close>.\<close>
+lemma bflyLayer_cong:
+  fixes A B :: "nat \<Rightarrow> int" and L M0 :: nat
+  assumes part: "\<And>m::nat. m < 256 \<Longrightarrow> m mod (2*L) < L \<Longrightarrow> m + L < 256"
+    and ag: "\<forall>m. (m::nat) < 256 \<longrightarrow> A m = B m"
+  shows "\<forall>n. (n::nat) < 256 \<longrightarrow> bflyLayer L M0 A n = bflyLayer L M0 B n"
+proof (intro allI impI)
+  fix n :: nat assume n: "n < 256"
+  show "bflyLayer L M0 A n = bflyLayer L M0 B n"
+  proof (cases "n mod (2*L) < L")
+    case True
+    have pl: "n + L < 256" using part[OF n True] .
+    have "A n = B n" using ag n by blast
+    moreover have "A (n + L) = B (n + L)" using ag pl by blast
+    ultimately show ?thesis using True by (simp add: bflyLayer_def)
+  next
+    case False
+    have ml: "n - L < 256" using n by simp
+    have "A n = B n" using ag n by blast
+    moreover have "A (n - L) = B (n - L)" using ag ml by blast
+    ultimately show ?thesis using False by (simp add: bflyLayer_def)
+  qed
+qed
+
+text \<open>The full lifted forward NTT, at every position, equals the 8-fold abstract
+  Cooley-Tukey butterfly transform on the int-coefficient view. Chains the
+  per-layer abstractions \<open>abs_*\<close> inside-out under bound preservation, using the
+  agree-below-256 congruence at each composition step.\<close>
+theorem fwd_as_bfly:
+  assumes "bounded w" and "n < 256"
+  shows "cf (nttFwdAllRef w) n = fwdBfly (cf w) n"
+proof -
+  define w1 where "w1 = nttLayerFwd 128 1 0 w"
+  define w2 where "w2 = nttLayerFwd 64 2 1 w1"
+  define w3 where "w3 = nttLayerFwd 32 4 3 w2"
+  define w4 where "w4 = nttLayerFwd 16 8 7 w3"
+  define w5 where "w5 = nttLayerFwd 8 16 15 w4"
+  define w6 where "w6 = nttLayerFwd 4 32 31 w5"
+  define w7 where "w7 = nttLayerFwd 2 64 63 w6"
+  have b1: "bounded w1" unfolding w1_def using assms(1) by (rule bounded_128)
+  have b2: "bounded w2" unfolding w2_def using b1 by (rule bounded_64)
+  have b3: "bounded w3" unfolding w3_def using b2 by (rule bounded_32)
+  have b4: "bounded w4" unfolding w4_def using b3 by (rule bounded_16)
+  have b5: "bounded w5" unfolding w5_def using b4 by (rule bounded_8)
+  have b6: "bounded w6" unfolding w6_def using b5 by (rule bounded_4)
+  have b7: "bounded w7" unfolding w7_def using b6 by (rule bounded_2)
+  \<comment> \<open>per-layer abstraction, all positions\<close>
+  have a1: "\<forall>m. (m::nat) < 256 \<longrightarrow>cf w1 m = bflyLayer 128 0 (cf w) m"
+    unfolding w1_def using abs_128[OF assms(1)] by blast
+  have a2: "\<forall>m. (m::nat) < 256 \<longrightarrow>cf w2 m = bflyLayer 64 1 (cf w1) m"
+    unfolding w2_def using abs_64[OF b1] by blast
+  have a3: "\<forall>m. (m::nat) < 256 \<longrightarrow>cf w3 m = bflyLayer 32 3 (cf w2) m"
+    unfolding w3_def using abs_32[OF b2] by blast
+  have a4: "\<forall>m. (m::nat) < 256 \<longrightarrow>cf w4 m = bflyLayer 16 7 (cf w3) m"
+    unfolding w4_def using abs_16[OF b3] by blast
+  have a5: "\<forall>m. (m::nat) < 256 \<longrightarrow>cf w5 m = bflyLayer 8 15 (cf w4) m"
+    unfolding w5_def using abs_8[OF b4] by blast
+  have a6: "\<forall>m. (m::nat) < 256 \<longrightarrow>cf w6 m = bflyLayer 4 31 (cf w5) m"
+    unfolding w6_def using abs_4[OF b5] by blast
+  have a7: "\<forall>m. (m::nat) < 256 \<longrightarrow>cf w7 m = bflyLayer 2 63 (cf w6) m"
+    unfolding w7_def using abs_2[OF b6] by blast
+  \<comment> \<open>fold the abstractions into the nested composition, inside-out\<close>
+  have P1: "\<forall>m. (m::nat) < 256 \<longrightarrow>cf w1 m = bflyLayer 128 0 (cf w) m" by (rule a1)
+  have P2: "\<forall>m. (m::nat) < 256 \<longrightarrow>cf w2 m
+      = bflyLayer 64 1 (bflyLayer 128 0 (cf w)) m"
+  proof -
+    have c: "\<forall>m. (m::nat) < 256 \<longrightarrow>bflyLayer 64 1 (cf w1) m
+        = bflyLayer 64 1 (bflyLayer 128 0 (cf w)) m"
+      by (rule bflyLayer_cong[OF _ P1]) presburger
+    show ?thesis by (rule agree_trans[OF a2 c])
+  qed
+  have P3: "\<forall>m. (m::nat) < 256 \<longrightarrow>cf w3 m
+      = bflyLayer 32 3 (bflyLayer 64 1 (bflyLayer 128 0 (cf w))) m"
+  proof -
+    have c: "\<forall>m. (m::nat) < 256 \<longrightarrow>bflyLayer 32 3 (cf w2) m
+        = bflyLayer 32 3 (bflyLayer 64 1 (bflyLayer 128 0 (cf w))) m"
+      by (rule bflyLayer_cong[OF _ P2]) presburger
+    show ?thesis by (rule agree_trans[OF a3 c])
+  qed
+  have P4: "\<forall>m. (m::nat) < 256 \<longrightarrow>cf w4 m
+      = bflyLayer 16 7 (bflyLayer 32 3 (bflyLayer 64 1 (bflyLayer 128 0 (cf w)))) m"
+  proof -
+    have c: "\<forall>m. (m::nat) < 256 \<longrightarrow>bflyLayer 16 7 (cf w3) m
+        = bflyLayer 16 7 (bflyLayer 32 3 (bflyLayer 64 1 (bflyLayer 128 0 (cf w)))) m"
+      by (rule bflyLayer_cong[OF _ P3]) presburger
+    show ?thesis by (rule agree_trans[OF a4 c])
+  qed
+  have P5: "\<forall>m. (m::nat) < 256 \<longrightarrow>cf w5 m
+      = bflyLayer 8 15 (bflyLayer 16 7 (bflyLayer 32 3 (bflyLayer 64 1 (bflyLayer 128 0 (cf w))))) m"
+  proof -
+    have c: "\<forall>m. (m::nat) < 256 \<longrightarrow>bflyLayer 8 15 (cf w4) m
+        = bflyLayer 8 15 (bflyLayer 16 7 (bflyLayer 32 3 (bflyLayer 64 1 (bflyLayer 128 0 (cf w))))) m"
+      by (rule bflyLayer_cong[OF _ P4]) presburger
+    show ?thesis by (rule agree_trans[OF a5 c])
+  qed
+  have P6: "\<forall>m. (m::nat) < 256 \<longrightarrow>cf w6 m
+      = bflyLayer 4 31 (bflyLayer 8 15 (bflyLayer 16 7 (bflyLayer 32 3 (bflyLayer 64 1 (bflyLayer 128 0 (cf w)))))) m"
+  proof -
+    have c: "\<forall>m. (m::nat) < 256 \<longrightarrow>bflyLayer 4 31 (cf w5) m
+        = bflyLayer 4 31 (bflyLayer 8 15 (bflyLayer 16 7 (bflyLayer 32 3 (bflyLayer 64 1 (bflyLayer 128 0 (cf w)))))) m"
+      by (rule bflyLayer_cong[OF _ P5]) presburger
+    show ?thesis by (rule agree_trans[OF a6 c])
+  qed
+  have P7: "\<forall>m. (m::nat) < 256 \<longrightarrow>cf w7 m
+      = bflyLayer 2 63 (bflyLayer 4 31 (bflyLayer 8 15 (bflyLayer 16 7 (bflyLayer 32 3 (bflyLayer 64 1 (bflyLayer 128 0 (cf w))))))) m"
+  proof -
+    have c: "\<forall>m. (m::nat) < 256 \<longrightarrow>bflyLayer 2 63 (cf w6) m
+        = bflyLayer 2 63 (bflyLayer 4 31 (bflyLayer 8 15 (bflyLayer 16 7 (bflyLayer 32 3 (bflyLayer 64 1 (bflyLayer 128 0 (cf w))))))) m"
+      by (rule bflyLayer_cong[OF _ P6]) presburger
+    show ?thesis by (rule agree_trans[OF a7 c])
+  qed
+  \<comment> \<open>outermost layer at the single position n\<close>
+  have unf: "nttFwdAllRef w = nttLayerFwd 1 128 127 w7"
+    unfolding w7_def w6_def w5_def w4_def w3_def w2_def w1_def by (rule fwd_unfold)
+  have congN: "\<forall>k. (k::nat) < 256 \<longrightarrow>bflyLayer 1 127 (cf w7) k
+      = bflyLayer 1 127 (bflyLayer 2 63 (bflyLayer 4 31 (bflyLayer 8 15
+          (bflyLayer 16 7 (bflyLayer 32 3 (bflyLayer 64 1 (bflyLayer 128 0 (cf w)))))))) k"
+    by (rule bflyLayer_cong[OF _ P7]) presburger
+  have "cf (nttFwdAllRef w) n = cf (nttLayerFwd 1 128 127 w7) n" using unf by simp
+  also have "\<dots> = bflyLayer 1 127 (cf w7) n" using abs_1[OF b7 assms(2)] by simp
+  also have "\<dots> = bflyLayer 1 127 (bflyLayer 2 63 (bflyLayer 4 31 (bflyLayer 8 15
+          (bflyLayer 16 7 (bflyLayer 32 3 (bflyLayer 64 1 (bflyLayer 128 0 (cf w)))))))) n"
+    using congN assms(2) by blast
+  also have "\<dots> = fwdBfly (cf w) n" by (simp add: fwdBfly_def)
+  finally show ?thesis .
+qed
+
 end
