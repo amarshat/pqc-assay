@@ -16,9 +16,10 @@ The whole strategy is **depth, scoped tight**. One finished proof beats three ha
 - Hard gate (composition soundness): `make lift-check` mechanizes the `cryptol-to-isabelle` step —
   regenerate the Isabelle model from the `.cry` SAW checks and diff against the committed theory, so
   the end-to-end chain has no eyeball-maintained link.
-- Forward NTT functional equivalence (DONE): SAW proves `ntt(a[256])` ≡ Cryptol `ntt` under
+- Forward NTT C-to-model fidelity (DONE): SAW proves `ntt(a[256])` ≡ Cryptol `ntt` under
   two's-complement wrapping (`-fwrapv` bitcode), montgomery_reduce as an uninterpreted override.
-  This shows the pipeline scales to the full 256-point transform. It does NOT prove overflow-freedom.
+  This is C ≡ Cryptol model, NOT C ≡ FIPS-204 transform, and it does NOT prove overflow-freedom.
+  (FIPS functional correctness of the forward NTT is Tier 2 / v1.5, in progress.)
 
 ## v1.5 — forward NTT overflow-freedom + an Isabelle NTT spec
 - The remaining, *cryptographically meaningful* part: prove every `montgomery_reduce` input stays in

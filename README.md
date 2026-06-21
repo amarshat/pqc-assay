@@ -18,9 +18,12 @@
 Machine-checking post-quantum reference C against its specification, using the
 SAW → Cryptol → Isabelle pipeline.
 
-PQC-Assay runs the same SAW → Cryptol → Isabelle pipeline Apple used for its 2026 `corecrypto` work
-against the PQClean reference C for ML-DSA (FIPS 204). It uses none of Apple's code or theories; the
-Isabelle spec is written from FIPS 204.
+PQC-Assay builds a reproducible refinement chain for the **unmodified PQClean reference C** for
+ML-DSA (FIPS 204): fixed-width C semantics, through a SAW-anchored Cryptol model and a lifted
+word-level Isabelle model, up to an independent FIPS-204 specification, with the machine arithmetic's
+in-range preconditions proven separately. The toolchain (SAW → Cryptol → Isabelle) is the one Apple
+used for its 2026 `corecrypto` work (see [Background](#background-if-formal-verification-is-new-to-you));
+this project uses none of Apple's code or theories, and the Isabelle spec is written from FIPS 204.
 
 Current scope is the `reduce.c` arithmetic layer (both legs) and the forward NTT (functional
 equivalence + a machine-checked overflow-freedom / coefficient-bound result).
@@ -88,8 +91,7 @@ intermediate result, and the Tier-2 session is intentionally excluded from CI ga
 
 ## Scope and limitations
 
-Two external reviewers (formal methods; applied PQC) read this. Their summary: the proof is correct
-and honestly scoped, but it targets the easy function.
+The proof is correct and honestly scoped, but it targets the easy function. Concretely:
 
 - `montgomery_reduce` is the least bug-prone thing in the stack — branch-free, two multiplies and a
   shift, unchanged in pq-crystals for years. ML-DSA's real correctness risk is reduction-bound
