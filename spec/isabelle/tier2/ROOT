@@ -1,10 +1,11 @@
 (* WIP — Tier-2 FFT-correctness (negacyclic NTT == ML-DSA layer composition).
    SEPARATE from `Assay` (the make-verify no-sorry gate) until discharged.
 
-   Split for fast iteration: Tier2_Base holds the stable deps as a prebuilt heap
-   image (build once: `isabelle build -b -d . Tier2_Base`); active proof work lives
-   in the thin child session Tier2 (work/Bridge_Word only), so editing it
-   reprocesses one theory on the mmap'd base — seconds, not minutes. *)
+   Split for fast iteration: Tier2_Base holds the stable deps (incl. the proven
+   per-layer butterfly laws in Bridge_Word) as a prebuilt heap image
+   (build once: `isabelle build -b -d . Tier2_Base`); active proof work lives in
+   the thin child session Tier2 (work/CT_Routing only), so editing it reprocesses
+   one theory on the mmap'd base — seconds, not minutes. *)
 session Tier2_Base = "Number_Theoretic_Transform" +
   options [document = false]
   sessions
@@ -13,8 +14,9 @@ session Tier2_Base = "Number_Theoretic_Transform" +
     Bitrev
     Negacyclic_NTT
     "fips204_ntt_lift"
+    Bridge_Word
 
 session Tier2 in "work" = Tier2_Base +
   options [document = false]
   theories
-    Bridge_Word
+    CT_Routing
