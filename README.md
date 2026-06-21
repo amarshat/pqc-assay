@@ -5,6 +5,16 @@
 <h1 align="center">PQC-Assay</h1>
 <p align="center"><em>(formerly "Assay")</em></p>
 
+<p align="center">
+  <a href="https://github.com/amarshat/pqc-assay/actions/workflows/verify.yml"><img src="https://github.com/amarshat/pqc-assay/actions/workflows/verify.yml/badge.svg" alt="verify"></a>
+  <a href="https://github.com/amarshat/pqc-assay/actions/workflows/saw.yml"><img src="https://github.com/amarshat/pqc-assay/actions/workflows/saw.yml/badge.svg" alt="saw"></a>
+  <a href="https://github.com/amarshat/pqc-assay/actions/workflows/rust.yml"><img src="https://github.com/amarshat/pqc-assay/actions/workflows/rust.yml/badge.svg" alt="rust"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
+  <img src="https://img.shields.io/badge/Isabelle-2025--2-9cf.svg" alt="Isabelle2025-2">
+  <img src="https://img.shields.io/badge/SAW-1.5.1-orange.svg" alt="SAW 1.5.1">
+  <img src="https://img.shields.io/badge/proofs-no%20sorry%20%7C%20no%20smt-success.svg" alt="no sorry, no smt">
+</p>
+
 Machine-checking post-quantum reference C against its specification, using the
 SAW → Cryptol → Isabelle pipeline.
 
@@ -52,6 +62,29 @@ While doing this we found two off-by-one errors in PQClean's reduce.c doc commen
 (strict bound fails at one unreachable endpoint; OF-1) and `reduce32` (documented `−6283008` low end is
 reachably `−6283009` under its own one-sided precondition; OF-2). Both are doc/contract issues, not
 miscomputations. See `docs/ASSUMPTIONS.md`.
+
+## In progress: forward-NTT functional correctness
+
+The shipped result above proves the forward NTT is overflow-free, not that it computes the *right*
+transform. The next milestone (Tier 2, WIP, not yet gated in `make verify`) is functional
+correctness: that the forward NTT computes the FIPS-204 negacyclic NTT, reusing the Cooley-Tukey
+correctness argument from the Archive of Formal Proofs and stating it about the SAW-anchored lifted
+model (not a hand-written one), so the seam to the C stays faithful.
+
+Machine-checked so far (Isabelle, no `sorry`/`oops`, no `smt`; session builds exit 0):
+
+- **All 8 per-layer butterfly laws**, word-exact: each output coefficient of a lifted NTT layer
+  equals the FIPS-204 butterfly (add leg / subtract leg, twiddle `zetabrv[n div (2·len) + m0 + 1]`),
+  reasoned at the native 32/64-bit word level through the `montgomery_reduce`-based reduction.
+- **`fwd_as_bfly`** — the decoupling point: the whole lifted forward NTT equals an 8-fold *abstract*
+  Cooley-Tukey butterfly transform on the integer-coefficient view (`cf (nttFwdAllRef w) n =
+  fwdBfly (cf w) n` for in-range inputs). This separates the finished word-level seam from the
+  remaining combinatorial argument.
+
+Still to do: derive the bit-reversal permutation from the real twiddle schedule and chain onto the
+negacyclic-NTT correctness bridge to land the full FIPS-204 equivalence. Until that lands this is an
+intermediate result, and the Tier-2 session is intentionally excluded from CI gating. See
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Scope and limitations
 
