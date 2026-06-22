@@ -25,10 +25,11 @@ in-range preconditions proven separately. The toolchain (SAW → Cryptol → Isa
 used for its 2026 `corecrypto` work (see [Background](#background-if-formal-verification-is-new-to-you));
 this project uses none of Apple's code or theories, and the Isabelle spec is written from FIPS 204.
 
-Current scope is the `reduce.c` arithmetic layer (both legs) and the forward NTT (functional
-equivalence + a machine-checked overflow-freedom / coefficient-bound result).
-Montgomery reduction is an implementation device the NTT uses; it is not defined in FIPS 204. None of
-this is the optimized/assembly code that ships in production (see [Roadmap](docs/ROADMAP.md)).
+Current scope is the `reduce.c` arithmetic layer (both legs) and the forward NTT: C≡Cryptol functional
+equivalence, a machine-checked overflow-freedom / coefficient-bound result, and (in the separate,
+not-yet-CI-gated `Tier2` session) a full FIPS-204 functional-correctness theorem for the lifted
+transform. Montgomery reduction is an implementation device the NTT uses; it is not defined in FIPS
+204. None of this is the optimized/assembly code that ships in production (see [Roadmap](docs/ROADMAP.md)).
 
 ## What's proven
 
@@ -66,27 +67,42 @@ While doing this we found two off-by-one errors in PQClean's reduce.c doc commen
 reachably `−6283009` under its own one-sided precondition; OF-2). Both are doc/contract issues, not
 miscomputations. See `docs/ASSUMPTIONS.md`.
 
-## In progress: forward-NTT functional correctness
+## Forward-NTT functional correctness (proven, not yet CI-gated)
 
-The shipped result above proves the forward NTT is overflow-free, not that it computes the *right*
-transform. The next milestone (Tier 2, WIP, not yet gated in `make verify`) is functional
-correctness: that the forward NTT computes the FIPS-204 negacyclic NTT, reusing the Cooley-Tukey
-correctness argument from the Archive of Formal Proofs and stating it about the SAW-anchored lifted
-model (not a hand-written one), so the seam to the C stays faithful.
+The overflow-freedom result above does not say the forward NTT computes the *right* transform. That
+theorem is now proven, in a separate Isabelle session (`Tier2`), no `sorry`/`oops`, no `smt`, build
+exits 0:
 
-Machine-checked so far (Isabelle, no `sorry`/`oops`, no `smt`; session builds exit 0):
+```
+theorem fwd_ntt_correct:
+  bounded w  ⟹  k < 256  ⟹
+    cf (nttFwdAllRef w) k = (∑ j<256. cf w j · ζ^((2·brv₈ k + 1)·j)) mod q      (ζ = 1753, q = 8380417)
+```
 
-- **All 8 per-layer butterfly laws**, word-exact: each output coefficient of a lifted NTT layer
-  equals the FIPS-204 butterfly (add leg / subtract leg, twiddle `zetabrv[n div (2·len) + m0 + 1]`),
-  reasoned at the native 32/64-bit word level through the `montgomery_reduce`-based reduction.
-- **`fwd_as_bfly`** — the decoupling point: the whole lifted forward NTT equals an 8-fold *abstract*
-  Cooley-Tukey butterfly transform on the integer-coefficient view (`cf (nttFwdAllRef w) n =
-  fwdBfly (cf w) n` for in-range inputs). This separates the finished word-level seam from the
-  remaining combinatorial argument.
+The lifted forward NTT, at each output position `k`, computes the FIPS-204 negacyclic DFT coefficient
+at the bit-reversed index `brv₈ k` — i.e. ML-DSA's natural-input → bit-reversed-output convention.
+The statement is about the **SAW-anchored lifted model** `nttFwdAllRef` (machine-checked equal to the
+Cryptol twiddle table the SAW C≡Cryptol leg uses), not a hand-written model, so the seam to the C
+stays faithful.
 
-Still to do: derive the bit-reversal permutation from the real twiddle schedule and chain onto the
-negacyclic-NTT correctness bridge to land the full FIPS-204 equivalence. Until that lands this is an
-intermediate result, and the Tier-2 session is intentionally excluded from CI gating. See
+How it is built (Isabelle, no holes):
+
+- **`fwd_as_bfly`** — the lifted forward NTT equals an 8-fold abstract Cooley-Tukey butterfly transform
+  on the integer-coefficient view (`cf (nttFwdAllRef w) n = fwdBfly (cf w) n`), decoupling the
+  finished word-level seam from the combinatorial argument.
+- **`inv_form`** — a closed-form stage invariant (the sub-DFT held after each layer), with exact
+  `inv_form_lower` (additive butterfly leg) and `inv_form_upper` (subtractive leg, a congruence mod
+  `q` using `ζ²⁵⁶ ≡ −1`).
+- **`applyN_inv`** — induction over the 8 layers, discharging each step with the recursion lemmas and
+  the per-layer twiddle closed form `z_closed` (`zetabrv[i] = ζ^(brv₈ i) mod q`). At layer 8 this is
+  `fwd_ntt_correct`.
+
+The route is self-contained (a direct closed-form negacyclic DFT), so it does not depend on aligning
+with the recursive Cooley-Tukey transform in the Archive of Formal Proofs.
+
+Honest status: this is proven but the `Tier2` session is **not yet wired into `make verify` / CI** —
+it is built on its own (`isabelle build -d spec/isabelle/tier2 Tier2`, exit 0). Gating it in CI is the
+next step. The inverse NTT and the `256⁻¹` normalization are not done. See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Scope and limitations

@@ -46,9 +46,17 @@ The whole strategy is **depth, scoped tight**. One finished proof beats three ha
   differ only in nsw poison, absent when no overflow occurs — so the reference C NTT is overflow-free
   (no signed-overflow UB) and equals the spec under the bound. Mechanizing this last bridge in SAW is
   what proved impractical; it is a standard, sound meta-level argument.
-- **Still open for v1.5:** an Isabelle FIPS-204 NTT *spec* (negacyclic, 8-level, Algorithms 41-42) and
-  a model ≡ spec proof for the NTT itself (we have functional equivalence to the Cryptol model and now
-  overflow-freedom, but not yet model ≡ FIPS-spec for the transform as we have for `reduce.c`).
+- **Forward-NTT FIPS functional correctness: DONE (2026-06-22), not yet CI-gated.** Theorem
+  `fwd_ntt_correct` (`spec/isabelle/tier2/work/Negacyclic_Bridge.thy`, session `Tier2`, no `sorry`/`oops`,
+  build exits 0): for `bounded w` and `k < 256`,
+  `cf (nttFwdAllRef w) k = (sum j<256. cf w j * 1753^((2*brv8 k + 1)*j)) mod 8380417` — the lifted
+  forward NTT computes the FIPS-204 negacyclic DFT coefficient at bit-reversed output index `brv8 k`.
+  Stated about the SAW-anchored lifted model. Built from `fwd_as_bfly` (word seam) + the closed-form
+  stage invariant `inv_form` (lower/upper recursion) + induction `applyN_inv`; self-contained, does not
+  use the AFP recursive-FFT theorem. Next: wire `Tier2` into `make verify` / CI (currently ungated; the
+  proof-hole grep excludes `tier2`).
+- **Still open:** the *inverse* NTT == FIPS-204 Algorithm 42 and the `256^-1` normalization (the AFP
+  `IFNTT_correct` / round-trip lemmas are available to reuse); a forward+inverse round-trip in Isabelle.
 
 ## v2 — verify a used-but-unverified implementation
 **Target chosen by survey (2026-06-11): the RustCrypto `ml-dsa` crate.** Rationale over the earlier
