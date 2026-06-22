@@ -13,8 +13,9 @@
    8-fold abstract butterfly `fwdBfly` on the int-coefficient view, so the rest
    is a pure int-mod-q partial-sum invariant over the DIF butterfly layers.
 
-   This file is WIP: it currently establishes the foundational facts only. The
-   central invariant is NOT yet proven; nothing here is admitted with sorry. *)
+   DONE: the target theorem `fwd_ntt_correct` is proven (no sorry/oops), via the
+   stage invariant `inv_form`, its lower/upper recursion lemmas, and the
+   induction `applyN_inv`. *)
 theory Negacyclic_Bridge
   imports CT_Routing
 begin
@@ -478,6 +479,165 @@ proof -
               * (g ((off - 2 ^ (7-s)) + m' * 2 ^ (7-s)) * zr ^ (e * m' * 2 ^ (7-s))))] (mod qq)"
     unfolding L1 by (rule L2)
   show ?thesis using c1 L3 by (simp add: cong_def e_def)
+qed
+
+subsection \<open>Main induction and final correctness theorem\<close>
+
+text \<open>The stage invariant holds (mod q) after every layer: by induction on \<open>s\<close>,
+  using the lower/upper recursion lemmas and the per-layer twiddle closed form
+  \<open>z_closed\<close>. Base is the identity layer; the step unfolds one \<open>bflyLayer\<close> and
+  matches it to the recursion via the induction hypothesis at \<open>n\<close> and \<open>n \<plusminus> L\<close>.\<close>
+lemma applyN_inv:
+  fixes g :: "nat \<Rightarrow> int"
+  shows "s \<le> 8 \<Longrightarrow> \<forall>n<256. [applyN s g n = inv_form s g n] (mod qq)"
+proof (induct s)
+  case 0
+  show ?case
+  proof (intro allI impI)
+    fix n :: nat assume "n < 256"
+    hence "inv_form 0 g n = g n" by (rule inv_form_0)
+    thus "[applyN 0 g n = inv_form 0 g n] (mod qq)" by simp
+  qed
+next
+  case (Suc s)
+  from Suc.prems have s8: "s < 8" by simp
+  have IH: "\<forall>n<256. [applyN s g n = inv_form s g n] (mod qq)" using Suc by simp
+  show ?case
+  proof (intro allI impI)
+    fix n :: nat assume n: "n < 256"
+    have suc: "8 - s = Suc (7 - s)" using s8 by linarith
+    have B2L: "(2::nat) ^ (8-s) = 2 * 2 ^ (7-s)" by (simp add: suc)
+    define a where "a = n div 2 ^ (8-s)"
+    define off where "off = n mod 2 ^ (8-s)"
+    have na: "n = a * 2 ^ (8-s) + off"
+      unfolding a_def off_def by (rule div_mult_mod_eq [symmetric])
+    have offB: "off < 2 ^ (8-s)" by (simp add: off_def)
+    have e8: "s + (8 - s) = 8" using s8 by linarith
+    have p256: "(2::nat) ^ s * 2 ^ (8-s) = 256" by (simp add: power_add [symmetric] e8)
+    have aB: "a < 2 ^ s"
+    proof -
+      have "n < 2 ^ s * 2 ^ (8-s)" using n p256 by simp
+      thus ?thesis by (simp add: a_def less_mult_imp_div_less)
+    qed
+    have mdiv: "n div (2 * 2 ^ (7-s)) = a" by (simp add: a_def B2L)
+    have mmod: "n mod (2 * 2 ^ (7-s)) = off" by (simp add: off_def B2L)
+    have idx: "a + (2 ^ s - 1) + 1 = a + 2 ^ s" by simp
+    have bl: "applyN (Suc s) g n
+        = (if off < 2 ^ (7-s)
+           then (applyN s g n + zt (a + 2 ^ s) * applyN s g (n + 2 ^ (7-s)) mod qq) mod qq
+           else (applyN s g (n - 2 ^ (7-s)) + qq
+                 - zt (a + 2 ^ s) * applyN s g n mod qq) mod qq)"
+      by (simp add: bstep_def bflyLayer_def mdiv mmod idx)
+    have cz: "[zt (a + 2 ^ s) = zr ^ ((2 * brv s a + 1) * 2 ^ (7-s))] (mod qq)"
+      using z_closed[OF s8 aB] .
+    show "[applyN (Suc s) g n = inv_form (Suc s) g n] (mod qq)"
+    proof (cases "off < 2 ^ (7-s)")
+      case True
+      have nL: "n + 2 ^ (7-s) < 256"
+      proof -
+        have "n + 2 ^ (7-s) < a * 2 ^ (8-s) + 2 ^ (8-s)" using na True B2L by simp
+        also have "\<dots> = (a+1) * 2 ^ (8-s)" by (simp add: algebra_simps)
+        also have "\<dots> \<le> 2 ^ s * 2 ^ (8-s)"
+        proof -
+          have "a + 1 \<le> 2 ^ s" using aB by simp
+          thus ?thesis by (rule mult_le_mono1)
+        qed
+        also have "\<dots> = 256" by (rule p256)
+        finally show ?thesis .
+      qed
+      have cyn:  "[applyN s g n = inv_form s g n] (mod qq)" using IH n by blast
+      have cynL: "[applyN s g (n + 2 ^ (7-s)) = inv_form s g (n + 2 ^ (7-s))] (mod qq)"
+        using IH nL by blast
+      have e1: "applyN (Suc s) g n
+          = (applyN s g n + zt (a+2^s) * applyN s g (n+2^(7-s)) mod qq) mod qq"
+        using bl True by simp
+      have e2: "[(applyN s g n + zt (a+2^s) * applyN s g (n+2^(7-s)) mod qq) mod qq
+            = applyN s g n + zt (a+2^s) * applyN s g (n+2^(7-s))] (mod qq)"
+        by (simp add: cong_def mod_add_right_eq)
+      have e3: "[applyN s g n + zt (a+2^s) * applyN s g (n+2^(7-s))
+            = inv_form s g n + zr ^ ((2*brv s a+1)*2^(7-s)) * inv_form s g (n+2^(7-s))] (mod qq)"
+        by (rule cong_add[OF cyn cong_mult[OF cz cynL]])
+      have e4: "[inv_form s g n + zr ^ ((2*brv s a+1)*2^(7-s)) * inv_form s g (n+2^(7-s))
+            = inv_form (Suc s) g n] (mod qq)"
+        using inv_form_lower[OF s8 True, of g a] by (simp add: na cong_def)
+      from e1 e2 have p: "[applyN (Suc s) g n
+            = applyN s g n + zt (a+2^s) * applyN s g (n+2^(7-s))] (mod qq)" by simp
+      from p e3 have B: "[applyN (Suc s) g n
+            = inv_form s g n + zr ^ ((2*brv s a+1)*2^(7-s)) * inv_form s g (n+2^(7-s))] (mod qq)"
+        by (rule cong_trans)
+      from B e4 show ?thesis by (rule cong_trans)
+    next
+      case False
+      hence offge: "2 ^ (7-s) \<le> off" by simp
+      have nL: "n - 2 ^ (7-s) < 256" using n by simp
+      have cyn:  "[applyN s g n = inv_form s g n] (mod qq)" using IH n by blast
+      have cynL: "[applyN s g (n - 2 ^ (7-s)) = inv_form s g (n - 2 ^ (7-s))] (mod qq)"
+        using IH nL by blast
+      have e1: "applyN (Suc s) g n
+          = (applyN s g (n-2^(7-s)) + qq - zt (a+2^s) * applyN s g n mod qq) mod qq"
+        using bl False by simp
+      have e2: "[(applyN s g (n-2^(7-s)) + qq - zt (a+2^s) * applyN s g n mod qq) mod qq
+            = applyN s g (n-2^(7-s)) - zt (a+2^s) * applyN s g n] (mod qq)"
+      proof -
+        have "(applyN s g (n-2^(7-s)) + qq - zt (a+2^s) * applyN s g n mod qq) mod qq
+            = (applyN s g (n-2^(7-s)) + qq - zt (a+2^s) * applyN s g n) mod qq"
+          by (simp add: mod_diff_right_eq)
+        also have "\<dots> = (applyN s g (n-2^(7-s)) - zt (a+2^s) * applyN s g n + qq) mod qq"
+          by (simp add: algebra_simps)
+        also have "\<dots> = (applyN s g (n-2^(7-s)) - zt (a+2^s) * applyN s g n) mod qq"
+          by (simp add: mod_add_self2)
+        finally show ?thesis by (simp add: cong_def)
+      qed
+      have e3: "[applyN s g (n-2^(7-s)) - zt (a+2^s) * applyN s g n
+            = inv_form s g (n-2^(7-s)) - zr ^ ((2*brv s a+1)*2^(7-s)) * inv_form s g n] (mod qq)"
+        by (rule cong_diff[OF cynL cong_mult[OF cz cyn]])
+      have iu: "[inv_form (Suc s) g n
+            = inv_form s g (n-2^(7-s)) - zr ^ ((2*brv s a+1)*2^(7-s)) * inv_form s g n] (mod qq)"
+      proof -
+        have "[inv_form (Suc s) g (a*2^(8-s)+off)
+              = inv_form s g (a*2^(8-s)+(off-2^(7-s)))
+                - zr ^ ((2*brv s a+1)*2^(7-s)) * inv_form s g (a*2^(8-s)+off)] (mod qq)"
+          by (rule inv_form_upper[OF s8 offge offB])
+        thus ?thesis by (simp only: na add_diff_assoc [OF offge, symmetric])
+      qed
+      from e1 e2 have A: "[applyN (Suc s) g n
+            = applyN s g (n-2^(7-s)) - zt (a+2^s) * applyN s g n] (mod qq)" by simp
+      from A e3 have B: "[applyN (Suc s) g n
+            = inv_form s g (n-2^(7-s)) - zr ^ ((2*brv s a+1)*2^(7-s)) * inv_form s g n] (mod qq)"
+        by (rule cong_trans)
+      from B cong_sym[OF iu] show ?thesis by (rule cong_trans)
+    qed
+  qed
+qed
+
+text \<open>Final theorem: the lifted forward NTT computes, at output position \<open>k\<close>, the
+  FIPS-204 negacyclic DFT coefficient at the bit-reversed index \<open>brv\<^sub>8 k\<close>
+  (\<open>\<zeta> = 1753\<close>, \<open>q = 8380417\<close>). This composes the word-level seam (\<open>fwd_as_bfly\<close>)
+  with the closed-form invariant proven above.\<close>
+theorem fwd_ntt_correct:
+  assumes bw: "bounded w" and k: "k < 256"
+  shows "cf (nttFwdAllRef w) k
+       = (\<Sum>j<256. cf w j * zr ^ ((2 * brv 8 k + 1) * j)) mod qq"
+proof -
+  have eqb: "cf (nttFwdAllRef w) k = applyN 8 (cf w) k"
+    using fwd_as_bfly[OF bw k] by (simp add: applyN_8_eq_fwdBfly)
+  have ai: "\<forall>n<256. [applyN 8 (cf w) n = inv_form 8 (cf w) n] (mod qq)"
+    using applyN_inv[of 8 "cf w"] by simp
+  have congk: "[cf (nttFwdAllRef w) k = inv_form 8 (cf w) k] (mod qq)"
+  proof -
+    from ai k have "[applyN 8 (cf w) k = inv_form 8 (cf w) k] (mod qq)" by blast
+    thus ?thesis by (simp add: eqb)
+  qed
+  have lt: "cf (nttFwdAllRef w) k < qq"
+    using fwd_as_bfly[OF bw k] by (simp add: fwdBfly_def bflyLayer_lt)
+  have ge: "0 \<le> cf (nttFwdAllRef w) k"
+    using fwd_as_bfly[OF bw k] by (simp add: fwdBfly_def bflyLayer_ge)
+  have "cf (nttFwdAllRef w) k = cf (nttFwdAllRef w) k mod qq"
+    by (simp add: mod_pos_pos_trivial[OF ge lt])
+  also have "\<dots> = inv_form 8 (cf w) k mod qq" using congk by (simp add: cong_def)
+  also have "\<dots> = (\<Sum>j<256. cf w j * zr ^ ((2 * brv 8 k + 1) * j)) mod qq"
+    by (simp add: inv_form_8)
+  finally show ?thesis .
 qed
 
 end
