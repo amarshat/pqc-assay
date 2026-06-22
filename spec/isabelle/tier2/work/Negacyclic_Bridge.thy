@@ -13,7 +13,7 @@
    8-fold abstract butterfly `fwdBfly` on the int-coefficient view, so the rest
    is a pure int-mod-q partial-sum invariant over the DIF butterfly layers.
 
-   DONE: the target theorem `fwd_ntt_correct` is proven (no sorry/oops), via the
+   DONE: the target theorem `fwd_ntt_correct` is proven (no proof holes), via the
    stage invariant `inv_form`, its lower/upper recursion lemmas, and the
    induction `applyN_inv`. *)
 theory Negacyclic_Bridge

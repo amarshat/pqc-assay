@@ -338,7 +338,7 @@ qed
 text \<open>Layer-1 (\<open>len=128, iter=1, m0=0\<close>) coefficient law: every output position is
   the FIPS-204 forward butterfly on the input coefficients, with twiddle
   \<open>zetabrv[1]\<close>. Lower half (\<open>n<128\<close>) is the additive leg, upper half the
-  subtractive leg. Both legs proven word-exact (no \<open>sorry\<close>, no \<open>smt\<close>).\<close>
+  subtractive leg. Both legs proven word-exact (no proof holes, no \<open>smt\<close>).\<close>
 lemma layer1_coeff:
   fixes w :: "[256][32]"
   assumes n: "n < (256::nat)"

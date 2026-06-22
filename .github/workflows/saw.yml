@@ -20,7 +20,7 @@ jobs:
         run: SKIP_ISABELLE=1 ./scripts/setup.sh
       - name: Reject proof holes (no sorry/oops/admit)
         run: |
-          if grep -rnE --include='*.thy' --exclude-dir=tier2 '\b(sorry|oops|admit)\b' spec/; then
+          if grep -rnE --include='*.thy' '\b(sorry|oops|admit)\b' spec/; then
             echo "::error::Found a proof hole (sorry/oops/admit) in spec/."; exit 1
           fi
       - name: Lift-check (committed Isabelle model == cryptol-to-isabelle of the Cryptol model)

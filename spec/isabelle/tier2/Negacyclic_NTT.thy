@@ -1,6 +1,6 @@
 (* Tier-2: the composed forward NTT computes the negacyclic transform.
    Reuses AFP Number_Theoretic_Transform (cyclic NTT + Cooley-Tukey FNTT_correct).
-   WIP: may contain sorry until discharged — kept out of the Assay CI no-sorry gate. *)
+   Lives in the separate Tier2 session (not the Assay session); proof-hole-free. *)
 theory Negacyclic_NTT
   imports "Number_Theoretic_Transform.Butterfly"
 begin
