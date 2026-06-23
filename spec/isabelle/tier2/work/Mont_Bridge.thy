@@ -62,4 +62,70 @@ proof -
   show ?thesis using core nz nb by simp
 qed
 
+text \<open>Brick (b): the montgomery_reduce mod-q property, as a congruence usable by the
+  bridge. This is the first conjunct of \<open>is_montgomery_reduction\<close> (proven in the Assay
+  session as \<open>montgomery_reduce_correct\<close>): the reduced value scaled by the Montgomery
+  factor \<open>2^32\<close> is congruent to the input modulo \<open>q\<close>.\<close>
+lemma mont_mod_q:
+  fixes a :: "(64, bool) seq"
+  assumes "mont_input_ok (sint_seq a)"
+  shows "(4294967296 * sint_seq (montgomery_reduce a)) mod 8380417 = sint_seq a mod 8380417"
+proof -
+  have "is_montgomery_reduction (sint_seq a) (sint_seq (montgomery_reduce a))"
+    using assms by (rule montgomery_reduce_correct)
+  thus ?thesis
+    unfolding is_montgomery_reduction_def MLDSA_NTT_Spec.q_def by simp
+qed
+
+text \<open>Brick (c): the per-butterfly congruence. The montgomery butterfly term computed
+  by the C model with the Montgomery twiddle \<open>zetas[i]\<close> is congruent, modulo \<open>q\<close>, to the
+  normal-domain product \<open>zetabrv[i] \<cdot> x\<close> used by the Tier-2 model. Combines (a) \<open>zeta_rel\<close>
+  with (b) \<open>mont_mod_q\<close> and cancels the Montgomery factor \<open>2^32\<close> (coprime to the prime
+  \<open>q\<close>). The bound hypothesis \<open>mont_input_ok\<close> is discharged per-layer in brick (d) from a
+  coefficient-size invariant.\<close>
+lemma butterfly_cong:
+  fixes x :: "(32, bool) seq"
+  assumes i0: "0 < i" and i: "i < 256"
+      and ok: "mont_input_ok (sint_seq (nth_seq zetas i) * sint_seq x)"
+  shows "sint_seq (montgomery_reduce (sext64 (nth_seq zetas i) * sext64 x)) mod 8380417
+       = (uint_seq (nth_seq zetabrv i) * sint_seq x) mod 8380417"
+proof -
+  define z  where "z  = nth_seq zetas i"
+  define zb where "zb = uint_seq (nth_seq zetabrv i)"
+  define sx where "sx = sint_seq x"
+  define mr where "mr = sint_seq (montgomery_reduce (sext64 z * sext64 x))"
+  \<comment> \<open>goal is now: \<open>mr mod 8380417 = (zb * sx) mod 8380417\<close>\<close>
+  have ok2: "mont_input_ok (sint_seq (sext64 z * sext64 x))"
+    using ok by (simp add: z_def sx_def sint_sext64_mult)
+  have b: "(4294967296 * mr) mod 8380417 = (sint_seq z * sx) mod 8380417"
+    using mont_mod_q[OF ok2] by (simp add: mr_def sx_def sint_sext64_mult)
+  have zr: "sint_seq z mod 8380417 = (4294967296 * zb) mod 8380417"
+    using zeta_rel[OF i0 i] by (simp add: z_def zb_def)
+  have e: "(sint_seq z * sx) mod 8380417 = (4294967296 * (zb * sx)) mod 8380417"
+  proof -
+    have "(sint_seq z * sx) mod 8380417 = ((sint_seq z mod 8380417) * sx) mod 8380417"
+      by (simp add: mod_mult_left_eq)
+    also have "\<dots> = (((4294967296 * zb) mod 8380417) * sx) mod 8380417"
+      by (simp add: zr)
+    also have "\<dots> = ((4294967296 * zb) * sx) mod 8380417"
+      by (simp add: mod_mult_left_eq)
+    also have "\<dots> = (4294967296 * (zb * sx)) mod 8380417"
+      by (simp add: mult.assoc)
+    finally show ?thesis .
+  qed
+  have comb: "(4294967296 * mr) mod 8380417 = (4294967296 * (zb * sx)) mod 8380417"
+    using b e by simp
+  have cop: "coprime (4294967296::int) 8380417"
+  proof -
+    have "gcd (4294967296::int) 8380417 = 1" by eval
+    thus ?thesis by (simp add: coprime_iff_gcd_eq_1)
+  qed
+  have cong1: "[4294967296 * mr = 4294967296 * (zb * sx)] (mod 8380417)"
+    using comb by (simp add: cong_def)
+  have "[mr = zb * sx] (mod 8380417)"
+    using cong1 cop by (simp add: cong_mult_lcancel)
+  thus "mr mod 8380417 = (zb * sx) mod 8380417"
+    by (simp add: cong_def)
+qed
+
 end
