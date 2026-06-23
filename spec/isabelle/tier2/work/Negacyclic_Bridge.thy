@@ -1,5 +1,5 @@
 (* Tier-2: the lifted forward NTT computes the FIPS-204 negacyclic transform in
-   bit-reversed output order (theorem fwd_ntt_correct, proven, no sorry/oops/smt).
+   bit-reversed output order (theorem fwd_ntt_correct, proven, no proof holes, no smt).
 
    Target theorem (route A, self-contained closed form):
      cf (nttFwdAllRef w) k

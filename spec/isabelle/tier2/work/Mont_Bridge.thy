@@ -3,7 +3,7 @@
    -fwrapv) to the Tier-2 normal-domain model nttFwdAllRef, mod q, and chain it
    onto fwd_ntt_correct to reach the FIPS-204 forward transform.
 
-   Main result (theorem ntt_bridge, no sorry/oops/smt; Tier2 build exits 0):
+   Main result (theorem ntt_bridge, no proof holes, no smt; Tier2 build exits 0):
      bounded w ==> k < 256 ==>
        sint_seq (nth_seq (ntt w) k) mod 8380417
          = (SUM j<256. cf w j * 1753^((2*brv 8 k + 1)*j)) mod 8380417
