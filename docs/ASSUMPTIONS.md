@@ -22,10 +22,12 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   v1.5; see proof results below). The Isabelle model≡FIPS forward-NTT-transform theorem is now proven
   too (`fwd_ntt_correct`, `Tier2` session, gated in `make verify`), but it is about the **normal-domain**
   lifted model `nttFwdAllRef`, not the **montgomery-domain** model the SAW C≡Cryptol leg checks. The
-  bridge linking them (montgomery ≡ normal, mod q, in `work/Mont_Bridge.thy`) is proven per-layer
-  (`mbfly0`..`mbfly7`, plus the per-position layer unfolds), but its 8-layer composition into a single
-  `sint_seq (ntt w) ≡ cf (nttFwdAllRef w) (mod q)` theorem is not yet done. So the C→FIPS forward-NTT
-  chain is not yet closed end to end: both ends are machine-checked, the middle bridge is partial.
+  bridge linking them (montgomery ≡ normal, mod q, in `work/Mont_Bridge.thy`) is now fully proven:
+  per-layer (`mbfly0`..`mbfly7`, plus the per-position layer unfolds) and composed over all 8 layers
+  into `ntt_bridge`: `bounded w ⟹ k<256 ⟹ sint_seq (ntt w ! k) mod q = (∑ j<256. cf w j ·
+  ζ^((2·brv₈ k + 1)·j)) mod q`, with `ntt` the montgomery model the SAW C≡Cryptol leg checks. So the
+  C→FIPS forward-NTT chain is closed mod q (both ends and the bridge machine-checked); the only
+  non-mechanized link is the `-fwrapv` ⇒ no-signed-overflow-UB meta-step (see below).
 - Input range: the C documents the precondition `-2^31 * Q <= a <= Q * 2^31`. The SAW proof IS
   discharged under exactly this precondition (`mont_in_range` in the model); equivalence outside it
   is NOT claimed by the proof. (Empirically the Cryptol model is a bit-exact transcription that also

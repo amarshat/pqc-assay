@@ -29,8 +29,9 @@ Current scope is the `reduce.c` arithmetic layer (both legs) and the forward NTT
 equivalence, a machine-checked overflow-freedom / coefficient-bound result, and (in the `Tier2`
 session, gated in `make verify`) a full FIPS-204 functional-correctness theorem for the lifted
 normal-domain transform. The bridge linking that transform back to the montgomery-domain model the
-SAW C≡Cryptol leg checks is proven per layer; its full composition is in progress, so the C→FIPS
-forward-NTT chain is not yet closed end to end (see the claim table below). Montgomery reduction is an
+SAW C≡Cryptol leg checks is now proven (`ntt_bridge`), so C → FIPS-204 forward NTT is a single
+machine-checked chain mod q, modulo the scoped `-fwrapv` no-UB assumption (see the claim table below).
+Montgomery reduction is an
 implementation device the NTT uses; it is not defined in FIPS 204. None of this is the
 optimized/assembly code that ships in production (see [Roadmap](docs/ROADMAP.md)).
 
@@ -87,9 +88,9 @@ at the bit-reversed index `brv₈ k` — i.e. ML-DSA's natural-input → bit-rev
 The statement is about the lifted **normal-domain** model `nttFwdAllRef` (a lift of a normal-domain
 Cryptol NTT, machine-checked equal to its original recursive twiddle table, not a hand-written model).
 The SAW C≡Cryptol leg checks the C against the **montgomery-domain** model; connecting that model to
-`nttFwdAllRef` (montgomery ≡ normal, mod q) is the separate `work/Mont_Bridge.thy` work, where the
-per-layer congruences are proven and the full 8-layer composition is in progress. So this theorem is
-one verified end of the chain, not the whole chain.
+`nttFwdAllRef` (montgomery ≡ normal, mod q) is the `work/Mont_Bridge.thy` work, now finished:
+`ntt_bridge` proves `sint_seq (ntt w ! k) mod q = (∑ j<256. cf w j · ζ^((2·brv₈ k + 1)·j)) mod q`
+where `ntt` is the montgomery model SAW checks the C against. So the two ends join into one chain.
 
 How it is built (Isabelle, no holes):
 
@@ -125,13 +126,16 @@ with justification in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md); "not claimed
 | montgomery NTT overflow-freedom / coefficient bound | machine-checked (Isabelle `ntt_overflow_free`) |
 | `-fwrapv` wrapping ⇒ no signed-overflow UB in the C | argued (meta-step, not mechanized) |
 | Cryptol montgomery `ntt` lifts to Isabelle | machine-checked (cryptol-to-isabelle; builds) |
-| montgomery lifted `ntt` ≡ normal `nttFwdAllRef` (mod q) | **partial** — per-layer (`mbfly0`..`mbfly7`) + unfolds machine-checked; 8-layer composition in progress |
+| montgomery lifted `ntt` ≡ normal `nttFwdAllRef` (mod q) | machine-checked (Isabelle `Mont_Bridge`, `mbfly0`..`mbfly7` composed) |
 | normal `nttFwdAllRef` ≡ FIPS-204 forward NTT | machine-checked (Isabelle `fwd_ntt_correct`) |
+| montgomery `ntt` ≡ FIPS-204 forward NTT (mod q), composed | machine-checked (Isabelle `ntt_bridge`) |
 | inverse NTT, `256⁻¹` normalization | not claimed |
 | constant-time / side channels | not claimed |
 
-The one **partial** row is the only gap between the two machine-checked ends; closing it (the
-`Mont_Bridge` composition) makes C → FIPS-204 forward NTT a single connected machine-checked chain.
+With `ntt_bridge` the two machine-checked ends join: C → FIPS-204 forward NTT is one connected
+machine-checked chain mod q, with the only non-mechanized step the `-fwrapv` ⇒ no-UB meta-argument
+(the "argued" row above). What is *not* claimed: that this is the hard or shipping code (it is the
+reference C, and the field arithmetic is the easy primitive), the inverse transform, or constant-time.
 
 ## Scope and limitations
 
