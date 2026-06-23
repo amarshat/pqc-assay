@@ -19,7 +19,13 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   Isabelle model≡spec leg covers the **whole `reduce.c` layer** (`montgomery_reduce`, `caddq`,
   `reduce32`, `freeze`). The forward NTT is proven equal to the model under wrapping AND its
   **overflow-freedom / coefficient-bound composition is now proven in Isabelle** (`ntt_overflow_free`,
-  v1.5; see proof results below). There is still no Isabelle model≡FIPS-spec for the NTT transform.
+  v1.5; see proof results below). The Isabelle model≡FIPS forward-NTT-transform theorem is now proven
+  too (`fwd_ntt_correct`, `Tier2` session, gated in `make verify`), but it is about the **normal-domain**
+  lifted model `nttFwdAllRef`, not the **montgomery-domain** model the SAW C≡Cryptol leg checks. The
+  bridge linking them (montgomery ≡ normal, mod q, in `work/Mont_Bridge.thy`) is proven per-layer
+  (`mbfly0`..`mbfly7`, plus the per-position layer unfolds), but its 8-layer composition into a single
+  `sint_seq (ntt w) ≡ cf (nttFwdAllRef w) (mod q)` theorem is not yet done. So the C→FIPS forward-NTT
+  chain is not yet closed end to end: both ends are machine-checked, the middle bridge is partial.
 - Input range: the C documents the precondition `-2^31 * Q <= a <= Q * 2^31`. The SAW proof IS
   discharged under exactly this precondition (`mont_in_range` in the model); equivalence outside it
   is NOT claimed by the proof. (Empirically the Cryptol model is a bit-exact transcription that also

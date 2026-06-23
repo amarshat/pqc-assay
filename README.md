@@ -26,10 +26,13 @@ used for its 2026 `corecrypto` work (see [Background](#background-if-formal-veri
 this project uses none of Apple's code or theories, and the Isabelle spec is written from FIPS 204.
 
 Current scope is the `reduce.c` arithmetic layer (both legs) and the forward NTT: C≡Cryptol functional
-equivalence, a machine-checked overflow-freedom / coefficient-bound result, and (in the separate,
-not-yet-CI-gated `Tier2` session) a full FIPS-204 functional-correctness theorem for the lifted
-transform. Montgomery reduction is an implementation device the NTT uses; it is not defined in FIPS
-204. None of this is the optimized/assembly code that ships in production (see [Roadmap](docs/ROADMAP.md)).
+equivalence, a machine-checked overflow-freedom / coefficient-bound result, and (in the `Tier2`
+session, gated in `make verify`) a full FIPS-204 functional-correctness theorem for the lifted
+normal-domain transform. The bridge linking that transform back to the montgomery-domain model the
+SAW C≡Cryptol leg checks is proven per layer; its full composition is in progress, so the C→FIPS
+forward-NTT chain is not yet closed end to end (see the claim table below). Montgomery reduction is an
+implementation device the NTT uses; it is not defined in FIPS 204. None of this is the
+optimized/assembly code that ships in production (see [Roadmap](docs/ROADMAP.md)).
 
 ## What's proven
 
@@ -67,7 +70,7 @@ While doing this we found two off-by-one errors in PQClean's reduce.c doc commen
 reachably `−6283009` under its own one-sided precondition; OF-2). Both are doc/contract issues, not
 miscomputations. See `docs/ASSUMPTIONS.md`.
 
-## Forward-NTT functional correctness (proven, not yet CI-gated)
+## Forward-NTT functional correctness (proven, gated in `make verify`)
 
 The overflow-freedom result above does not say the forward NTT computes the *right* transform. That
 theorem is now proven, in a separate Isabelle session (`Tier2`), no `sorry`/`oops`, no `smt`, build
@@ -81,9 +84,12 @@ theorem fwd_ntt_correct:
 
 The lifted forward NTT, at each output position `k`, computes the FIPS-204 negacyclic DFT coefficient
 at the bit-reversed index `brv₈ k` — i.e. ML-DSA's natural-input → bit-reversed-output convention.
-The statement is about the **SAW-anchored lifted model** `nttFwdAllRef` (machine-checked equal to the
-Cryptol twiddle table the SAW C≡Cryptol leg uses), not a hand-written model, so the seam to the C
-stays faithful.
+The statement is about the lifted **normal-domain** model `nttFwdAllRef` (a lift of a normal-domain
+Cryptol NTT, machine-checked equal to its original recursive twiddle table, not a hand-written model).
+The SAW C≡Cryptol leg checks the C against the **montgomery-domain** model; connecting that model to
+`nttFwdAllRef` (montgomery ≡ normal, mod q) is the separate `work/Mont_Bridge.thy` work, where the
+per-layer congruences are proven and the full 8-layer composition is in progress. So this theorem is
+one verified end of the chain, not the whole chain.
 
 How it is built (Isabelle, no holes):
 
@@ -100,10 +106,32 @@ How it is built (Isabelle, no holes):
 The route is self-contained (a direct closed-form negacyclic DFT), so it does not depend on aligning
 with the recursive Cooley-Tukey transform in the Archive of Formal Proofs.
 
-Honest status: this is proven but the `Tier2` session is **not yet wired into `make verify` / CI** —
-it is built on its own (`isabelle build -d spec/isabelle/tier2 Tier2`, exit 0). Gating it in CI is the
-next step. The inverse NTT and the `256⁻¹` normalization are not done. See
+Status: `Tier2` is a first-class `make` target and part of `make verify` (`lift-check saw isabelle
+tier2`). The no-`sorry`/`oops`/`admit` gate runs over all of `spec/` (including `tier2`) on every push
+(`saw.yml`); the full Tier2 *build* runs in `verify.yml` (manual `workflow_dispatch`, like the rest of
+the Isabelle leg, because of CI cost). The inverse NTT and the `256⁻¹` normalization are not done. See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+### Claim status (forward-NTT chain)
+
+What is and is not machine-checked, end to end. "Machine-checked" = a tool exited 0 on the stated
+theorem this is built from; "argued" = a sound but un-mechanized meta-step; "assumed" = taken on faith
+with justification in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md); "not claimed" = out of scope.
+
+| Link in the chain | Status |
+|---|---|
+| `reduce.c` primitives (`montgomery_reduce`/`reduce32`/`caddq`/`freeze`) ≡ Cryptol | machine-checked (SAW + Z3) |
+| C `ntt(a[256])` ≡ Cryptol montgomery `ntt` (under `-fwrapv` wrapping; functional) | machine-checked (SAW) |
+| montgomery NTT overflow-freedom / coefficient bound | machine-checked (Isabelle `ntt_overflow_free`) |
+| `-fwrapv` wrapping ⇒ no signed-overflow UB in the C | argued (meta-step, not mechanized) |
+| Cryptol montgomery `ntt` lifts to Isabelle | machine-checked (cryptol-to-isabelle; builds) |
+| montgomery lifted `ntt` ≡ normal `nttFwdAllRef` (mod q) | **partial** — per-layer (`mbfly0`..`mbfly7`) + unfolds machine-checked; 8-layer composition in progress |
+| normal `nttFwdAllRef` ≡ FIPS-204 forward NTT | machine-checked (Isabelle `fwd_ntt_correct`) |
+| inverse NTT, `256⁻¹` normalization | not claimed |
+| constant-time / side channels | not claimed |
+
+The one **partial** row is the only gap between the two machine-checked ends; closing it (the
+`Mont_Bridge` composition) makes C → FIPS-204 forward NTT a single connected machine-checked chain.
 
 ## Scope and limitations
 
