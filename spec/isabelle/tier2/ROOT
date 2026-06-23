@@ -18,6 +18,9 @@ session Tier2_Base = "Number_Theoretic_Transform" +
 
 session Tier2 in "work" = Tier2_Base +
   options [document = false]
+  sessions
+    Assay
   theories
     CT_Routing
     Negacyclic_Bridge
+    Mont_Bridge

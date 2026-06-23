@@ -50,9 +50,11 @@ isabelle:
 	$(ISABELLE) build -D spec/isabelle -v $(ISA_SESSION)
 
 ## Tier2 Isabelle session: lifted forward NTT ≡ FIPS-204 negacyclic transform (fwd_ntt_correct)
+## plus the model bridge (Mont_Bridge) tying the SAW-checked montgomery model to it; the bridge
+## reuses the Assay session (montgomery_reduce_correct), so both -d dirs are needed.
 tier2:
-	@echo ">> Isabelle (Tier2): proving forward NTT ≡ FIPS-204 negacyclic transform"
-	$(ISABELLE) build -d spec/isabelle/tier2 -v Tier2
+	@echo ">> Isabelle (Tier2): forward NTT ≡ FIPS-204 transform + montgomery-model bridge"
+	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -v Tier2
 
 ## Build the technical writeup (placeholder — wire up your renderer of choice)
 writeup:
