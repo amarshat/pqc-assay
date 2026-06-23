@@ -176,10 +176,15 @@ missed. PQC-Assay applies the same public approach to third-party reference C.
    Cryptol model  ──(2) SAW: C ≡ Cryptol──►  ✔
           │  (3) cryptol-to-isabelle
           ▼
-   Isabelle model ──(4) model ≡ FIPS spec──►  ✔ (reduce.c layer)
-                                  ▲
+   Isabelle model ──(4) model ≡ FIPS spec──►  ✔ reduce.c layer
+          │        └─(4') montgomery ntt ≡ FIPS-204 forward NTT (mod q) ─► ✔ ntt_bridge
+          ▼
                   spec written from FIPS 204; no Apple artifacts
 ```
+
+Step (4') closes the forward-NTT chain: `ntt_bridge` proves the montgomery-domain model the SAW leg
+checks the C against equals the FIPS-204 negacyclic DFT mod q. The only non-mechanized link in the
+whole chain is `-fwrapv ⇒ no signed-overflow UB` (see the claim table above).
 
 Detail in [`docs/PIPELINE.md`](docs/PIPELINE.md).
 

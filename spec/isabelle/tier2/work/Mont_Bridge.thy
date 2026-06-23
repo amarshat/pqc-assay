@@ -1,14 +1,17 @@
-(* Tier-2 model bridge (WIP): connect the SAW-checked montgomery NTT model
+(* Tier-2 model bridge: connect the SAW-checked montgomery NTT model
    (Assay.MLDSA_NTT.ntt, the function SAW proves the PQClean C equal to under
-   -fwrapv) to the Tier-2 normal-domain model nttFwdAllRef, mod q.
+   -fwrapv) to the Tier-2 normal-domain model nttFwdAllRef, mod q, and chain it
+   onto fwd_ntt_correct to reach the FIPS-204 forward transform.
 
-   Goal:  sint_seq (ntt w @ k) == cf (nttFwdAllRef w) k   (mod q)
-   chained with fwd_ntt_correct gives the SAW-checked model == FIPS-204 forward
-   transform (mod q), closing the last gap in the C -> FIPS chain.
-
-   This file is currently an ARCHITECTURE SPIKE: it only checks that the Assay
-   session (montgomery_reduce_correct) and the Tier-2 session (fwd_ntt_correct)
-   can be imported together. *)
+   Main result (theorem ntt_bridge, no sorry/oops/smt; Tier2 build exits 0):
+     bounded w ==> k < 256 ==>
+       sint_seq (nth_seq (ntt w) k) mod 8380417
+         = (SUM j<256. cf w j * 1753^((2*brv 8 k + 1)*j)) mod 8380417
+   i.e. the montgomery model SAW checks the PQClean C against computes the
+   FIPS-204 negacyclic DFT coefficient at bit-reversed index brv8 k, mod q. This
+   closes the last gap in the C -> FIPS-204 forward-NTT chain. Built from the per
+   layer unfolds mlevel0..7, the per-layer congruences mbfly0..7, and the 8-layer
+   R-preservation chain pres0..7. *)
 theory Mont_Bridge
   imports Negacyclic_Bridge "Assay.Assay_Equivalence"
 begin
