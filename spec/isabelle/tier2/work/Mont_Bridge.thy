@@ -786,6 +786,405 @@ next
   finally show ?thesis .
 qed
 
+lemma mbfly1:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 2139103230" and n: "n < 256"
+  shows "sf (nttLevel 1 a) n mod 8380417 = bflyLayer 64 1 (sf a) n mod 8380417"
+proof (cases "n mod 128 < 64")
+  case True
+  have ndlt: "n div 128 < 2" using n by linarith
+  have idxlt: "n div 128 + 2 < 256" using ndlt by linarith
+  have idxpos: "0 < n div 128 + 2" by simp
+  have ec: "2 + n div 128 = n div 128 + 2" by simp
+  have aPb: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B" using B unfolding ntt_bounded_def by auto
+  have aRb: "- B \<le> sint_seq (nth_seq a (n + 64))" "sint_seq (nth_seq a (n + 64)) \<le> B" using B unfolding ntt_bounded_def by auto
+  have zQ: "- 4194304 \<le> sint_seq (nth_seq zetas (n div 128 + 2))" "sint_seq (nth_seq zetas (n div 128 + 2)) \<le> 4194304" using Assay_Equivalence.zeta_bound by auto
+  have ok: "mont_input_ok (sint_seq (nth_seq zetas (n div 128 + 2)) * sint_seq (nth_seq a (n + 64)))" by (rule mont_input_ok_of_bounds[OF zQ(1) zQ(2) aRb(1) aRb(2) Bhi])
+  have mb: "- 8380417 < sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a (n + 64))))" "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a (n + 64)))) < 8380417" using mont_butterfly_bound[OF ok] by simp_all
+  have noov: "sint_seq (nth_seq a n + montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a (n + 64)))) = sint_seq (nth_seq a n) + sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a (n + 64))))" by (rule sint_seq_add_eq) (use aPb mb Bhi in linarith)+
+  have bc: "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a (n + 64)))) mod 8380417 = (uint_seq (nth_seq zetabrv (n div 128 + 2)) * sint_seq (nth_seq a (n + 64))) mod 8380417" using butterfly_cong[OF idxpos idxlt ok] by simp
+  have lhs: "sf (nttLevel 1 a) n mod 8380417 = (sint_seq (nth_seq a n) + sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a (n + 64))))) mod 8380417"
+    using True mlevel1_coeff[OF n] noov by (simp add: sf_def)
+  also have "\<dots> = (sint_seq (nth_seq a n) + uint_seq (nth_seq zetabrv (n div 128 + 2)) * sint_seq (nth_seq a (n + 64))) mod 8380417" by (rule mod_add_cong[OF refl bc])
+  finally have Lc: "sf (nttLevel 1 a) n mod 8380417 = (sf a n + zt (n div 128 + 2) * sf a (n + 64)) mod 8380417" by (simp add: sf_def zt_def)
+  have R: "bflyLayer 64 1 (sf a) n mod 8380417 = (sf a n + zt (n div 128 + 2) * sf a (n + 64)) mod 8380417"
+    using True by (simp add: bflyLayer_def mod_add_right_eq ec)
+  show ?thesis using Lc R by simp
+next
+  case False
+  have ndlt: "n div 128 < 2" using n by linarith
+  have idxlt: "n div 128 + 2 < 256" using ndlt by linarith
+  have idxpos: "0 < n div 128 + 2" by simp
+  have ec: "2 + n div 128 = n div 128 + 2" by simp
+  have aPb: "- B \<le> sint_seq (nth_seq a (n - 64))" "sint_seq (nth_seq a (n - 64)) \<le> B" using B unfolding ntt_bounded_def by auto
+  have aRb: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B" using B unfolding ntt_bounded_def by auto
+  have zQ: "- 4194304 \<le> sint_seq (nth_seq zetas (n div 128 + 2))" "sint_seq (nth_seq zetas (n div 128 + 2)) \<le> 4194304" using Assay_Equivalence.zeta_bound by auto
+  have ok: "mont_input_ok (sint_seq (nth_seq zetas (n div 128 + 2)) * sint_seq (nth_seq a n))" by (rule mont_input_ok_of_bounds[OF zQ(1) zQ(2) aRb(1) aRb(2) Bhi])
+  have mb: "- 8380417 < sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a n)))" "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a n))) < 8380417" using mont_butterfly_bound[OF ok] by simp_all
+  have noov: "sint_seq (nth_seq a (n - 64) - montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a n))) = sint_seq (nth_seq a (n - 64)) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a n)))" by (rule sint_seq_sub_eq) (use aPb mb Bhi in linarith)+
+  have bc: "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a n))) mod 8380417 = (uint_seq (nth_seq zetabrv (n div 128 + 2)) * sint_seq (nth_seq a n)) mod 8380417" using butterfly_cong[OF idxpos idxlt ok] by simp
+  have lhs: "sf (nttLevel 1 a) n mod 8380417 = (sf a (n - 64) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a n)))) mod 8380417"
+    using False mlevel1_coeff[OF n] noov by (simp add: sf_def)
+  have key: "(sf a (n - 64) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a n)))) mod 8380417 = (sf a (n - 64) - zt (n div 128 + 2) * sf a n) mod 8380417"
+  proof -
+    have "(sf a (n - 64) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a n)))) mod 8380417 = (sf a (n - 64) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a n))) mod 8380417) mod 8380417" by (simp add: mod_diff_right_eq)
+    also have "\<dots> = (sf a (n - 64) - (uint_seq (nth_seq zetabrv (n div 128 + 2)) * sint_seq (nth_seq a n)) mod 8380417) mod 8380417" using bc by simp
+    also have "\<dots> = (sf a (n - 64) - zt (n div 128 + 2) * sf a n) mod 8380417" by (simp add: sf_def zt_def mod_diff_right_eq)
+    finally show ?thesis .
+  qed
+  have R: "bflyLayer 64 1 (sf a) n mod 8380417 = (sf a (n - 64) + 8380417 - zt (n div 128 + 2) * sf a n) mod 8380417"
+    using False by (simp add: bflyLayer_def mod_diff_right_eq ec)
+  have rearr: "sf a (n - 64) + 8380417 - zt (n div 128 + 2) * sf a n = sf a (n - 64) - zt (n div 128 + 2) * sf a n + 8380417" by simp
+  have R2: "(sf a (n - 64) + 8380417 - zt (n div 128 + 2) * sf a n) mod 8380417 = (sf a (n - 64) - zt (n div 128 + 2) * sf a n) mod 8380417"
+    unfolding rearr by (rule mod_add_self2)
+  have "sf (nttLevel 1 a) n mod 8380417 = (sf a (n - 64) - zt (n div 128 + 2) * sf a n) mod 8380417" using lhs key by simp
+  also have "\<dots> = (sf a (n - 64) + 8380417 - zt (n div 128 + 2) * sf a n) mod 8380417" using R2 by simp
+  also have "\<dots> = bflyLayer 64 1 (sf a) n mod 8380417" using R by simp
+  finally show ?thesis .
+qed
+
+lemma mbfly2:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 2139103230" and n: "n < 256"
+  shows "sf (nttLevel 2 a) n mod 8380417 = bflyLayer 32 3 (sf a) n mod 8380417"
+proof (cases "n mod 64 < 32")
+  case True
+  have ndlt: "n div 64 < 4" using n by linarith
+  have idxlt: "n div 64 + 4 < 256" using ndlt by linarith
+  have idxpos: "0 < n div 64 + 4" by simp
+  have ec: "4 + n div 64 = n div 64 + 4" by simp
+  have aPb: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B" using B unfolding ntt_bounded_def by auto
+  have aRb: "- B \<le> sint_seq (nth_seq a (n + 32))" "sint_seq (nth_seq a (n + 32)) \<le> B" using B unfolding ntt_bounded_def by auto
+  have zQ: "- 4194304 \<le> sint_seq (nth_seq zetas (n div 64 + 4))" "sint_seq (nth_seq zetas (n div 64 + 4)) \<le> 4194304" using Assay_Equivalence.zeta_bound by auto
+  have ok: "mont_input_ok (sint_seq (nth_seq zetas (n div 64 + 4)) * sint_seq (nth_seq a (n + 32)))" by (rule mont_input_ok_of_bounds[OF zQ(1) zQ(2) aRb(1) aRb(2) Bhi])
+  have mb: "- 8380417 < sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 64 + 4)) * sext64 (nth_seq a (n + 32))))" "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 64 + 4)) * sext64 (nth_seq a (n + 32)))) < 8380417" using mont_butterfly_bound[OF ok] by simp_all
+  have noov: "sint_seq (nth_seq a n + montgomery_reduce (sext64 (nth_seq zetas (n div 64 + 4)) * sext64 (nth_seq a (n + 32)))) = sint_seq (nth_seq a n) + sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 64 + 4)) * sext64 (nth_seq a (n + 32))))" by (rule sint_seq_add_eq) (use aPb mb Bhi in linarith)+
+  have bc: "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 64 + 4)) * sext64 (nth_seq a (n + 32)))) mod 8380417 = (uint_seq (nth_seq zetabrv (n div 64 + 4)) * sint_seq (nth_seq a (n + 32))) mod 8380417" using butterfly_cong[OF idxpos idxlt ok] by simp
+  have lhs: "sf (nttLevel 2 a) n mod 8380417 = (sint_seq (nth_seq a n) + sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 64 + 4)) * sext64 (nth_seq a (n + 32))))) mod 8380417"
+    using True mlevel2_coeff[OF n] noov by (simp add: sf_def)
+  also have "\<dots> = (sint_seq (nth_seq a n) + uint_seq (nth_seq zetabrv (n div 64 + 4)) * sint_seq (nth_seq a (n + 32))) mod 8380417" by (rule mod_add_cong[OF refl bc])
+  finally have Lc: "sf (nttLevel 2 a) n mod 8380417 = (sf a n + zt (n div 64 + 4) * sf a (n + 32)) mod 8380417" by (simp add: sf_def zt_def)
+  have R: "bflyLayer 32 3 (sf a) n mod 8380417 = (sf a n + zt (n div 64 + 4) * sf a (n + 32)) mod 8380417"
+    using True by (simp add: bflyLayer_def mod_add_right_eq ec)
+  show ?thesis using Lc R by simp
+next
+  case False
+  have ndlt: "n div 64 < 4" using n by linarith
+  have idxlt: "n div 64 + 4 < 256" using ndlt by linarith
+  have idxpos: "0 < n div 64 + 4" by simp
+  have ec: "4 + n div 64 = n div 64 + 4" by simp
+  have aPb: "- B \<le> sint_seq (nth_seq a (n - 32))" "sint_seq (nth_seq a (n - 32)) \<le> B" using B unfolding ntt_bounded_def by auto
+  have aRb: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B" using B unfolding ntt_bounded_def by auto
+  have zQ: "- 4194304 \<le> sint_seq (nth_seq zetas (n div 64 + 4))" "sint_seq (nth_seq zetas (n div 64 + 4)) \<le> 4194304" using Assay_Equivalence.zeta_bound by auto
+  have ok: "mont_input_ok (sint_seq (nth_seq zetas (n div 64 + 4)) * sint_seq (nth_seq a n))" by (rule mont_input_ok_of_bounds[OF zQ(1) zQ(2) aRb(1) aRb(2) Bhi])
+  have mb: "- 8380417 < sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 64 + 4)) * sext64 (nth_seq a n)))" "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 64 + 4)) * sext64 (nth_seq a n))) < 8380417" using mont_butterfly_bound[OF ok] by simp_all
+  have noov: "sint_seq (nth_seq a (n - 32) - montgomery_reduce (sext64 (nth_seq zetas (n div 64 + 4)) * sext64 (nth_seq a n))) = sint_seq (nth_seq a (n - 32)) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 64 + 4)) * sext64 (nth_seq a n)))" by (rule sint_seq_sub_eq) (use aPb mb Bhi in linarith)+
+  have bc: "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 64 + 4)) * sext64 (nth_seq a n))) mod 8380417 = (uint_seq (nth_seq zetabrv (n div 64 + 4)) * sint_seq (nth_seq a n)) mod 8380417" using butterfly_cong[OF idxpos idxlt ok] by simp
+  have lhs: "sf (nttLevel 2 a) n mod 8380417 = (sf a (n - 32) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 64 + 4)) * sext64 (nth_seq a n)))) mod 8380417"
+    using False mlevel2_coeff[OF n] noov by (simp add: sf_def)
+  have key: "(sf a (n - 32) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 64 + 4)) * sext64 (nth_seq a n)))) mod 8380417 = (sf a (n - 32) - zt (n div 64 + 4) * sf a n) mod 8380417"
+  proof -
+    have "(sf a (n - 32) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 64 + 4)) * sext64 (nth_seq a n)))) mod 8380417 = (sf a (n - 32) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 64 + 4)) * sext64 (nth_seq a n))) mod 8380417) mod 8380417" by (simp add: mod_diff_right_eq)
+    also have "\<dots> = (sf a (n - 32) - (uint_seq (nth_seq zetabrv (n div 64 + 4)) * sint_seq (nth_seq a n)) mod 8380417) mod 8380417" using bc by simp
+    also have "\<dots> = (sf a (n - 32) - zt (n div 64 + 4) * sf a n) mod 8380417" by (simp add: sf_def zt_def mod_diff_right_eq)
+    finally show ?thesis .
+  qed
+  have R: "bflyLayer 32 3 (sf a) n mod 8380417 = (sf a (n - 32) + 8380417 - zt (n div 64 + 4) * sf a n) mod 8380417"
+    using False by (simp add: bflyLayer_def mod_diff_right_eq ec)
+  have rearr: "sf a (n - 32) + 8380417 - zt (n div 64 + 4) * sf a n = sf a (n - 32) - zt (n div 64 + 4) * sf a n + 8380417" by simp
+  have R2: "(sf a (n - 32) + 8380417 - zt (n div 64 + 4) * sf a n) mod 8380417 = (sf a (n - 32) - zt (n div 64 + 4) * sf a n) mod 8380417"
+    unfolding rearr by (rule mod_add_self2)
+  have "sf (nttLevel 2 a) n mod 8380417 = (sf a (n - 32) - zt (n div 64 + 4) * sf a n) mod 8380417" using lhs key by simp
+  also have "\<dots> = (sf a (n - 32) + 8380417 - zt (n div 64 + 4) * sf a n) mod 8380417" using R2 by simp
+  also have "\<dots> = bflyLayer 32 3 (sf a) n mod 8380417" using R by simp
+  finally show ?thesis .
+qed
+
+lemma mbfly3:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 2139103230" and n: "n < 256"
+  shows "sf (nttLevel 3 a) n mod 8380417 = bflyLayer 16 7 (sf a) n mod 8380417"
+proof (cases "n mod 32 < 16")
+  case True
+  have ndlt: "n div 32 < 8" using n by linarith
+  have idxlt: "n div 32 + 8 < 256" using ndlt by linarith
+  have idxpos: "0 < n div 32 + 8" by simp
+  have ec: "8 + n div 32 = n div 32 + 8" by simp
+  have aPb: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B" using B unfolding ntt_bounded_def by auto
+  have aRb: "- B \<le> sint_seq (nth_seq a (n + 16))" "sint_seq (nth_seq a (n + 16)) \<le> B" using B unfolding ntt_bounded_def by auto
+  have zQ: "- 4194304 \<le> sint_seq (nth_seq zetas (n div 32 + 8))" "sint_seq (nth_seq zetas (n div 32 + 8)) \<le> 4194304" using Assay_Equivalence.zeta_bound by auto
+  have ok: "mont_input_ok (sint_seq (nth_seq zetas (n div 32 + 8)) * sint_seq (nth_seq a (n + 16)))" by (rule mont_input_ok_of_bounds[OF zQ(1) zQ(2) aRb(1) aRb(2) Bhi])
+  have mb: "- 8380417 < sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 32 + 8)) * sext64 (nth_seq a (n + 16))))" "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 32 + 8)) * sext64 (nth_seq a (n + 16)))) < 8380417" using mont_butterfly_bound[OF ok] by simp_all
+  have noov: "sint_seq (nth_seq a n + montgomery_reduce (sext64 (nth_seq zetas (n div 32 + 8)) * sext64 (nth_seq a (n + 16)))) = sint_seq (nth_seq a n) + sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 32 + 8)) * sext64 (nth_seq a (n + 16))))" by (rule sint_seq_add_eq) (use aPb mb Bhi in linarith)+
+  have bc: "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 32 + 8)) * sext64 (nth_seq a (n + 16)))) mod 8380417 = (uint_seq (nth_seq zetabrv (n div 32 + 8)) * sint_seq (nth_seq a (n + 16))) mod 8380417" using butterfly_cong[OF idxpos idxlt ok] by simp
+  have lhs: "sf (nttLevel 3 a) n mod 8380417 = (sint_seq (nth_seq a n) + sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 32 + 8)) * sext64 (nth_seq a (n + 16))))) mod 8380417"
+    using True mlevel3_coeff[OF n] noov by (simp add: sf_def)
+  also have "\<dots> = (sint_seq (nth_seq a n) + uint_seq (nth_seq zetabrv (n div 32 + 8)) * sint_seq (nth_seq a (n + 16))) mod 8380417" by (rule mod_add_cong[OF refl bc])
+  finally have Lc: "sf (nttLevel 3 a) n mod 8380417 = (sf a n + zt (n div 32 + 8) * sf a (n + 16)) mod 8380417" by (simp add: sf_def zt_def)
+  have R: "bflyLayer 16 7 (sf a) n mod 8380417 = (sf a n + zt (n div 32 + 8) * sf a (n + 16)) mod 8380417"
+    using True by (simp add: bflyLayer_def mod_add_right_eq ec)
+  show ?thesis using Lc R by simp
+next
+  case False
+  have ndlt: "n div 32 < 8" using n by linarith
+  have idxlt: "n div 32 + 8 < 256" using ndlt by linarith
+  have idxpos: "0 < n div 32 + 8" by simp
+  have ec: "8 + n div 32 = n div 32 + 8" by simp
+  have aPb: "- B \<le> sint_seq (nth_seq a (n - 16))" "sint_seq (nth_seq a (n - 16)) \<le> B" using B unfolding ntt_bounded_def by auto
+  have aRb: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B" using B unfolding ntt_bounded_def by auto
+  have zQ: "- 4194304 \<le> sint_seq (nth_seq zetas (n div 32 + 8))" "sint_seq (nth_seq zetas (n div 32 + 8)) \<le> 4194304" using Assay_Equivalence.zeta_bound by auto
+  have ok: "mont_input_ok (sint_seq (nth_seq zetas (n div 32 + 8)) * sint_seq (nth_seq a n))" by (rule mont_input_ok_of_bounds[OF zQ(1) zQ(2) aRb(1) aRb(2) Bhi])
+  have mb: "- 8380417 < sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 32 + 8)) * sext64 (nth_seq a n)))" "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 32 + 8)) * sext64 (nth_seq a n))) < 8380417" using mont_butterfly_bound[OF ok] by simp_all
+  have noov: "sint_seq (nth_seq a (n - 16) - montgomery_reduce (sext64 (nth_seq zetas (n div 32 + 8)) * sext64 (nth_seq a n))) = sint_seq (nth_seq a (n - 16)) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 32 + 8)) * sext64 (nth_seq a n)))" by (rule sint_seq_sub_eq) (use aPb mb Bhi in linarith)+
+  have bc: "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 32 + 8)) * sext64 (nth_seq a n))) mod 8380417 = (uint_seq (nth_seq zetabrv (n div 32 + 8)) * sint_seq (nth_seq a n)) mod 8380417" using butterfly_cong[OF idxpos idxlt ok] by simp
+  have lhs: "sf (nttLevel 3 a) n mod 8380417 = (sf a (n - 16) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 32 + 8)) * sext64 (nth_seq a n)))) mod 8380417"
+    using False mlevel3_coeff[OF n] noov by (simp add: sf_def)
+  have key: "(sf a (n - 16) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 32 + 8)) * sext64 (nth_seq a n)))) mod 8380417 = (sf a (n - 16) - zt (n div 32 + 8) * sf a n) mod 8380417"
+  proof -
+    have "(sf a (n - 16) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 32 + 8)) * sext64 (nth_seq a n)))) mod 8380417 = (sf a (n - 16) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 32 + 8)) * sext64 (nth_seq a n))) mod 8380417) mod 8380417" by (simp add: mod_diff_right_eq)
+    also have "\<dots> = (sf a (n - 16) - (uint_seq (nth_seq zetabrv (n div 32 + 8)) * sint_seq (nth_seq a n)) mod 8380417) mod 8380417" using bc by simp
+    also have "\<dots> = (sf a (n - 16) - zt (n div 32 + 8) * sf a n) mod 8380417" by (simp add: sf_def zt_def mod_diff_right_eq)
+    finally show ?thesis .
+  qed
+  have R: "bflyLayer 16 7 (sf a) n mod 8380417 = (sf a (n - 16) + 8380417 - zt (n div 32 + 8) * sf a n) mod 8380417"
+    using False by (simp add: bflyLayer_def mod_diff_right_eq ec)
+  have rearr: "sf a (n - 16) + 8380417 - zt (n div 32 + 8) * sf a n = sf a (n - 16) - zt (n div 32 + 8) * sf a n + 8380417" by simp
+  have R2: "(sf a (n - 16) + 8380417 - zt (n div 32 + 8) * sf a n) mod 8380417 = (sf a (n - 16) - zt (n div 32 + 8) * sf a n) mod 8380417"
+    unfolding rearr by (rule mod_add_self2)
+  have "sf (nttLevel 3 a) n mod 8380417 = (sf a (n - 16) - zt (n div 32 + 8) * sf a n) mod 8380417" using lhs key by simp
+  also have "\<dots> = (sf a (n - 16) + 8380417 - zt (n div 32 + 8) * sf a n) mod 8380417" using R2 by simp
+  also have "\<dots> = bflyLayer 16 7 (sf a) n mod 8380417" using R by simp
+  finally show ?thesis .
+qed
+
+lemma mbfly4:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 2139103230" and n: "n < 256"
+  shows "sf (nttLevel 4 a) n mod 8380417 = bflyLayer 8 15 (sf a) n mod 8380417"
+proof (cases "n mod 16 < 8")
+  case True
+  have ndlt: "n div 16 < 16" using n by linarith
+  have idxlt: "n div 16 + 16 < 256" using ndlt by linarith
+  have idxpos: "0 < n div 16 + 16" by simp
+  have ec: "16 + n div 16 = n div 16 + 16" by simp
+  have aPb: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B" using B unfolding ntt_bounded_def by auto
+  have aRb: "- B \<le> sint_seq (nth_seq a (n + 8))" "sint_seq (nth_seq a (n + 8)) \<le> B" using B unfolding ntt_bounded_def by auto
+  have zQ: "- 4194304 \<le> sint_seq (nth_seq zetas (n div 16 + 16))" "sint_seq (nth_seq zetas (n div 16 + 16)) \<le> 4194304" using Assay_Equivalence.zeta_bound by auto
+  have ok: "mont_input_ok (sint_seq (nth_seq zetas (n div 16 + 16)) * sint_seq (nth_seq a (n + 8)))" by (rule mont_input_ok_of_bounds[OF zQ(1) zQ(2) aRb(1) aRb(2) Bhi])
+  have mb: "- 8380417 < sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 16 + 16)) * sext64 (nth_seq a (n + 8))))" "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 16 + 16)) * sext64 (nth_seq a (n + 8)))) < 8380417" using mont_butterfly_bound[OF ok] by simp_all
+  have noov: "sint_seq (nth_seq a n + montgomery_reduce (sext64 (nth_seq zetas (n div 16 + 16)) * sext64 (nth_seq a (n + 8)))) = sint_seq (nth_seq a n) + sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 16 + 16)) * sext64 (nth_seq a (n + 8))))" by (rule sint_seq_add_eq) (use aPb mb Bhi in linarith)+
+  have bc: "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 16 + 16)) * sext64 (nth_seq a (n + 8)))) mod 8380417 = (uint_seq (nth_seq zetabrv (n div 16 + 16)) * sint_seq (nth_seq a (n + 8))) mod 8380417" using butterfly_cong[OF idxpos idxlt ok] by simp
+  have lhs: "sf (nttLevel 4 a) n mod 8380417 = (sint_seq (nth_seq a n) + sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 16 + 16)) * sext64 (nth_seq a (n + 8))))) mod 8380417"
+    using True mlevel4_coeff[OF n] noov by (simp add: sf_def)
+  also have "\<dots> = (sint_seq (nth_seq a n) + uint_seq (nth_seq zetabrv (n div 16 + 16)) * sint_seq (nth_seq a (n + 8))) mod 8380417" by (rule mod_add_cong[OF refl bc])
+  finally have Lc: "sf (nttLevel 4 a) n mod 8380417 = (sf a n + zt (n div 16 + 16) * sf a (n + 8)) mod 8380417" by (simp add: sf_def zt_def)
+  have R: "bflyLayer 8 15 (sf a) n mod 8380417 = (sf a n + zt (n div 16 + 16) * sf a (n + 8)) mod 8380417"
+    using True by (simp add: bflyLayer_def mod_add_right_eq ec)
+  show ?thesis using Lc R by simp
+next
+  case False
+  have ndlt: "n div 16 < 16" using n by linarith
+  have idxlt: "n div 16 + 16 < 256" using ndlt by linarith
+  have idxpos: "0 < n div 16 + 16" by simp
+  have ec: "16 + n div 16 = n div 16 + 16" by simp
+  have aPb: "- B \<le> sint_seq (nth_seq a (n - 8))" "sint_seq (nth_seq a (n - 8)) \<le> B" using B unfolding ntt_bounded_def by auto
+  have aRb: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B" using B unfolding ntt_bounded_def by auto
+  have zQ: "- 4194304 \<le> sint_seq (nth_seq zetas (n div 16 + 16))" "sint_seq (nth_seq zetas (n div 16 + 16)) \<le> 4194304" using Assay_Equivalence.zeta_bound by auto
+  have ok: "mont_input_ok (sint_seq (nth_seq zetas (n div 16 + 16)) * sint_seq (nth_seq a n))" by (rule mont_input_ok_of_bounds[OF zQ(1) zQ(2) aRb(1) aRb(2) Bhi])
+  have mb: "- 8380417 < sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 16 + 16)) * sext64 (nth_seq a n)))" "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 16 + 16)) * sext64 (nth_seq a n))) < 8380417" using mont_butterfly_bound[OF ok] by simp_all
+  have noov: "sint_seq (nth_seq a (n - 8) - montgomery_reduce (sext64 (nth_seq zetas (n div 16 + 16)) * sext64 (nth_seq a n))) = sint_seq (nth_seq a (n - 8)) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 16 + 16)) * sext64 (nth_seq a n)))" by (rule sint_seq_sub_eq) (use aPb mb Bhi in linarith)+
+  have bc: "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 16 + 16)) * sext64 (nth_seq a n))) mod 8380417 = (uint_seq (nth_seq zetabrv (n div 16 + 16)) * sint_seq (nth_seq a n)) mod 8380417" using butterfly_cong[OF idxpos idxlt ok] by simp
+  have lhs: "sf (nttLevel 4 a) n mod 8380417 = (sf a (n - 8) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 16 + 16)) * sext64 (nth_seq a n)))) mod 8380417"
+    using False mlevel4_coeff[OF n] noov by (simp add: sf_def)
+  have key: "(sf a (n - 8) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 16 + 16)) * sext64 (nth_seq a n)))) mod 8380417 = (sf a (n - 8) - zt (n div 16 + 16) * sf a n) mod 8380417"
+  proof -
+    have "(sf a (n - 8) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 16 + 16)) * sext64 (nth_seq a n)))) mod 8380417 = (sf a (n - 8) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 16 + 16)) * sext64 (nth_seq a n))) mod 8380417) mod 8380417" by (simp add: mod_diff_right_eq)
+    also have "\<dots> = (sf a (n - 8) - (uint_seq (nth_seq zetabrv (n div 16 + 16)) * sint_seq (nth_seq a n)) mod 8380417) mod 8380417" using bc by simp
+    also have "\<dots> = (sf a (n - 8) - zt (n div 16 + 16) * sf a n) mod 8380417" by (simp add: sf_def zt_def mod_diff_right_eq)
+    finally show ?thesis .
+  qed
+  have R: "bflyLayer 8 15 (sf a) n mod 8380417 = (sf a (n - 8) + 8380417 - zt (n div 16 + 16) * sf a n) mod 8380417"
+    using False by (simp add: bflyLayer_def mod_diff_right_eq ec)
+  have rearr: "sf a (n - 8) + 8380417 - zt (n div 16 + 16) * sf a n = sf a (n - 8) - zt (n div 16 + 16) * sf a n + 8380417" by simp
+  have R2: "(sf a (n - 8) + 8380417 - zt (n div 16 + 16) * sf a n) mod 8380417 = (sf a (n - 8) - zt (n div 16 + 16) * sf a n) mod 8380417"
+    unfolding rearr by (rule mod_add_self2)
+  have "sf (nttLevel 4 a) n mod 8380417 = (sf a (n - 8) - zt (n div 16 + 16) * sf a n) mod 8380417" using lhs key by simp
+  also have "\<dots> = (sf a (n - 8) + 8380417 - zt (n div 16 + 16) * sf a n) mod 8380417" using R2 by simp
+  also have "\<dots> = bflyLayer 8 15 (sf a) n mod 8380417" using R by simp
+  finally show ?thesis .
+qed
+
+lemma mbfly5:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 2139103230" and n: "n < 256"
+  shows "sf (nttLevel 5 a) n mod 8380417 = bflyLayer 4 31 (sf a) n mod 8380417"
+proof (cases "n mod 8 < 4")
+  case True
+  have ndlt: "n div 8 < 32" using n by linarith
+  have idxlt: "n div 8 + 32 < 256" using ndlt by linarith
+  have idxpos: "0 < n div 8 + 32" by simp
+  have ec: "32 + n div 8 = n div 8 + 32" by simp
+  have aPb: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B" using B unfolding ntt_bounded_def by auto
+  have aRb: "- B \<le> sint_seq (nth_seq a (n + 4))" "sint_seq (nth_seq a (n + 4)) \<le> B" using B unfolding ntt_bounded_def by auto
+  have zQ: "- 4194304 \<le> sint_seq (nth_seq zetas (n div 8 + 32))" "sint_seq (nth_seq zetas (n div 8 + 32)) \<le> 4194304" using Assay_Equivalence.zeta_bound by auto
+  have ok: "mont_input_ok (sint_seq (nth_seq zetas (n div 8 + 32)) * sint_seq (nth_seq a (n + 4)))" by (rule mont_input_ok_of_bounds[OF zQ(1) zQ(2) aRb(1) aRb(2) Bhi])
+  have mb: "- 8380417 < sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 8 + 32)) * sext64 (nth_seq a (n + 4))))" "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 8 + 32)) * sext64 (nth_seq a (n + 4)))) < 8380417" using mont_butterfly_bound[OF ok] by simp_all
+  have noov: "sint_seq (nth_seq a n + montgomery_reduce (sext64 (nth_seq zetas (n div 8 + 32)) * sext64 (nth_seq a (n + 4)))) = sint_seq (nth_seq a n) + sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 8 + 32)) * sext64 (nth_seq a (n + 4))))" by (rule sint_seq_add_eq) (use aPb mb Bhi in linarith)+
+  have bc: "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 8 + 32)) * sext64 (nth_seq a (n + 4)))) mod 8380417 = (uint_seq (nth_seq zetabrv (n div 8 + 32)) * sint_seq (nth_seq a (n + 4))) mod 8380417" using butterfly_cong[OF idxpos idxlt ok] by simp
+  have lhs: "sf (nttLevel 5 a) n mod 8380417 = (sint_seq (nth_seq a n) + sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 8 + 32)) * sext64 (nth_seq a (n + 4))))) mod 8380417"
+    using True mlevel5_coeff[OF n] noov by (simp add: sf_def)
+  also have "\<dots> = (sint_seq (nth_seq a n) + uint_seq (nth_seq zetabrv (n div 8 + 32)) * sint_seq (nth_seq a (n + 4))) mod 8380417" by (rule mod_add_cong[OF refl bc])
+  finally have Lc: "sf (nttLevel 5 a) n mod 8380417 = (sf a n + zt (n div 8 + 32) * sf a (n + 4)) mod 8380417" by (simp add: sf_def zt_def)
+  have R: "bflyLayer 4 31 (sf a) n mod 8380417 = (sf a n + zt (n div 8 + 32) * sf a (n + 4)) mod 8380417"
+    using True by (simp add: bflyLayer_def mod_add_right_eq ec)
+  show ?thesis using Lc R by simp
+next
+  case False
+  have ndlt: "n div 8 < 32" using n by linarith
+  have idxlt: "n div 8 + 32 < 256" using ndlt by linarith
+  have idxpos: "0 < n div 8 + 32" by simp
+  have ec: "32 + n div 8 = n div 8 + 32" by simp
+  have aPb: "- B \<le> sint_seq (nth_seq a (n - 4))" "sint_seq (nth_seq a (n - 4)) \<le> B" using B unfolding ntt_bounded_def by auto
+  have aRb: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B" using B unfolding ntt_bounded_def by auto
+  have zQ: "- 4194304 \<le> sint_seq (nth_seq zetas (n div 8 + 32))" "sint_seq (nth_seq zetas (n div 8 + 32)) \<le> 4194304" using Assay_Equivalence.zeta_bound by auto
+  have ok: "mont_input_ok (sint_seq (nth_seq zetas (n div 8 + 32)) * sint_seq (nth_seq a n))" by (rule mont_input_ok_of_bounds[OF zQ(1) zQ(2) aRb(1) aRb(2) Bhi])
+  have mb: "- 8380417 < sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 8 + 32)) * sext64 (nth_seq a n)))" "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 8 + 32)) * sext64 (nth_seq a n))) < 8380417" using mont_butterfly_bound[OF ok] by simp_all
+  have noov: "sint_seq (nth_seq a (n - 4) - montgomery_reduce (sext64 (nth_seq zetas (n div 8 + 32)) * sext64 (nth_seq a n))) = sint_seq (nth_seq a (n - 4)) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 8 + 32)) * sext64 (nth_seq a n)))" by (rule sint_seq_sub_eq) (use aPb mb Bhi in linarith)+
+  have bc: "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 8 + 32)) * sext64 (nth_seq a n))) mod 8380417 = (uint_seq (nth_seq zetabrv (n div 8 + 32)) * sint_seq (nth_seq a n)) mod 8380417" using butterfly_cong[OF idxpos idxlt ok] by simp
+  have lhs: "sf (nttLevel 5 a) n mod 8380417 = (sf a (n - 4) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 8 + 32)) * sext64 (nth_seq a n)))) mod 8380417"
+    using False mlevel5_coeff[OF n] noov by (simp add: sf_def)
+  have key: "(sf a (n - 4) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 8 + 32)) * sext64 (nth_seq a n)))) mod 8380417 = (sf a (n - 4) - zt (n div 8 + 32) * sf a n) mod 8380417"
+  proof -
+    have "(sf a (n - 4) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 8 + 32)) * sext64 (nth_seq a n)))) mod 8380417 = (sf a (n - 4) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 8 + 32)) * sext64 (nth_seq a n))) mod 8380417) mod 8380417" by (simp add: mod_diff_right_eq)
+    also have "\<dots> = (sf a (n - 4) - (uint_seq (nth_seq zetabrv (n div 8 + 32)) * sint_seq (nth_seq a n)) mod 8380417) mod 8380417" using bc by simp
+    also have "\<dots> = (sf a (n - 4) - zt (n div 8 + 32) * sf a n) mod 8380417" by (simp add: sf_def zt_def mod_diff_right_eq)
+    finally show ?thesis .
+  qed
+  have R: "bflyLayer 4 31 (sf a) n mod 8380417 = (sf a (n - 4) + 8380417 - zt (n div 8 + 32) * sf a n) mod 8380417"
+    using False by (simp add: bflyLayer_def mod_diff_right_eq ec)
+  have rearr: "sf a (n - 4) + 8380417 - zt (n div 8 + 32) * sf a n = sf a (n - 4) - zt (n div 8 + 32) * sf a n + 8380417" by simp
+  have R2: "(sf a (n - 4) + 8380417 - zt (n div 8 + 32) * sf a n) mod 8380417 = (sf a (n - 4) - zt (n div 8 + 32) * sf a n) mod 8380417"
+    unfolding rearr by (rule mod_add_self2)
+  have "sf (nttLevel 5 a) n mod 8380417 = (sf a (n - 4) - zt (n div 8 + 32) * sf a n) mod 8380417" using lhs key by simp
+  also have "\<dots> = (sf a (n - 4) + 8380417 - zt (n div 8 + 32) * sf a n) mod 8380417" using R2 by simp
+  also have "\<dots> = bflyLayer 4 31 (sf a) n mod 8380417" using R by simp
+  finally show ?thesis .
+qed
+
+lemma mbfly6:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 2139103230" and n: "n < 256"
+  shows "sf (nttLevel 6 a) n mod 8380417 = bflyLayer 2 63 (sf a) n mod 8380417"
+proof (cases "n mod 4 < 2")
+  case True
+  have ndlt: "n div 4 < 64" using n by linarith
+  have idxlt: "n div 4 + 64 < 256" using ndlt by linarith
+  have idxpos: "0 < n div 4 + 64" by simp
+  have ec: "64 + n div 4 = n div 4 + 64" by simp
+  have aPb: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B" using B unfolding ntt_bounded_def by auto
+  have aRb: "- B \<le> sint_seq (nth_seq a (n + 2))" "sint_seq (nth_seq a (n + 2)) \<le> B" using B unfolding ntt_bounded_def by auto
+  have zQ: "- 4194304 \<le> sint_seq (nth_seq zetas (n div 4 + 64))" "sint_seq (nth_seq zetas (n div 4 + 64)) \<le> 4194304" using Assay_Equivalence.zeta_bound by auto
+  have ok: "mont_input_ok (sint_seq (nth_seq zetas (n div 4 + 64)) * sint_seq (nth_seq a (n + 2)))" by (rule mont_input_ok_of_bounds[OF zQ(1) zQ(2) aRb(1) aRb(2) Bhi])
+  have mb: "- 8380417 < sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 4 + 64)) * sext64 (nth_seq a (n + 2))))" "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 4 + 64)) * sext64 (nth_seq a (n + 2)))) < 8380417" using mont_butterfly_bound[OF ok] by simp_all
+  have noov: "sint_seq (nth_seq a n + montgomery_reduce (sext64 (nth_seq zetas (n div 4 + 64)) * sext64 (nth_seq a (n + 2)))) = sint_seq (nth_seq a n) + sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 4 + 64)) * sext64 (nth_seq a (n + 2))))" by (rule sint_seq_add_eq) (use aPb mb Bhi in linarith)+
+  have bc: "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 4 + 64)) * sext64 (nth_seq a (n + 2)))) mod 8380417 = (uint_seq (nth_seq zetabrv (n div 4 + 64)) * sint_seq (nth_seq a (n + 2))) mod 8380417" using butterfly_cong[OF idxpos idxlt ok] by simp
+  have lhs: "sf (nttLevel 6 a) n mod 8380417 = (sint_seq (nth_seq a n) + sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 4 + 64)) * sext64 (nth_seq a (n + 2))))) mod 8380417"
+    using True mlevel6_coeff[OF n] noov by (simp add: sf_def)
+  also have "\<dots> = (sint_seq (nth_seq a n) + uint_seq (nth_seq zetabrv (n div 4 + 64)) * sint_seq (nth_seq a (n + 2))) mod 8380417" by (rule mod_add_cong[OF refl bc])
+  finally have Lc: "sf (nttLevel 6 a) n mod 8380417 = (sf a n + zt (n div 4 + 64) * sf a (n + 2)) mod 8380417" by (simp add: sf_def zt_def)
+  have R: "bflyLayer 2 63 (sf a) n mod 8380417 = (sf a n + zt (n div 4 + 64) * sf a (n + 2)) mod 8380417"
+    using True by (simp add: bflyLayer_def mod_add_right_eq ec)
+  show ?thesis using Lc R by simp
+next
+  case False
+  have ndlt: "n div 4 < 64" using n by linarith
+  have idxlt: "n div 4 + 64 < 256" using ndlt by linarith
+  have idxpos: "0 < n div 4 + 64" by simp
+  have ec: "64 + n div 4 = n div 4 + 64" by simp
+  have aPb: "- B \<le> sint_seq (nth_seq a (n - 2))" "sint_seq (nth_seq a (n - 2)) \<le> B" using B unfolding ntt_bounded_def by auto
+  have aRb: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B" using B unfolding ntt_bounded_def by auto
+  have zQ: "- 4194304 \<le> sint_seq (nth_seq zetas (n div 4 + 64))" "sint_seq (nth_seq zetas (n div 4 + 64)) \<le> 4194304" using Assay_Equivalence.zeta_bound by auto
+  have ok: "mont_input_ok (sint_seq (nth_seq zetas (n div 4 + 64)) * sint_seq (nth_seq a n))" by (rule mont_input_ok_of_bounds[OF zQ(1) zQ(2) aRb(1) aRb(2) Bhi])
+  have mb: "- 8380417 < sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 4 + 64)) * sext64 (nth_seq a n)))" "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 4 + 64)) * sext64 (nth_seq a n))) < 8380417" using mont_butterfly_bound[OF ok] by simp_all
+  have noov: "sint_seq (nth_seq a (n - 2) - montgomery_reduce (sext64 (nth_seq zetas (n div 4 + 64)) * sext64 (nth_seq a n))) = sint_seq (nth_seq a (n - 2)) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 4 + 64)) * sext64 (nth_seq a n)))" by (rule sint_seq_sub_eq) (use aPb mb Bhi in linarith)+
+  have bc: "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 4 + 64)) * sext64 (nth_seq a n))) mod 8380417 = (uint_seq (nth_seq zetabrv (n div 4 + 64)) * sint_seq (nth_seq a n)) mod 8380417" using butterfly_cong[OF idxpos idxlt ok] by simp
+  have lhs: "sf (nttLevel 6 a) n mod 8380417 = (sf a (n - 2) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 4 + 64)) * sext64 (nth_seq a n)))) mod 8380417"
+    using False mlevel6_coeff[OF n] noov by (simp add: sf_def)
+  have key: "(sf a (n - 2) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 4 + 64)) * sext64 (nth_seq a n)))) mod 8380417 = (sf a (n - 2) - zt (n div 4 + 64) * sf a n) mod 8380417"
+  proof -
+    have "(sf a (n - 2) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 4 + 64)) * sext64 (nth_seq a n)))) mod 8380417 = (sf a (n - 2) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 4 + 64)) * sext64 (nth_seq a n))) mod 8380417) mod 8380417" by (simp add: mod_diff_right_eq)
+    also have "\<dots> = (sf a (n - 2) - (uint_seq (nth_seq zetabrv (n div 4 + 64)) * sint_seq (nth_seq a n)) mod 8380417) mod 8380417" using bc by simp
+    also have "\<dots> = (sf a (n - 2) - zt (n div 4 + 64) * sf a n) mod 8380417" by (simp add: sf_def zt_def mod_diff_right_eq)
+    finally show ?thesis .
+  qed
+  have R: "bflyLayer 2 63 (sf a) n mod 8380417 = (sf a (n - 2) + 8380417 - zt (n div 4 + 64) * sf a n) mod 8380417"
+    using False by (simp add: bflyLayer_def mod_diff_right_eq ec)
+  have rearr: "sf a (n - 2) + 8380417 - zt (n div 4 + 64) * sf a n = sf a (n - 2) - zt (n div 4 + 64) * sf a n + 8380417" by simp
+  have R2: "(sf a (n - 2) + 8380417 - zt (n div 4 + 64) * sf a n) mod 8380417 = (sf a (n - 2) - zt (n div 4 + 64) * sf a n) mod 8380417"
+    unfolding rearr by (rule mod_add_self2)
+  have "sf (nttLevel 6 a) n mod 8380417 = (sf a (n - 2) - zt (n div 4 + 64) * sf a n) mod 8380417" using lhs key by simp
+  also have "\<dots> = (sf a (n - 2) + 8380417 - zt (n div 4 + 64) * sf a n) mod 8380417" using R2 by simp
+  also have "\<dots> = bflyLayer 2 63 (sf a) n mod 8380417" using R by simp
+  finally show ?thesis .
+qed
+
+lemma mbfly7:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 2139103230" and n: "n < 256"
+  shows "sf (nttLevel 7 a) n mod 8380417 = bflyLayer 1 127 (sf a) n mod 8380417"
+proof (cases "n mod 2 < 1")
+  case True
+  have ndlt: "n div 2 < 128" using n by linarith
+  have idxlt: "n div 2 + 128 < 256" using ndlt by linarith
+  have idxpos: "0 < n div 2 + 128" by simp
+  have ec: "128 + n div 2 = n div 2 + 128" by simp
+  have aPb: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B" using B unfolding ntt_bounded_def by auto
+  have aRb: "- B \<le> sint_seq (nth_seq a (n + 1))" "sint_seq (nth_seq a (n + 1)) \<le> B" using B unfolding ntt_bounded_def by auto
+  have zQ: "- 4194304 \<le> sint_seq (nth_seq zetas (n div 2 + 128))" "sint_seq (nth_seq zetas (n div 2 + 128)) \<le> 4194304" using Assay_Equivalence.zeta_bound by auto
+  have ok: "mont_input_ok (sint_seq (nth_seq zetas (n div 2 + 128)) * sint_seq (nth_seq a (n + 1)))" by (rule mont_input_ok_of_bounds[OF zQ(1) zQ(2) aRb(1) aRb(2) Bhi])
+  have mb: "- 8380417 < sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 2 + 128)) * sext64 (nth_seq a (n + 1))))" "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 2 + 128)) * sext64 (nth_seq a (n + 1)))) < 8380417" using mont_butterfly_bound[OF ok] by simp_all
+  have noov: "sint_seq (nth_seq a n + montgomery_reduce (sext64 (nth_seq zetas (n div 2 + 128)) * sext64 (nth_seq a (n + 1)))) = sint_seq (nth_seq a n) + sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 2 + 128)) * sext64 (nth_seq a (n + 1))))" by (rule sint_seq_add_eq) (use aPb mb Bhi in linarith)+
+  have bc: "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 2 + 128)) * sext64 (nth_seq a (n + 1)))) mod 8380417 = (uint_seq (nth_seq zetabrv (n div 2 + 128)) * sint_seq (nth_seq a (n + 1))) mod 8380417" using butterfly_cong[OF idxpos idxlt ok] by simp
+  have lhs: "sf (nttLevel 7 a) n mod 8380417 = (sint_seq (nth_seq a n) + sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 2 + 128)) * sext64 (nth_seq a (n + 1))))) mod 8380417"
+    using True mlevel7_coeff[OF n] noov by (simp add: sf_def)
+  also have "\<dots> = (sint_seq (nth_seq a n) + uint_seq (nth_seq zetabrv (n div 2 + 128)) * sint_seq (nth_seq a (n + 1))) mod 8380417" by (rule mod_add_cong[OF refl bc])
+  finally have Lc: "sf (nttLevel 7 a) n mod 8380417 = (sf a n + zt (n div 2 + 128) * sf a (n + 1)) mod 8380417" by (simp add: sf_def zt_def)
+  have R: "bflyLayer 1 127 (sf a) n mod 8380417 = (sf a n + zt (n div 2 + 128) * sf a (n + 1)) mod 8380417"
+    using True by (simp add: bflyLayer_def mod_add_right_eq ec)
+  show ?thesis using Lc R by simp
+next
+  case False
+  have ndlt: "n div 2 < 128" using n by linarith
+  have idxlt: "n div 2 + 128 < 256" using ndlt by linarith
+  have idxpos: "0 < n div 2 + 128" by simp
+  have ec: "128 + n div 2 = n div 2 + 128" by simp
+  have aPb: "- B \<le> sint_seq (nth_seq a (n - 1))" "sint_seq (nth_seq a (n - 1)) \<le> B" using B unfolding ntt_bounded_def by auto
+  have aRb: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B" using B unfolding ntt_bounded_def by auto
+  have zQ: "- 4194304 \<le> sint_seq (nth_seq zetas (n div 2 + 128))" "sint_seq (nth_seq zetas (n div 2 + 128)) \<le> 4194304" using Assay_Equivalence.zeta_bound by auto
+  have ok: "mont_input_ok (sint_seq (nth_seq zetas (n div 2 + 128)) * sint_seq (nth_seq a n))" by (rule mont_input_ok_of_bounds[OF zQ(1) zQ(2) aRb(1) aRb(2) Bhi])
+  have mb: "- 8380417 < sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 2 + 128)) * sext64 (nth_seq a n)))" "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 2 + 128)) * sext64 (nth_seq a n))) < 8380417" using mont_butterfly_bound[OF ok] by simp_all
+  have noov: "sint_seq (nth_seq a (n - 1) - montgomery_reduce (sext64 (nth_seq zetas (n div 2 + 128)) * sext64 (nth_seq a n))) = sint_seq (nth_seq a (n - 1)) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 2 + 128)) * sext64 (nth_seq a n)))" by (rule sint_seq_sub_eq) (use aPb mb Bhi in linarith)+
+  have bc: "sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 2 + 128)) * sext64 (nth_seq a n))) mod 8380417 = (uint_seq (nth_seq zetabrv (n div 2 + 128)) * sint_seq (nth_seq a n)) mod 8380417" using butterfly_cong[OF idxpos idxlt ok] by simp
+  have lhs: "sf (nttLevel 7 a) n mod 8380417 = (sf a (n - 1) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 2 + 128)) * sext64 (nth_seq a n)))) mod 8380417"
+    using False mlevel7_coeff[OF n] noov by (simp add: sf_def)
+  have key: "(sf a (n - 1) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 2 + 128)) * sext64 (nth_seq a n)))) mod 8380417 = (sf a (n - 1) - zt (n div 2 + 128) * sf a n) mod 8380417"
+  proof -
+    have "(sf a (n - 1) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 2 + 128)) * sext64 (nth_seq a n)))) mod 8380417 = (sf a (n - 1) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas (n div 2 + 128)) * sext64 (nth_seq a n))) mod 8380417) mod 8380417" by (simp add: mod_diff_right_eq)
+    also have "\<dots> = (sf a (n - 1) - (uint_seq (nth_seq zetabrv (n div 2 + 128)) * sint_seq (nth_seq a n)) mod 8380417) mod 8380417" using bc by simp
+    also have "\<dots> = (sf a (n - 1) - zt (n div 2 + 128) * sf a n) mod 8380417" by (simp add: sf_def zt_def mod_diff_right_eq)
+    finally show ?thesis .
+  qed
+  have R: "bflyLayer 1 127 (sf a) n mod 8380417 = (sf a (n - 1) + 8380417 - zt (n div 2 + 128) * sf a n) mod 8380417"
+    using False by (simp add: bflyLayer_def mod_diff_right_eq ec)
+  have rearr: "sf a (n - 1) + 8380417 - zt (n div 2 + 128) * sf a n = sf a (n - 1) - zt (n div 2 + 128) * sf a n + 8380417" by simp
+  have R2: "(sf a (n - 1) + 8380417 - zt (n div 2 + 128) * sf a n) mod 8380417 = (sf a (n - 1) - zt (n div 2 + 128) * sf a n) mod 8380417"
+    unfolding rearr by (rule mod_add_self2)
+  have "sf (nttLevel 7 a) n mod 8380417 = (sf a (n - 1) - zt (n div 2 + 128) * sf a n) mod 8380417" using lhs key by simp
+  also have "\<dots> = (sf a (n - 1) + 8380417 - zt (n div 2 + 128) * sf a n) mod 8380417" using R2 by simp
+  also have "\<dots> = bflyLayer 1 127 (sf a) n mod 8380417" using R by simp
+  finally show ?thesis .
+qed
+
 end
 
 end
