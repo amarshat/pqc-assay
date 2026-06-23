@@ -128,4 +128,325 @@ proof -
     by (simp add: cong_def)
 qed
 
+text \<open>Brick (d), part 1: the per-position unfolds of the montgomery model layers, plus the
+  per-layer congruence to the abstract CT butterfly. The cryptol notation context is needed
+  for the \<open>[256][32]\<close> types; coercion is disabled so the pure nat/int arithmetic (presburger
+  would hang) goes through \<open>linarith\<close>.\<close>
+
+context includes cryptol_syntax begin
+
+declare [[coercion_enabled = false]]
+
+text \<open>Sub-leg twiddle-block stability: on the upper half (\<open>n mod 2L \<ge> L\<close>) shifting the index
+  down by the stride \<open>L\<close> leaves the block index \<open>n div 2L\<close> unchanged.\<close>
+lemma sub_div_eq:
+  fixes L n :: nat
+  assumes b: "L \<le> n mod (2*L)" and n: "L \<le> n" and L: "0 < L"
+  shows "(n - L) div (2*L) = n div (2*L)"
+proof -
+  have tl0: "0 < 2 * L" using L by simp
+  have dec: "n div (2*L) * (2*L) + n mod (2*L) = n" by (rule div_mult_mod_eq)
+  have m2L: "n mod (2 * L) < 2 * L" using tl0 by (rule mod_less_divisor)
+  have lt: "n mod (2*L) - L < 2*L" using m2L by linarith
+  have e: "n - L = (n mod (2*L) - L) + n div (2*L) * (2*L)"
+    using dec b n by linarith
+  have "(n - L) div (2*L) = ((n mod (2*L) - L) + n div (2*L) * (2*L)) div (2*L)"
+    using e by simp
+  also have "\<dots> = (n mod (2*L) - L) div (2*L) + n div (2*L)"
+    using tl0 by (simp add: div_mult_self1 div_mult_self2 div_mult_self3 div_mult_self4)
+  also have "\<dots> = n div (2*L)" using lt by simp
+  finally show ?thesis .
+qed
+
+text \<open>No-overflow lifts of the int32 add/sub: when the signed sum/difference stays in int32
+  range the word op agrees with integer arithmetic (extracted from \<open>butterfly_add_bound\<close>).\<close>
+lemma sint_seq_add_eq:
+  fixes x y :: "[32]"
+  assumes "- 2147483648 \<le> sint_seq x + sint_seq y" "sint_seq x + sint_seq y < 2147483648"
+  shows "sint_seq (x + y) = sint_seq x + sint_seq y"
+proof -
+  have "sint_seq (x + y) = sint (seq_to_word x + seq_to_word y)"
+    by (simp add: probe_sint_seq word_seq_convs seq_to_word)
+  also have "\<dots> = sint (seq_to_word x) + sint (seq_to_word y)"
+    by (rule sint_add_inrange) (use assms in \<open>simp add: probe_sint_seq\<close>)+
+  also have "\<dots> = sint_seq x + sint_seq y" by (simp add: probe_sint_seq)
+  finally show ?thesis .
+qed
+
+lemma sint_seq_sub_eq:
+  fixes x y :: "[32]"
+  assumes "- 2147483648 \<le> sint_seq x - sint_seq y" "sint_seq x - sint_seq y < 2147483648"
+  shows "sint_seq (x - y) = sint_seq x - sint_seq y"
+proof -
+  have "sint_seq (x - y) = sint (seq_to_word x - seq_to_word y)"
+    by (simp add: probe_sint_seq word_seq_convs seq_to_word)
+  also have "\<dots> = sint (seq_to_word x) - sint (seq_to_word y)"
+    by (rule sint_sub_inrange) (use assms in \<open>simp add: probe_sint_seq\<close>)+
+  also have "\<dots> = sint_seq x - sint_seq y" by (simp add: probe_sint_seq)
+  finally show ?thesis .
+qed
+
+text \<open>Montgomery model, level 0 (stride 128). Output position \<open>n\<close> is the FIPS butterfly with
+  the single montgomery twiddle \<open>zetas[1]\<close>; lower half additive, upper half subtractive. The
+  montgomery_reduce term and coefficients are kept symbolic (their value congruence is
+  \<open>butterfly_cong\<close>); only the seq-comprehension and [16] index arithmetic are resolved.\<close>
+lemma mlevel0_lo:
+  fixes a :: "[256][32]"
+  assumes n: "n < (128::nat)"
+  shows "nth_seq (nttLevel 0 a) n
+       = nth_seq a n + montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a (n + 128)))"
+proof -
+  have n256: "n < 256" using n by simp
+  have e1: "n mod 65536 = n" using n by simp
+  have e2: "n mod 256 = n" using n by simp
+  have e3: "n div 256 = 0" using n by simp
+  show ?thesis
+    using n
+    apply (simp add: nttLevel_def fromTo_def Let_def n256)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 e2 e3)
+    done
+qed
+
+lemma mlevel0_hi:
+  fixes a :: "[256][32]"
+  assumes n: "128 \<le> n" and n2: "n < (256::nat)"
+  shows "nth_seq (nttLevel 0 a) n
+       = nth_seq a (n - 128) - montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a n))"
+proof -
+  have e1: "n mod 65536 = n" using n2 by simp
+  have e2: "n mod 256 = n" using n2 by simp
+  have e3: "n div 256 = 0" using n2 by simp
+  have e3b: "(n - 128) div 256 = 0" using n2 by simp
+  have es: "unat (word_of_nat n - (0x80::16 word)) = n - 128"
+    using n n2 by (simp add: unat_sub word_le_nat_alt unat_of_nat)
+  show ?thesis
+    using n n2
+    apply (simp add: nttLevel_def fromTo_def Let_def n2)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 e2 e3 e3b es)
+    done
+qed
+
+lemma mlevel0_coeff:
+  fixes a :: "[256][32]"
+  assumes n: "n < (256::nat)"
+  shows "nth_seq (nttLevel 0 a) n
+       = (if n < 128
+          then nth_seq a n + montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a (n + 128)))
+          else nth_seq a (n - 128) - montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a n)))"
+proof (cases "n < 128")
+  case True thus ?thesis using mlevel0_lo[OF True] by simp
+next
+  case False thus ?thesis using mlevel0_hi[OF _ n] n by simp
+qed
+
+text \<open>Montgomery model, level 1 (stride 64), twiddle \<open>zetas[n div 128 + 2]\<close>.\<close>
+lemma mlevel1_lo:
+  fixes a :: "[256][32]"
+  assumes hlo: "n mod 128 < 64" and n2: "n < (256::nat)"
+  shows "nth_seq (nttLevel 1 a) n
+       = nth_seq a n + montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a (n + 64)))"
+proof -
+  have dec: "128 * (n div 128) + n mod 128 = n" by simp
+  have ndlt: "n div 128 < 2" using n2 by linarith
+  have np: "n + 64 < 256" using dec hlo ndlt by linarith
+  have e1: "n mod 65536 = n" using n2 by simp
+  have e2: "(n + 64) mod 65536 = n + 64" using np by simp
+  have sh: "unat ((0x100::16 word) >> 1) = 128" "unat ((0x80::16 word) >> 1) = 64"
+           "unat ((1::16 word) << 1) = 2" "((0x80::16 word) >> 1) = 0x40" by eval+
+  show ?thesis
+    using hlo n2
+    apply (simp add: nttLevel_def fromTo_def Let_def n2)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths sh)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 e2 hlo ndlt sh)
+    done
+qed
+
+lemma mlevel1_hi:
+  fixes a :: "[256][32]"
+  assumes hhi: "\<not> n mod 128 < 64" and n2: "n < (256::nat)"
+  shows "nth_seq (nttLevel 1 a) n
+       = nth_seq a (n - 64) - montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a n))"
+proof -
+  have nge: "64 \<le> n" using hhi by (cases "n < 64") auto
+  have e1: "n mod 65536 = n" using n2 by simp
+  have ndlt: "n div 128 < 2" using n2 by linarith
+  have e3b: "(n - 64) div 128 = n div 128" using sub_div_eq[of 64 n] hhi nge by simp
+  have es: "unat (word_of_nat n - (0x40::16 word)) = n - 64"
+    using nge n2 by (simp add: unat_sub word_le_nat_alt unat_of_nat)
+  have em1: "n div 128 mod 65536 = n div 128" using ndlt by simp
+  have em2: "Suc (Suc (n div 128)) mod 65536 = Suc (Suc (n div 128))" using ndlt by simp
+  have sh: "unat ((0x100::16 word) >> 1) = 128" "unat ((0x80::16 word) >> 1) = 64"
+           "unat ((1::16 word) << 1) = 2" "((0x80::16 word) >> 1) = 0x40" by eval+
+  show ?thesis
+    using hhi n2
+    apply (simp add: nttLevel_def fromTo_def Let_def n2)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths sh)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 hhi ndlt e3b es sh em1 em2)
+    done
+qed
+
+lemma mlevel1_coeff:
+  fixes a :: "[256][32]"
+  assumes n: "n < (256::nat)"
+  shows "nth_seq (nttLevel 1 a) n
+       = (if n mod 128 < 64
+          then nth_seq a n + montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a (n + 64)))
+          else nth_seq a (n - 64) - montgomery_reduce (sext64 (nth_seq zetas (n div 128 + 2)) * sext64 (nth_seq a n)))"
+  using mlevel1_lo[OF _ n] mlevel1_hi[OF _ n] by simp
+
+text \<open>Signed int-coefficient view of the montgomery model (cf. \<open>cf\<close> for the normal model).\<close>
+definition sf :: "[256][32] \<Rightarrow> nat \<Rightarrow> int" where
+  "sf a n = sint_seq (nth_seq a n)"
+
+text \<open>The abstract CT layer respects pointwise mod-q congruence of its coefficient function.\<close>
+lemma bflyLayer_cong_g:
+  fixes g g' :: "nat \<Rightarrow> int"
+  assumes "\<And>m. g m mod 8380417 = g' m mod 8380417"
+  shows "bflyLayer L M0 g n mod 8380417 = bflyLayer L M0 g' n mod 8380417"
+proof -
+  have add: "(g n + zt i * g (n + L) mod 8380417) mod 8380417
+           = (g' n + zt i * g' (n + L) mod 8380417) mod 8380417" for i
+  proof -
+    have "(g n + zt i * g (n + L) mod 8380417) mod 8380417 = (g n + zt i * g (n + L)) mod 8380417"
+      by (simp add: mod_add_right_eq)
+    also have "\<dots> = (g' n + zt i * g' (n + L)) mod 8380417"
+      by (rule mod_add_cong[OF assms mod_mult_cong[OF refl assms]])
+    also have "\<dots> = (g' n + zt i * g' (n + L) mod 8380417) mod 8380417"
+      by (simp add: mod_add_right_eq)
+    finally show ?thesis .
+  qed
+  have sub: "(g (n - L) + 8380417 - zt i * g n mod 8380417) mod 8380417
+           = (g' (n - L) + 8380417 - zt i * g' n mod 8380417) mod 8380417" for i
+  proof -
+    have "(g (n - L) + 8380417 - zt i * g n mod 8380417) mod 8380417
+        = (g (n - L) + 8380417 - zt i * g n) mod 8380417"
+      by (simp add: mod_diff_right_eq)
+    also have "\<dots> = (g' (n - L) + 8380417 - zt i * g' n) mod 8380417"
+      by (rule mod_diff_cong[OF mod_add_cong[OF assms refl] mod_mult_cong[OF refl assms]])
+    also have "\<dots> = (g' (n - L) + 8380417 - zt i * g' n mod 8380417) mod 8380417"
+      by (simp add: mod_diff_right_eq)
+    finally show ?thesis .
+  qed
+  show ?thesis unfolding bflyLayer_def using add sub by simp
+qed
+
+text \<open>Brick (d), part 2 (level 0): the montgomery model's signed output coefficient at position
+  \<open>n\<close> is congruent mod q to one abstract CT butterfly layer on the montgomery sint-view. This
+  composes the level-0 unfold, the per-butterfly value congruence (\<open>butterfly_cong\<close>), the
+  no-overflow lifts, and the normal-model twiddle table (\<open>zt\<close>). Validates the full per-layer
+  method end to end; the remaining 7 levels and the foldl induction follow the same shape.\<close>
+lemma mbfly0:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 2139103230" and n: "n < 256"
+  shows "sf (nttLevel 0 a) n mod 8380417 = bflyLayer 128 0 (sf a) n mod 8380417"
+proof (cases "n < 128")
+  case True
+  have aP: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B"
+    using B unfolding ntt_bounded_def by auto
+  have aR: "- B \<le> sint_seq (nth_seq a (n + 128))" "sint_seq (nth_seq a (n + 128)) \<le> B"
+    using B unfolding ntt_bounded_def by auto
+  have zQ: "- 4194304 \<le> sint_seq (nth_seq zetas 1)" "sint_seq (nth_seq zetas 1) \<le> 4194304"
+    using Assay_Equivalence.zeta_bound by auto
+  have ok: "mont_input_ok (sint_seq (nth_seq zetas 1) * sint_seq (nth_seq a (n + 128)))"
+    by (rule mont_input_ok_of_bounds[OF zQ(1) zQ(2) aR(1) aR(2) Bhi])
+  have mb: "- 8380417 < sint_seq (montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a (n + 128))))"
+           "sint_seq (montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a (n + 128)))) < 8380417"
+    using mont_butterfly_bound[OF ok] by simp_all
+  have noov: "sint_seq (nth_seq a n + montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a (n + 128))))
+            = sint_seq (nth_seq a n) + sint_seq (montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a (n + 128))))"
+    by (rule sint_seq_add_eq) (use aP mb Bhi in linarith)+
+  have i1: "(0::nat) < 1" "(1::nat) < 256" by simp_all
+  have bc: "sint_seq (montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a (n + 128)))) mod 8380417
+          = (uint_seq (nth_seq zetabrv 1) * sint_seq (nth_seq a (n + 128))) mod 8380417"
+    using butterfly_cong[OF i1(1) i1(2) ok] by simp
+  have lhs: "sf (nttLevel 0 a) n mod 8380417
+           = (sint_seq (nth_seq a n)
+              + sint_seq (montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a (n + 128))))) mod 8380417"
+    using True mlevel0_coeff[OF n] noov by (simp add: sf_def)
+  also have "\<dots> = (sint_seq (nth_seq a n)
+                  + uint_seq (nth_seq zetabrv 1) * sint_seq (nth_seq a (n + 128))) mod 8380417"
+    by (rule mod_add_cong[OF refl bc])
+  finally have L: "sf (nttLevel 0 a) n mod 8380417 = (sf a n + zt 1 * sf a (n + 128)) mod 8380417"
+    by (simp add: sf_def zt_def)
+  have e2: "n mod 256 = n" using n by simp
+  have e3: "n div 256 = 0" using n by simp
+  have R: "bflyLayer 128 0 (sf a) n mod 8380417 = (sf a n + zt 1 * sf a (n + 128)) mod 8380417"
+    using True e2 e3 by (simp add: bflyLayer_def mod_add_right_eq)
+  show ?thesis using L R by simp
+next
+  case False
+  hence ge: "128 \<le> n" by simp
+  have nm: "n - 128 < 256" using n by simp
+  have aP: "- B \<le> sint_seq (nth_seq a (n - 128))" "sint_seq (nth_seq a (n - 128)) \<le> B"
+    using B unfolding ntt_bounded_def by auto
+  have aR: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B"
+    using B unfolding ntt_bounded_def by auto
+  have zQ: "- 4194304 \<le> sint_seq (nth_seq zetas 1)" "sint_seq (nth_seq zetas 1) \<le> 4194304"
+    using Assay_Equivalence.zeta_bound by auto
+  have ok: "mont_input_ok (sint_seq (nth_seq zetas 1) * sint_seq (nth_seq a n))"
+    by (rule mont_input_ok_of_bounds[OF zQ(1) zQ(2) aR(1) aR(2) Bhi])
+  have mb: "- 8380417 < sint_seq (montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a n)))"
+           "sint_seq (montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a n))) < 8380417"
+    using mont_butterfly_bound[OF ok] by simp_all
+  have noov: "sint_seq (nth_seq a (n - 128) - montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a n)))
+            = sint_seq (nth_seq a (n - 128)) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a n)))"
+    by (rule sint_seq_sub_eq) (use aP mb Bhi in linarith)+
+  have i1: "(0::nat) < 1" "(1::nat) < 256" by simp_all
+  have bc: "sint_seq (montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a n))) mod 8380417
+          = (uint_seq (nth_seq zetabrv 1) * sint_seq (nth_seq a n)) mod 8380417"
+    using butterfly_cong[OF i1(1) i1(2) ok] by simp
+  have lhs: "sf (nttLevel 0 a) n mod 8380417
+           = (sf a (n - 128)
+              - sint_seq (montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a n)))) mod 8380417"
+    using False mlevel0_coeff[OF n] noov by (simp add: sf_def)
+  have key: "(sf a (n - 128) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a n)))) mod 8380417
+           = (sf a (n - 128) - zt 1 * sf a n) mod 8380417"
+  proof -
+    have "(sf a (n - 128) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a n)))) mod 8380417
+        = (sf a (n - 128) - sint_seq (montgomery_reduce (sext64 (nth_seq zetas 1) * sext64 (nth_seq a n))) mod 8380417) mod 8380417"
+      by (simp add: mod_diff_right_eq)
+    also have "\<dots> = (sf a (n - 128) - (uint_seq (nth_seq zetabrv 1) * sint_seq (nth_seq a n)) mod 8380417) mod 8380417"
+      using bc by simp
+    also have "\<dots> = (sf a (n - 128) - zt 1 * sf a n) mod 8380417"
+      by (simp add: sf_def zt_def mod_diff_right_eq)
+    finally show ?thesis .
+  qed
+  have e2: "n mod 256 = n" using n by simp
+  have e3: "n div 256 = 0" using n by simp
+  have R: "bflyLayer 128 0 (sf a) n mod 8380417 = (sf a (n - 128) + 8380417 - zt 1 * sf a n) mod 8380417"
+    using False e2 e3 by (simp add: bflyLayer_def mod_diff_right_eq)
+  have rearr: "sf a (n - 128) + 8380417 - zt 1 * sf a n
+             = sf a (n - 128) - zt 1 * sf a n + 8380417" by simp
+  have R2: "(sf a (n - 128) + 8380417 - zt 1 * sf a n) mod 8380417
+          = (sf a (n - 128) - zt 1 * sf a n) mod 8380417"
+    unfolding rearr by (rule mod_add_self2)
+  have "sf (nttLevel 0 a) n mod 8380417 = (sf a (n - 128) - zt 1 * sf a n) mod 8380417"
+    using lhs key by simp
+  also have "\<dots> = (sf a (n - 128) + 8380417 - zt 1 * sf a n) mod 8380417"
+    using R2 by simp
+  also have "\<dots> = bflyLayer 128 0 (sf a) n mod 8380417"
+    using R by simp
+  finally show ?thesis .
+qed
+
+end
+
 end
