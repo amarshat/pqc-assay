@@ -1185,6 +1185,357 @@ next
   finally show ?thesis .
 qed
 
+text \<open>Brick (d), stage 3: compose the per-layer congruences into the full bridge. OOB total
+  congruence helper, the congruence relation Rcong, base case from bounded inputs, the per-layer
+  R-preservation pres0..pres7, and the 8-layer chain to the final theorem.\<close>
+
+lemma oob255:
+  fixes s :: "[256][32]"
+  assumes "256 \<le> m"
+  shows "nth_seq s m = nth_seq s 255"
+proof -
+  have l: "length_seq s = 256" by simp
+  have e: "nth_end_seq s 0 = nth_seq s 255" by (simp add: nth_end_seq_code nth_seq_code)
+  show ?thesis using assms l e by (simp add: nth_seq_oob)
+qed
+
+lemma si_eq_ui:
+  fixes x :: "[32]"
+  assumes "uint_seq x < 2147483648"
+  shows "sint_seq x = uint_seq x"
+proof -
+  define w where "w = (seq_to_word x :: 32 word)"
+  have u: "uint w = uint_seq x" by (simp add: w_def uint_seq_conv)
+  have ge: "0 \<le> uint w" by simp
+  have nb: "\<not> bit (uint w) 31" using assms u ge by (simp add: bit_iff_odd div_eq_0_iff)
+  have "sint_seq x = sint w" by (simp add: probe_sint_seq w_def)
+  also have "\<dots> = signed_take_bit 31 (uint w)" by (simp add: sint_uint)
+  also have "\<dots> = take_bit 31 (uint w)" using nb by (simp add: signed_take_bit_eq_if_positive)
+  also have "\<dots> = uint w" using assms u ge by (simp add: take_bit_int_eq_self)
+  finally show ?thesis using u by simp
+qed
+
+definition Rcong :: "[256][32] \<Rightarrow> [256][32] \<Rightarrow> bool" where
+  "Rcong a w \<longleftrightarrow> (\<forall>m. sf a m mod 8380417 = cf w m mod 8380417)"
+
+lemma Rcong_base:
+  assumes bw: "bounded w"
+  shows "Rcong w w"
+proof -
+  have main: "sf w k mod 8380417 = cf w k mod 8380417" if k: "k < 256" for k
+  proof -
+    have "uint_seq (nth_seq w k) < 8380417" using bw k by (simp add: bounded_def)
+    hence "uint_seq (nth_seq w k) < 2147483648" by simp
+    hence "sint_seq (nth_seq w k) = uint_seq (nth_seq w k)" by (rule si_eq_ui)
+    thus ?thesis by (simp add: sf_def cf_def)
+  qed
+  show ?thesis unfolding Rcong_def
+  proof (intro allI)
+    fix m show "sf w m mod 8380417 = cf w m mod 8380417"
+    proof (cases "m < 256")
+      case True thus ?thesis using main by simp
+    next
+      case False hence ge: "256 \<le> m" by simp
+      show ?thesis using main[of 255] oob255[OF ge, of w] by (simp add: sf_def cf_def)
+    qed
+  qed
+qed
+
+lemma ui_seq_ge0: "0 \<le> uint_seq (x :: [32])" by (simp add: uint_seq_conv)
+
+lemma ntt_bounded_of_bounded:
+  assumes bw: "bounded w"
+  shows "ntt_bounded 8380416 w"
+proof -
+  have main: "- 8380416 \<le> sint_seq (nth_seq w k) \<and> sint_seq (nth_seq w k) \<le> 8380416" if k: "k < 256" for k
+  proof -
+    have lt: "uint_seq (nth_seq w k) < 8380417" using bw k by (simp add: bounded_def)
+    hence "sint_seq (nth_seq w k) = uint_seq (nth_seq w k)" using si_eq_ui by simp
+    thus ?thesis using lt ui_seq_ge0[of "nth_seq w k"] by linarith
+  qed
+  show ?thesis unfolding ntt_bounded_def
+  proof (intro allI)
+    fix m show "- 8380416 \<le> sint_seq (nth_seq w m) \<and> sint_seq (nth_seq w m) \<le> 8380416"
+    proof (cases "m < 256")
+      case True thus ?thesis using main by simp
+    next
+      case False hence ge: "256 \<le> m" by simp
+      show ?thesis using main[of 255] oob255[OF ge, of w] by simp
+    qed
+  qed
+qed
+
+lemma pres0:
+  assumes B: "ntt_bounded BB a" and Bhi: "BB \<le> 2139103230" and bw: "bounded w" and R: "Rcong a w"
+  shows "Rcong (nttLevel 0 a) (nttLayerFwd 128 1 0 w)"
+proof -
+  have Rg: "sf a m mod 8380417 = cf w m mod 8380417" for m using R by (simp add: Rcong_def)
+  have main: "sf (nttLevel 0 a) k mod 8380417 = cf (nttLayerFwd 128 1 0 w) k mod 8380417" if k: "k < 256" for k
+  proof -
+    have "sf (nttLevel 0 a) k mod 8380417 = bflyLayer 128 0 (sf a) k mod 8380417"
+      using mbfly0[OF B Bhi k] .
+    also have "\<dots> = bflyLayer 128 0 (cf w) k mod 8380417"
+      by (rule bflyLayer_cong_g[OF Rg])
+    also have "\<dots> = cf (nttLayerFwd 128 1 0 w) k mod 8380417"
+      by (simp add: abs_128[OF bw k])
+    finally show ?thesis .
+  qed
+  show ?thesis unfolding Rcong_def
+  proof (intro allI)
+    fix m show "sf (nttLevel 0 a) m mod 8380417 = cf (nttLayerFwd 128 1 0 w) m mod 8380417"
+    proof (cases "m < 256")
+      case True thus ?thesis using main by simp
+    next
+      case False hence ge: "256 \<le> m" by simp
+      show ?thesis using main[of 255] oob255[OF ge, of "nttLevel 0 a"] oob255[OF ge, of "nttLayerFwd 128 1 0 w"]
+        by (simp add: sf_def cf_def)
+    qed
+  qed
+qed
+
+lemma pres1:
+  assumes B: "ntt_bounded BB a" and Bhi: "BB \<le> 2139103230" and bw: "bounded w" and R: "Rcong a w"
+  shows "Rcong (nttLevel 1 a) (nttLayerFwd 64 2 1 w)"
+proof -
+  have Rg: "sf a m mod 8380417 = cf w m mod 8380417" for m using R by (simp add: Rcong_def)
+  have main: "sf (nttLevel 1 a) k mod 8380417 = cf (nttLayerFwd 64 2 1 w) k mod 8380417" if k: "k < 256" for k
+  proof -
+    have "sf (nttLevel 1 a) k mod 8380417 = bflyLayer 64 1 (sf a) k mod 8380417"
+      using mbfly1[OF B Bhi k] .
+    also have "\<dots> = bflyLayer 64 1 (cf w) k mod 8380417"
+      by (rule bflyLayer_cong_g[OF Rg])
+    also have "\<dots> = cf (nttLayerFwd 64 2 1 w) k mod 8380417"
+      by (simp add: abs_64[OF bw k])
+    finally show ?thesis .
+  qed
+  show ?thesis unfolding Rcong_def
+  proof (intro allI)
+    fix m show "sf (nttLevel 1 a) m mod 8380417 = cf (nttLayerFwd 64 2 1 w) m mod 8380417"
+    proof (cases "m < 256")
+      case True thus ?thesis using main by simp
+    next
+      case False hence ge: "256 \<le> m" by simp
+      show ?thesis using main[of 255] oob255[OF ge, of "nttLevel 1 a"] oob255[OF ge, of "nttLayerFwd 64 2 1 w"]
+        by (simp add: sf_def cf_def)
+    qed
+  qed
+qed
+
+lemma pres2:
+  assumes B: "ntt_bounded BB a" and Bhi: "BB \<le> 2139103230" and bw: "bounded w" and R: "Rcong a w"
+  shows "Rcong (nttLevel 2 a) (nttLayerFwd 32 4 3 w)"
+proof -
+  have Rg: "sf a m mod 8380417 = cf w m mod 8380417" for m using R by (simp add: Rcong_def)
+  have main: "sf (nttLevel 2 a) k mod 8380417 = cf (nttLayerFwd 32 4 3 w) k mod 8380417" if k: "k < 256" for k
+  proof -
+    have "sf (nttLevel 2 a) k mod 8380417 = bflyLayer 32 3 (sf a) k mod 8380417"
+      using mbfly2[OF B Bhi k] .
+    also have "\<dots> = bflyLayer 32 3 (cf w) k mod 8380417"
+      by (rule bflyLayer_cong_g[OF Rg])
+    also have "\<dots> = cf (nttLayerFwd 32 4 3 w) k mod 8380417"
+      by (simp add: abs_32[OF bw k])
+    finally show ?thesis .
+  qed
+  show ?thesis unfolding Rcong_def
+  proof (intro allI)
+    fix m show "sf (nttLevel 2 a) m mod 8380417 = cf (nttLayerFwd 32 4 3 w) m mod 8380417"
+    proof (cases "m < 256")
+      case True thus ?thesis using main by simp
+    next
+      case False hence ge: "256 \<le> m" by simp
+      show ?thesis using main[of 255] oob255[OF ge, of "nttLevel 2 a"] oob255[OF ge, of "nttLayerFwd 32 4 3 w"]
+        by (simp add: sf_def cf_def)
+    qed
+  qed
+qed
+
+lemma pres3:
+  assumes B: "ntt_bounded BB a" and Bhi: "BB \<le> 2139103230" and bw: "bounded w" and R: "Rcong a w"
+  shows "Rcong (nttLevel 3 a) (nttLayerFwd 16 8 7 w)"
+proof -
+  have Rg: "sf a m mod 8380417 = cf w m mod 8380417" for m using R by (simp add: Rcong_def)
+  have main: "sf (nttLevel 3 a) k mod 8380417 = cf (nttLayerFwd 16 8 7 w) k mod 8380417" if k: "k < 256" for k
+  proof -
+    have "sf (nttLevel 3 a) k mod 8380417 = bflyLayer 16 7 (sf a) k mod 8380417"
+      using mbfly3[OF B Bhi k] .
+    also have "\<dots> = bflyLayer 16 7 (cf w) k mod 8380417"
+      by (rule bflyLayer_cong_g[OF Rg])
+    also have "\<dots> = cf (nttLayerFwd 16 8 7 w) k mod 8380417"
+      by (simp add: abs_16[OF bw k])
+    finally show ?thesis .
+  qed
+  show ?thesis unfolding Rcong_def
+  proof (intro allI)
+    fix m show "sf (nttLevel 3 a) m mod 8380417 = cf (nttLayerFwd 16 8 7 w) m mod 8380417"
+    proof (cases "m < 256")
+      case True thus ?thesis using main by simp
+    next
+      case False hence ge: "256 \<le> m" by simp
+      show ?thesis using main[of 255] oob255[OF ge, of "nttLevel 3 a"] oob255[OF ge, of "nttLayerFwd 16 8 7 w"]
+        by (simp add: sf_def cf_def)
+    qed
+  qed
+qed
+
+lemma pres4:
+  assumes B: "ntt_bounded BB a" and Bhi: "BB \<le> 2139103230" and bw: "bounded w" and R: "Rcong a w"
+  shows "Rcong (nttLevel 4 a) (nttLayerFwd 8 16 15 w)"
+proof -
+  have Rg: "sf a m mod 8380417 = cf w m mod 8380417" for m using R by (simp add: Rcong_def)
+  have main: "sf (nttLevel 4 a) k mod 8380417 = cf (nttLayerFwd 8 16 15 w) k mod 8380417" if k: "k < 256" for k
+  proof -
+    have "sf (nttLevel 4 a) k mod 8380417 = bflyLayer 8 15 (sf a) k mod 8380417"
+      using mbfly4[OF B Bhi k] .
+    also have "\<dots> = bflyLayer 8 15 (cf w) k mod 8380417"
+      by (rule bflyLayer_cong_g[OF Rg])
+    also have "\<dots> = cf (nttLayerFwd 8 16 15 w) k mod 8380417"
+      by (simp add: abs_8[OF bw k])
+    finally show ?thesis .
+  qed
+  show ?thesis unfolding Rcong_def
+  proof (intro allI)
+    fix m show "sf (nttLevel 4 a) m mod 8380417 = cf (nttLayerFwd 8 16 15 w) m mod 8380417"
+    proof (cases "m < 256")
+      case True thus ?thesis using main by simp
+    next
+      case False hence ge: "256 \<le> m" by simp
+      show ?thesis using main[of 255] oob255[OF ge, of "nttLevel 4 a"] oob255[OF ge, of "nttLayerFwd 8 16 15 w"]
+        by (simp add: sf_def cf_def)
+    qed
+  qed
+qed
+
+lemma pres5:
+  assumes B: "ntt_bounded BB a" and Bhi: "BB \<le> 2139103230" and bw: "bounded w" and R: "Rcong a w"
+  shows "Rcong (nttLevel 5 a) (nttLayerFwd 4 32 31 w)"
+proof -
+  have Rg: "sf a m mod 8380417 = cf w m mod 8380417" for m using R by (simp add: Rcong_def)
+  have main: "sf (nttLevel 5 a) k mod 8380417 = cf (nttLayerFwd 4 32 31 w) k mod 8380417" if k: "k < 256" for k
+  proof -
+    have "sf (nttLevel 5 a) k mod 8380417 = bflyLayer 4 31 (sf a) k mod 8380417"
+      using mbfly5[OF B Bhi k] .
+    also have "\<dots> = bflyLayer 4 31 (cf w) k mod 8380417"
+      by (rule bflyLayer_cong_g[OF Rg])
+    also have "\<dots> = cf (nttLayerFwd 4 32 31 w) k mod 8380417"
+      by (simp add: abs_4[OF bw k])
+    finally show ?thesis .
+  qed
+  show ?thesis unfolding Rcong_def
+  proof (intro allI)
+    fix m show "sf (nttLevel 5 a) m mod 8380417 = cf (nttLayerFwd 4 32 31 w) m mod 8380417"
+    proof (cases "m < 256")
+      case True thus ?thesis using main by simp
+    next
+      case False hence ge: "256 \<le> m" by simp
+      show ?thesis using main[of 255] oob255[OF ge, of "nttLevel 5 a"] oob255[OF ge, of "nttLayerFwd 4 32 31 w"]
+        by (simp add: sf_def cf_def)
+    qed
+  qed
+qed
+
+lemma pres6:
+  assumes B: "ntt_bounded BB a" and Bhi: "BB \<le> 2139103230" and bw: "bounded w" and R: "Rcong a w"
+  shows "Rcong (nttLevel 6 a) (nttLayerFwd 2 64 63 w)"
+proof -
+  have Rg: "sf a m mod 8380417 = cf w m mod 8380417" for m using R by (simp add: Rcong_def)
+  have main: "sf (nttLevel 6 a) k mod 8380417 = cf (nttLayerFwd 2 64 63 w) k mod 8380417" if k: "k < 256" for k
+  proof -
+    have "sf (nttLevel 6 a) k mod 8380417 = bflyLayer 2 63 (sf a) k mod 8380417"
+      using mbfly6[OF B Bhi k] .
+    also have "\<dots> = bflyLayer 2 63 (cf w) k mod 8380417"
+      by (rule bflyLayer_cong_g[OF Rg])
+    also have "\<dots> = cf (nttLayerFwd 2 64 63 w) k mod 8380417"
+      by (simp add: abs_2[OF bw k])
+    finally show ?thesis .
+  qed
+  show ?thesis unfolding Rcong_def
+  proof (intro allI)
+    fix m show "sf (nttLevel 6 a) m mod 8380417 = cf (nttLayerFwd 2 64 63 w) m mod 8380417"
+    proof (cases "m < 256")
+      case True thus ?thesis using main by simp
+    next
+      case False hence ge: "256 \<le> m" by simp
+      show ?thesis using main[of 255] oob255[OF ge, of "nttLevel 6 a"] oob255[OF ge, of "nttLayerFwd 2 64 63 w"]
+        by (simp add: sf_def cf_def)
+    qed
+  qed
+qed
+
+lemma pres7:
+  assumes B: "ntt_bounded BB a" and Bhi: "BB \<le> 2139103230" and bw: "bounded w" and R: "Rcong a w"
+  shows "Rcong (nttLevel 7 a) (nttLayerFwd 1 128 127 w)"
+proof -
+  have Rg: "sf a m mod 8380417 = cf w m mod 8380417" for m using R by (simp add: Rcong_def)
+  have main: "sf (nttLevel 7 a) k mod 8380417 = cf (nttLayerFwd 1 128 127 w) k mod 8380417" if k: "k < 256" for k
+  proof -
+    have "sf (nttLevel 7 a) k mod 8380417 = bflyLayer 1 127 (sf a) k mod 8380417"
+      using mbfly7[OF B Bhi k] .
+    also have "\<dots> = bflyLayer 1 127 (cf w) k mod 8380417"
+      by (rule bflyLayer_cong_g[OF Rg])
+    also have "\<dots> = cf (nttLayerFwd 1 128 127 w) k mod 8380417"
+      by (simp add: abs_1[OF bw k])
+    finally show ?thesis .
+  qed
+  show ?thesis unfolding Rcong_def
+  proof (intro allI)
+    fix m show "sf (nttLevel 7 a) m mod 8380417 = cf (nttLayerFwd 1 128 127 w) m mod 8380417"
+    proof (cases "m < 256")
+      case True thus ?thesis using main by simp
+    next
+      case False hence ge: "256 \<le> m" by simp
+      show ?thesis using main[of 255] oob255[OF ge, of "nttLevel 7 a"] oob255[OF ge, of "nttLayerFwd 1 128 127 w"]
+        by (simp add: sf_def cf_def)
+    qed
+  qed
+qed
+
+theorem ntt_bridge:
+  assumes bw: "bounded w" and k: "k < 256"
+  shows "sint_seq (nth_seq (ntt w) k) mod 8380417
+       = (\<Sum>j<256. cf w j * 1753 ^ ((2 * brv 8 k + 1) * j)) mod 8380417"
+proof -
+  have nb0: "ntt_bounded 8380416 w" by (rule ntt_bounded_of_bounded[OF bw])
+  have R0: "Rcong w w" by (rule Rcong_base[OF bw])
+  \<comment> \<open>bound chain: ntt_bounded grows by q each layer\<close>
+  have nb1: "ntt_bounded 16760833 (nttLevel 0 w)" using nttLevel_bounded[OF nb0] by simp
+  have nb2: "ntt_bounded 25141250 (nttLevel 1 (nttLevel 0 w))" using nttLevel_bounded[OF nb1] by simp
+  have nb3: "ntt_bounded 33521667 (nttLevel 2 (nttLevel 1 (nttLevel 0 w)))" using nttLevel_bounded[OF nb2] by simp
+  have nb4: "ntt_bounded 41902084 (nttLevel 3 (nttLevel 2 (nttLevel 1 (nttLevel 0 w))))" using nttLevel_bounded[OF nb3] by simp
+  have nb5: "ntt_bounded 50282501 (nttLevel 4 (nttLevel 3 (nttLevel 2 (nttLevel 1 (nttLevel 0 w)))))" using nttLevel_bounded[OF nb4] by simp
+  have nb6: "ntt_bounded 58662918 (nttLevel 5 (nttLevel 4 (nttLevel 3 (nttLevel 2 (nttLevel 1 (nttLevel 0 w))))))" using nttLevel_bounded[OF nb5] by simp
+  have nb7: "ntt_bounded 67043335 (nttLevel 6 (nttLevel 5 (nttLevel 4 (nttLevel 3 (nttLevel 2 (nttLevel 1 (nttLevel 0 w)))))))" using nttLevel_bounded[OF nb6] by simp
+  \<comment> \<open>bounded chain on the normal side\<close>
+  have d1: "bounded (nttLayerFwd 128 1 0 w)" by (rule bounded_128[OF bw])
+  have d2: "bounded (nttLayerFwd 64 2 1 (nttLayerFwd 128 1 0 w))" by (rule bounded_64[OF d1])
+  have d3: "bounded (nttLayerFwd 32 4 3 (nttLayerFwd 64 2 1 (nttLayerFwd 128 1 0 w)))" by (rule bounded_32[OF d2])
+  have d4: "bounded (nttLayerFwd 16 8 7 (nttLayerFwd 32 4 3 (nttLayerFwd 64 2 1 (nttLayerFwd 128 1 0 w))))" by (rule bounded_16[OF d3])
+  have d5: "bounded (nttLayerFwd 8 16 15 (nttLayerFwd 16 8 7 (nttLayerFwd 32 4 3 (nttLayerFwd 64 2 1 (nttLayerFwd 128 1 0 w)))))" by (rule bounded_8[OF d4])
+  have d6: "bounded (nttLayerFwd 4 32 31 (nttLayerFwd 8 16 15 (nttLayerFwd 16 8 7 (nttLayerFwd 32 4 3 (nttLayerFwd 64 2 1 (nttLayerFwd 128 1 0 w))))))" by (rule bounded_4[OF d5])
+  have d7: "bounded (nttLayerFwd 2 64 63 (nttLayerFwd 4 32 31 (nttLayerFwd 8 16 15 (nttLayerFwd 16 8 7 (nttLayerFwd 32 4 3 (nttLayerFwd 64 2 1 (nttLayerFwd 128 1 0 w)))))))" by (rule bounded_2[OF d6])
+  \<comment> \<open>congruence chain\<close>
+  have R1: "Rcong (nttLevel 0 w) (nttLayerFwd 128 1 0 w)" by (rule pres0[OF nb0 _ bw R0]) simp
+  have R2: "Rcong (nttLevel 1 (nttLevel 0 w)) (nttLayerFwd 64 2 1 (nttLayerFwd 128 1 0 w))" by (rule pres1[OF nb1 _ d1 R1]) simp
+  have R3: "Rcong (nttLevel 2 (nttLevel 1 (nttLevel 0 w))) (nttLayerFwd 32 4 3 (nttLayerFwd 64 2 1 (nttLayerFwd 128 1 0 w)))" by (rule pres2[OF nb2 _ d2 R2]) simp
+  have R4: "Rcong (nttLevel 3 (nttLevel 2 (nttLevel 1 (nttLevel 0 w)))) (nttLayerFwd 16 8 7 (nttLayerFwd 32 4 3 (nttLayerFwd 64 2 1 (nttLayerFwd 128 1 0 w))))" by (rule pres3[OF nb3 _ d3 R3]) simp
+  have R5: "Rcong (nttLevel 4 (nttLevel 3 (nttLevel 2 (nttLevel 1 (nttLevel 0 w))))) (nttLayerFwd 8 16 15 (nttLayerFwd 16 8 7 (nttLayerFwd 32 4 3 (nttLayerFwd 64 2 1 (nttLayerFwd 128 1 0 w)))))" by (rule pres4[OF nb4 _ d4 R4]) simp
+  have R6: "Rcong (nttLevel 5 (nttLevel 4 (nttLevel 3 (nttLevel 2 (nttLevel 1 (nttLevel 0 w)))))) (nttLayerFwd 4 32 31 (nttLayerFwd 8 16 15 (nttLayerFwd 16 8 7 (nttLayerFwd 32 4 3 (nttLayerFwd 64 2 1 (nttLayerFwd 128 1 0 w))))))" by (rule pres5[OF nb5 _ d5 R5]) simp
+  have R7: "Rcong (nttLevel 6 (nttLevel 5 (nttLevel 4 (nttLevel 3 (nttLevel 2 (nttLevel 1 (nttLevel 0 w))))))) (nttLayerFwd 2 64 63 (nttLayerFwd 4 32 31 (nttLayerFwd 8 16 15 (nttLayerFwd 16 8 7 (nttLayerFwd 32 4 3 (nttLayerFwd 64 2 1 (nttLayerFwd 128 1 0 w)))))))" by (rule pres6[OF nb6 _ d6 R6]) simp
+  have R8: "Rcong (nttLevel 7 (nttLevel 6 (nttLevel 5 (nttLevel 4 (nttLevel 3 (nttLevel 2 (nttLevel 1 (nttLevel 0 w)))))))) (nttLayerFwd 1 128 127 (nttLayerFwd 2 64 63 (nttLayerFwd 4 32 31 (nttLayerFwd 8 16 15 (nttLayerFwd 16 8 7 (nttLayerFwd 32 4 3 (nttLayerFwd 64 2 1 (nttLayerFwd 128 1 0 w))))))))" by (rule pres7[OF nb7 _ d7 R7]) simp
+  have Rfull: "Rcong (ntt w) (nttFwdAllRef w)"
+    using R8 by (simp add: ntt_unfold fwd_unfold)
+  have congk: "sf (ntt w) k mod 8380417 = cf (nttFwdAllRef w) k mod 8380417"
+    using Rfull by (simp add: Rcong_def)
+  have fc: "cf (nttFwdAllRef w) k = (\<Sum>j<256. cf w j * 1753 ^ ((2 * brv 8 k + 1) * j)) mod 8380417"
+    by (rule fwd_ntt_correct[OF bw k])
+  have "sint_seq (nth_seq (ntt w) k) mod 8380417 = cf (nttFwdAllRef w) k mod 8380417"
+    using congk by (simp add: sf_def)
+  also have "\<dots> = (\<Sum>j<256. cf w j * 1753 ^ ((2 * brv 8 k + 1) * j)) mod 8380417"
+    by (simp add: fc)
+  finally show ?thesis .
+qed
+
+
+
 end
 
 end
