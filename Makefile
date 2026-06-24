@@ -17,14 +17,18 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify bitcode saw isabelle tier2 lift-check mutation-test writeup clean
+.PHONY: all verify target-identity bitcode saw isabelle tier2 lift-check mutation-test writeup clean
 
 all: verify
 
-## Full pipeline: lift in sync (lift-check) → C ≡ Cryptol (SAW) → reduce.c model ≡ FIPS spec
-## (Isabelle) → forward-NTT model ≡ FIPS-204 transform (Isabelle, Tier2)
-verify: lift-check saw isabelle tier2
+## Full pipeline: target bytes pinned (target-identity) → lift in sync (lift-check) → C ≡ Cryptol
+## (SAW) → reduce.c model ≡ FIPS spec (Isabelle) → forward-NTT model ≡ FIPS-204 transform (Isabelle, Tier2)
+verify: target-identity lift-check saw isabelle tier2
 	@echo "✔ pipeline complete — all checked steps passed"
+
+## Integrity gate: the vendored C under proof is byte-for-byte the pinned snapshot.
+target-identity:
+	./scripts/check_target_identity.sh
 
 ## Composition gate: committed Isabelle model == cryptol-to-isabelle(Cryptol model). Fast; SAW bundle only.
 lift-check:
