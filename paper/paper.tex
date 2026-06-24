@@ -105,8 +105,8 @@ each claim, we summarize them up front (Table~\ref{tab:status}); ``mechanized'' 
 the goal in this development with no \code{sorry}, \code{oops}, or admitted goal.
 
 \begin{table}[h]
-\centering\small
-\begin{tabular}{lll}
+\centering\footnotesize
+\begin{tabular}{@{}p{5.0cm}p{5.0cm}p{4.3cm}@{}}
 \hline
 Claim & Status & Trust base \\
 \hline
@@ -266,13 +266,13 @@ twiddle table the C uses, so the seam to the C is bit-exact. (This functional-eq
 nothing about overflow; that is the next paragraph.)
 
 \paragraph{The transform theorem.} Isabelle proves the lifted forward NTT equals the FIPS-204 negacyclic
-DFT, at each output position $k$ in ML-DSA's natural-input to bit-reversed-output order:
-\begin{equation*}
-  \text{bounded } w \ \Longrightarrow\ k < 256 \ \Longrightarrow\
+DFT, at each output position $k$ in ML-DSA's natural-input to bit-reversed-output order. For bounded
+input $w$ and any $k < 256$,
+\[
   \operatorname{sint}(\mathrm{ntt}\,w\,[k]) \;\equiv\;
-  \textstyle\sum_{j<256} w[j]\cdot \zeta^{(2\,\mathrm{brv}_8(k)+1)\,j} \pmod q,
-  \qquad \zeta = 1753,\ q = 8380417.
-\end{equation*}
+  \sum_{j<256} w[j]\cdot \zeta^{(2\,\mathrm{brv}_8(k)+1)\,j} \pmod q,
+\]
+where $\zeta = 1753$ and $q = 8380417$.
 This is the theorem \code{ntt\_bridge}, and \code{ntt} here is the same montgomery-domain model SAW checks
 the C against. It is built in two parts. \code{fwd\_ntt\_correct} proves a normal-domain lift of the
 transform equals the closed-form negacyclic DFT, via an eight-fold abstract Cooley-Tukey butterfly
