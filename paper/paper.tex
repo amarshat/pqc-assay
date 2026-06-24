@@ -18,8 +18,8 @@
 \newcommand{\Q}{Q}
 \newcommand{\code}[1]{\texttt{#1}}
 
-\title{The SMT Tractability Cliff in ML-DSA Modular-Arithmetic Verification:\\
-       A Cross-Frontend Study over C and Rust}
+\title{A Reproducible Refinement Proof of the ML-DSA Reference Forward NTT,\\
+       from C to FIPS 204}
 
 \author{Amar Akshat\\Independent Researcher\\\texttt{amar.akshat@gmail.com}}
 \date{\today}
@@ -28,34 +28,26 @@
 \maketitle
 
 \begin{abstract}
-Machine-checked equivalence between a cryptographic implementation and its specification is only
-useful if the proof actually discharges. For the modular arithmetic at the core of ML-DSA
-(FIPS~204)~\cite{fips204} we find that whether it discharges depends steeply, and measurably, on the
-input domain --- and we map where the boundary lies, why it is there, and how to cross it. We study
-reduction primitives and the forward number-theoretic transform (NTT) of two independent ML-DSA
-implementations --- a reference and a library: the PQClean / pq-crystals C reference, via SAW, Cryptol,
-and Isabelle/HOL composed
-through the \code{cryptol-to-isabelle} translator into a single chain from C to a FIPS-derived
-specification; and the RustCrypto implementation, via SAW over MIR. On the C side we obtain end-to-end
-correctness for the \code{reduce.c} layer (\code{montgomery\_reduce}, \code{reduce32}, \code{caddq},
-\code{freeze}) and a machine-checked overflow-freedom bound for the forward-NTT model. On the Rust side
-we obtain SAW-verified equivalence for Barrett reduction, constant-time division, the twiddle-factor
-table, and the hint layer (Algorithms 36, 37, 39, 40); the C NTT result is a machine-checked
-overflow-freedom bound for the model, extended to the C by an argued composition. Against these positive
-results we report the boundary: narrow-domain reductions discharge in seconds, while wide-domain Barrett
-reduction over the full product domain $x < 2^{46}$ fails to complete across six solver and tactic
-configurations, and a single NTT layer fails likewise. We isolate the structural cause: the \emph{same}
-goal that times out as a bit-vector formula over $x<2^{46}$ discharges in $0.04$\,s when reformulated in
-unbounded-integer arithmetic, identifying the bit-blasting of $(x \cdot M) \gg k$ --- not the modulus or
-formula size --- as the wall, across the eager bit-blasting back-ends we tested. We give three proof
-restructurings that target it. One we carry to completion: a total-coefficient-invariant induction that
-replaces a $\sim$3000-obligation SAW unrolling with an eight-step proof running in seconds. For a second,
-an unbounded-integer reformulation, we show the integer core discharges and only the bitvector bridge
-remains; a third, a compositional specification, we identify. We also report
-two off-by-one defects in the reference's documented contracts, disclosed upstream. The toolchain's
-maintainers independently confirm both the boundary and the integer-reformulation escape. The development
-uses no vendor verification artifacts; the main proof pipeline runs from a single command, and the
-timeout and encoding experiments are reproduced by self-contained scripts.
+We give a machine-checked proof that the forward number-theoretic transform (NTT) in the
+PQClean / pq-crystals ML-DSA reference C~\cite{pqclean,dilithium} computes the FIPS~204~\cite{fips204}
+negacyclic transform, modulo $q$. The proof is one connected chain. SAW proves the C equal to a Cryptol
+model under a \code{-fwrapv} build; \code{cryptol-to-isabelle} lifts that model into Isabelle/HOL; and an
+Isabelle theorem, \code{ntt\_bridge}, shows the lifted model at each output position $k$ equals the
+FIPS~204 negacyclic DFT coefficient at the bit-reversed index $\mathrm{brv}_8(k)$, mod $q$. The one
+non-mechanized link is that the \code{-fwrapv} execution coincides with the ordinary one (no
+signed-overflow undefined behavior) on the input domain; we support it with a separate machine-checked
+coefficient-bound proof and state it as an argued composition. We also verify the \code{reduce.c}
+arithmetic layer (\code{montgomery\_reduce}, \code{reduce32}, \code{caddq}, \code{freeze}) from C to
+spec. Two choices keep the NTT result honest. The theorem is about the same model SAW checks the C
+against (the montgomery-domain model), joined to the FIPS transform by an explicit eight-layer bridge
+rather than a hand-written restatement; and a claim table separates what is machine-checked from what is
+argued or assumed. Alongside, we report a tractability boundary met on a second implementation
+(RustCrypto, via SAW over MIR): wide-domain Barrett reduction over $x<2^{46}$ does not discharge under
+eager bit-blasting across six solver and tactic configurations, while the same relation in
+unbounded-integer arithmetic discharges in $0.04$\,s. The proof restructurings that cross it include the
+total-invariant induction used for the C overflow bound. We disclose two off-by-one defects in the
+reference's documented contracts. The development reproduces from \code{make verify} (SAW plus the full
+Isabelle chain, including the NTT bridge) and runs green in CI; it uses no vendor verification artifacts.
 \end{abstract}
 
 \medskip
@@ -71,59 +63,52 @@ specified function. Test vectors check that assumption on a finite set of inputs
 checks it for all inputs, which matters for arithmetic kernels whose bugs are input-dependent and can
 pass test vectors~\cite{eprint1032}.
 
-A practitioner who sets out to machine-check these kernels against the specification quickly meets a
-less-discussed obstacle: many of the proofs do not discharge. The same SAW/SMT formulation that proves
-one reduction in seconds runs for hours, or never finishes, on another that differs only in its input
-range. This is folklore among verification engineers, but it is rarely characterized: \emph{where} the
-boundary sits, \emph{why}, and \emph{what to do instead} are usually left implicit.
+This paper proves the forward NTT of the ML-DSA reference C correct against FIPS~204, as one connected
+machine-checked chain from the C source to the specification. The forward NTT is the natural target: it
+is where the reduction-placement and overflow defects that pass test vectors actually occur~\cite{eprint1032},
+and a single-primitive proof of \code{montgomery\_reduce} alone cannot reach it. The chain has three
+mechanized links and one argued one, and we are explicit about which is which (Section~\ref{sec:fwdntt},
+Table~\ref{tab:status}).
 
-This paper maps that boundary for ML-DSA's modular arithmetic, concretely and reproducibly, across two
-independent implementations and two verification toolchains. We treat the cases that do not discharge not
-as failures to hide but as the primary result: a characterized tractability boundary, its structural
-cause, and the proof restructurings that cross it. The positive verification results --- a complete
-reduction layer and an overflow-freedom bound on the C side, and a verified field, division,
-twiddle-table, and hint layer on the Rust side --- establish what sits on the tractable side of the
-boundary and anchor the study.
+Getting there required crossing a tractability boundary that we also report as a secondary result. When
+we tried the same kind of proof on a second implementation (RustCrypto, via SAW over MIR), the
+wide-domain Barrett reduction did not discharge: the SAW/SMT formulation that proves a narrow-domain
+reduction in seconds runs for hours, or never finishes, on the full product domain. We characterize
+where that boundary sits, isolate its cause, and give the proof restructurings that cross it; one of
+those restructurings is what makes the C overflow-freedom bound tractable.
 
 \paragraph{Contributions.}
 \begin{enumerate}
-  \item \textbf{A reproducible tractability map} for SMT-based equivalence verification of PQC modular
-  arithmetic (Section~\ref{sec:boundary}). We characterize, with timings, which arithmetic-kernel
-  equivalences discharge automatically and which do not: narrow-domain Barrett reduction ($x < 2^{28}$)
-  proves in about four seconds, while the same goal over the cryptographically relevant wide domain
-  ($x < 2^{46}$) does not complete under \code{z3}, \code{abc}, \code{cvc5}, \code{yices}, a
-  \code{goal\_eval} rewrite pass, or a carry-fold reformulation.
-  \item \textbf{The structural cause, isolated.} The wall is the bit-vector formula for $(x \cdot M) \gg k$
-  --- a constant multiply and a power-of-two shift related to $x \bmod Q$ --- which failed to discharge
-  under every solver and tactic configuration we tried, with solve time growing steeply in the live input
-  width. We isolate bit-blasting as the cause with a controlled experiment: the same goal over $x<2^{46}$,
-  reformulated in unbounded-integer arithmetic, discharges in $0.04$\,s where the bit-vector form times
-  out (Section~\ref{sec:boundary}). The same shape recurs in Barrett reduction and, 256-fold, in one NTT
-  layer. The evidence locates the difficulty in the goal shape across the eager bit-blasting back-ends
-  tested, not in one back-end; we do not claim a solver-independent impossibility result.
-  \item \textbf{One completed escape, and two identified.} A total-coefficient invariant turns an
-  intractable $\sim$3000-obligation SAW unrolling of NTT overflow-freedom into an eight-step Isabelle
-  induction running in seconds (Section~\ref{sec:ntt}); this escape we carry to completion. For a second
-  --- an unbounded-integer reformulation with a bitvector bridge for the reductions --- we demonstrate
-  that the integer core discharges in $0.04$\,s, leaving only the bridge; a third, a compositional
-  specification for the layer proof, we identify (Section~\ref{sec:boundary}).
-  \item \textbf{A cross-frontend, cross-language study.} The same primitives are verified in two
-  pipelines --- LLVM+Cryptol+Isabelle on the C reference (Section~\ref{sec:reduce}) and MIR+Cryptol on
-  the RustCrypto implementation (Section~\ref{sec:rust}). Both share SAW as the symbolic-execution engine;
-  the independence is in the language frontend (LLVM vs.\ MIR) and, on the C side, an added
-  Isabelle proof-obligation backend. Reproducing the same tractability symptom across two frontends and
-  two languages is evidence that the boundary is induced primarily by the goal shape rather than by a
-  single frontend.
+  \item \textbf{Forward-NTT correctness, C to FIPS~204, as one chain} (Section~\ref{sec:fwdntt}). SAW
+  proves the reference C NTT equal to a Cryptol model under \code{-fwrapv}; \code{cryptol-to-isabelle}
+  lifts the model; and the Isabelle theorem \code{ntt\_bridge} proves that lifted model equal, mod $q$,
+  to the FIPS~204 negacyclic DFT in ML-DSA's bit-reversed output order. The theorem is about the same
+  montgomery-domain model SAW checks the C against, joined to the spec by an explicit eight-layer bridge,
+  so the seam to the C is not papered over by a hand-written model.
+  \item \textbf{The \code{reduce.c} layer, C to spec} (Section~\ref{sec:reduce}). All four primitives
+  (\code{montgomery\_reduce}, \code{reduce32}, \code{caddq}, \code{freeze}) verified C $\equiv$ Cryptol by
+  SAW and model $\equiv$ FIPS-derived spec in Isabelle, plus a machine-checked overflow-freedom bound for
+  the forward-NTT model.
+  \item \textbf{A tractability boundary, and the restructuring that crosses it} (Section~\ref{sec:boundary}).
+  On a second implementation (RustCrypto, via SAW over MIR), narrow-domain Barrett reduction ($x<2^{28}$)
+  proves in about four seconds while the cryptographically relevant wide domain ($x<2^{46}$) does not
+  complete under \code{z3}, \code{abc}, \code{cvc5}, \code{yices}, a \code{goal\_eval} rewrite pass, or a
+  carry-fold reformulation. We isolate the cause with a controlled experiment: the same goal over
+  $x<2^{46}$ in unbounded-integer arithmetic discharges in $0.04$\,s where the bit-vector form times out,
+  locating the difficulty in bit-blasting $(x\cdot M)\gg k$ across the eager back-ends tested, not in the
+  modulus or formula size. The total-invariant induction this motivates is what makes the C
+  overflow-freedom bound tractable, replacing a $\sim$3000-obligation SAW unrolling with an eight-step
+  proof.
   \item \textbf{Two off-by-one defects} in the reference's documentation contracts, reproduced against
   the shipping code and disclosed upstream to pq-crystals/dilithium (Section~\ref{sec:findings}).
 \end{enumerate}
 
-\paragraph{Non-claims.} We verify reference and library implementations, not the optimized
-AVX2/aarch64 paths or the \code{mldsa-native} successor, where the most error-prone arithmetic lives. We
-prove C/Rust $\equiv$ model and overflow-freedom; we do not prove NTT \emph{transform} correctness, that
-is, equivalence of the model to the negacyclic transform of FIPS~204 Algorithms 41 and 42. The
-wide-domain reductions and the NTT-layer transform proof are reported as a characterized boundary with
-escapes identified, \emph{not} as completed proofs. We say nothing about constant-time behavior.
+\paragraph{Non-claims.} We verify the reference C (and, for the boundary study, a Rust library), not the
+optimized AVX2/aarch64 paths or the \code{mldsa-native} successor, where the most error-prone arithmetic
+lives. The forward-NTT result is functional equivalence mod $q$; the one link not mechanized is that the
+\code{-fwrapv} build coincides with the ordinary one (no signed-overflow UB) on the input domain, which
+we argue from the overflow-freedom bound rather than mechanize as a single theorem. We do not prove the
+inverse NTT or the $256^{-1}$ normalization, and we say nothing about constant-time behavior.
 
 \paragraph{Status of each claim.} Because the value of a verification paper is in the precise status of
 each claim, we summarize them up front (Table~\ref{tab:status}); ``mechanized'' means a tool discharged
@@ -139,10 +124,13 @@ Claim & Status & Trust base \\
 \code{reduce.c}: model $\equiv$ spec & mechanized (Isabelle) & no \code{sorry}/\code{oops} \\
 C NTT: C $\equiv$ model (\code{-fwrapv}) & mechanized (SAW) & \code{montgomery\_reduce} override \\
 C NTT: overflow-freedom & mechanized for model; C bridge argued & Isabelle + composition \\
+montgomery model $\equiv$ normal model (mod $q$) & mechanized (Isabelle \code{Mont\_Bridge}) & no \code{sorry}/\code{oops} \\
+normal model $\equiv$ FIPS-204 forward NTT & mechanized (Isabelle \code{fwd\_ntt\_correct}) & no \code{sorry}/\code{oops} \\
+C NTT $\equiv$ FIPS-204 forward NTT (mod $q$) & mechanized (Isabelle \code{ntt\_bridge}); \code{-fwrapv} link argued & Isabelle + composition \\
 Rust Barrett / division / table / hint & mechanized (SAW over MIR) & \code{mir-json}, 3 leaf assumptions \\
 Wide-domain Barrett ($x<2^{46}$), bit-vector & not proven --- timeout study & empirical boundary \\
 Wide-domain Barrett, integer core & discharged (z3, NIA, $0.04$\,s) & escape-2 core; bridge open \\
-NTT transform $\equiv$ FIPS Alg.\ 41/42 & not attempted to completion & --- \\
+inverse NTT, $256^{-1}$ scaling & not claimed & --- \\
 \hline
 \end{tabular}
 \caption{Status of each result. ``Argued'' and ``empirical boundary'' rows are not mechanized theorems.}
@@ -271,15 +259,42 @@ Three leaf operations are constant-time intrinsics or inline assembly (a \code{b
 two conditional-move primitives); these are supplied as assumed specifications, each justified against
 the target assembly, and recorded as the verification's trust base alongside \code{mir-json} soundness.
 
-\section{Forward-NTT overflow-freedom, and the first escape}\label{sec:ntt}
+\section{Forward NTT: from reference C to FIPS 204}\label{sec:fwdntt}\label{sec:ntt}
 
-The forward NTT performs unreduced \code{int32} additions and subtractions, $a[j] \pm t$, which overflow
-for unbounded inputs. On a \code{-fwrapv} build, where signed overflow is two's-complement wrapping, SAW
-proves the C NTT functionally equivalent to the Cryptol model for all inputs, with \code{montgomery\_reduce}
-supplied as an uninterpreted override so the 1024 butterfly calls collapse to a structural array
-equality. This proof says nothing about overflow.
+The forward NTT is verified as one chain from the C source to the FIPS-204 transform. SAW proves the C
+equal to a Cryptol model (under \code{-fwrapv}, below); \code{cryptol-to-isabelle} lifts that model into
+Isabelle/HOL; and an Isabelle theorem proves the lifted model computes the FIPS-204 negacyclic transform
+mod $q$. Three links are mechanized and one is argued; this section gives each.
 
-Overflow-freedom is the property of interest, since it is the defect class behind known ML-DSA
+\paragraph{What the C is checked against.} On a \code{-fwrapv} build, where signed overflow is
+two's-complement wrapping, SAW proves the C NTT functionally equivalent to the Cryptol model \code{ntt}
+for all inputs, with \code{montgomery\_reduce} supplied as an uninterpreted override so the 1024 butterfly
+calls collapse to a structural array equality. This model is montgomery-domain: it carries the montgomery
+twiddle table the C uses, so the seam to the C is bit-exact. (This functional-equivalence proof says
+nothing about overflow; that is the next paragraph.)
+
+\paragraph{The transform theorem.} Isabelle proves the lifted forward NTT equals the FIPS-204 negacyclic
+DFT, at each output position $k$ in ML-DSA's natural-input to bit-reversed-output order:
+\begin{equation*}
+  \text{bounded } w \ \Longrightarrow\ k < 256 \ \Longrightarrow\
+  \operatorname{sint}(\mathrm{ntt}\,w\,[k]) \;\equiv\;
+  \textstyle\sum_{j<256} w[j]\cdot \zeta^{(2\,\mathrm{brv}_8(k)+1)\,j} \pmod q,
+  \qquad \zeta = 1753,\ q = 8380417.
+\end{equation*}
+This is the theorem \code{ntt\_bridge}, and \code{ntt} here is the same montgomery-domain model SAW checks
+the C against. It is built in two parts. \code{fwd\_ntt\_correct} proves a normal-domain lift of the
+transform equals the closed-form negacyclic DFT, via an eight-fold abstract Cooley-Tukey butterfly
+(\code{fwd\_as\_bfly}) and a closed-form stage invariant carried through an induction over the eight
+layers. \code{Mont\_Bridge} then proves the montgomery-domain model equals that normal-domain model mod
+$q$: per layer (\code{mbfly0}..\code{mbfly7}, each composing the per-position word-level unfold, the
+per-butterfly montgomery-to-normal congruence, and the no-overflow lifts), then composed over the eight
+layers (\code{pres0}..\code{pres7}) into \code{ntt\_bridge}. No step uses \code{sorry}, an admitted goal,
+or \code{smt}, and the \code{Tier2} session builds with exit 0 inside \code{make verify}. Proving the
+transform on the model the SAW leg already checks, rather than on a separately written one, is what keeps
+the C seam honest: there is no second, convenient model in the chain.
+
+\paragraph{Overflow-freedom, and the first escape.} Overflow-freedom is a property of interest in its own
+right, since it is the defect class behind known ML-DSA
 implementation bugs that passed test vectors~\cite{eprint1032}. The statement \code{ntt\_overflow\_free}
 is: if every input coefficient lies in $\pm(2^{31} - 2^{27})$, then every coefficient of the transform
 lies in $\pm 2080309256 < 2^{31} - 1$. We prove it by induction over the eight levels. A single per-level
@@ -421,13 +436,17 @@ deliberate.
 \section{Scope and limitations}\label{sec:scope}
 
 The verified code is reference C and a Rust library, not the deployed AVX2/aarch64 or the
-\code{mldsa-native} successor, where the genuinely error-prone optimized arithmetic lives. We prove
-C/Rust $\equiv$ model and, for the C NTT, overflow-freedom; we do not prove NTT \emph{transform}
-correctness against FIPS~204 Algorithms 41 and 42. The wide-domain Barrett reduction and the NTT-layer
-transform proof are reported as a characterized boundary with one completed escape, one whose integer core
-is demonstrated, and one identified --- not as completed proofs; the C-side overflow-freedom statement is
-the composition argued in Section~\ref{sec:ntt}, not a single mechanized theorem. The Rust verification rests on \code{mir-json} soundness and the three assumed
-constant-time leaf specifications of Section~\ref{sec:rust}. We say nothing about constant-time behavior.
+\code{mldsa-native} successor, where the genuinely error-prone optimized arithmetic lives. The
+forward-NTT result is functional equivalence to the FIPS-204 transform mod $q$ (Section~\ref{sec:fwdntt}),
+not over the integers and not including the inverse NTT or the $256^{-1}$ normalization. Its one
+non-mechanized link is the step from the \code{-fwrapv} model to the C: SAW proves C $\equiv$ model on the
+\code{-fwrapv} build and Isabelle proves the model does not overflow under the input bound, so the
+ordinary build coincides with it; we state this as an argued composition over two mechanized results
+rather than a single SAW theorem, because the direct attempt did not complete (Section~\ref{sec:boundary}).
+The wide-domain Barrett reduction is reported as a characterized boundary with the integer core
+demonstrated, not a completed bit-vector proof. The Rust verification rests on \code{mir-json} soundness
+and the three assumed constant-time leaf specifications of Section~\ref{sec:rust}. We say nothing about
+constant-time behavior.
 
 \section{Reproducibility}\label{sec:repro}
 
@@ -435,9 +454,11 @@ The development is public and all tool versions are pinned by setup scripts: SAW
 Cryptol and \code{cryptol-to-isabelle}, Isabelle2025-2 with a pinned AFP snapshot, a fixed clang, and for
 the Rust pipeline a pinned Rust nightly with \code{mir-json} at the schema commit SAW 1.5.1 bundles. The
 target C is vendored with its commit hash; the Rust crate is vendored likewise. A single command,
-\code{make verify}, runs the lift check, the SAW leg, and the Isabelle leg; the Rust proofs run from the
-same toolchain. Continuous integration runs the fast SAW gates on every push and the full pipeline on
-demand. The wide-domain Barrett timeout map and the integer-versus-bit-vector contrast of
+\code{make verify}, runs the lift check, the SAW leg, and the Isabelle leg, the last including the
+forward-NTT chain (the \code{Tier2} session, with \code{ntt\_bridge}); the Rust proofs run from the same
+toolchain. Continuous integration runs the fast SAW gates and a no-proof-hole scan over all theory files
+on every push, and the full pipeline (including \code{Tier2}) on demand; the latter has run green on the
+release commit's proof state. The wide-domain Barrett timeout map and the integer-versus-bit-vector contrast of
 Section~\ref{sec:boundary} are reproduced by self-contained scripts in the repository (the latter ships
 the three \code{.smt2} files and a runner). The exact pinned versions are:
 
@@ -496,17 +517,17 @@ the integer reformulation is the principled way across it.
 
 \section{Conclusion}\label{sec:conclusion}
 
-Whether a machine-checked equivalence proof for ML-DSA's modular arithmetic discharges depends, steeply
-and measurably, on the input domain. We verified the reduction layer of the C reference end to end, a
-field, division, twiddle-table, and hint layer of the RustCrypto implementation, and an overflow-freedom
-bound for the forward-NTT model; and we mapped the boundary where the transform layer ceases to be
-tractable, measured its steep onset, isolated its structural cause with a same-goal integer-versus-bit-vector
-contrast, and gave one completed proof restructuring that crosses it, a second whose integer core we
-demonstrate, and a third we identify. The same boundary appears across both frontends, indicating the
-difficulty is induced primarily by the goal encoding rather than one frontend. Mechanizing the
-transform layer through the unbounded-integer and compositional escapes, evaluating an abstraction-refinement
-solver on the bit-vector form, and repointing the pipelines at the deployed optimized arithmetic, are the
-natural next steps.
+The forward NTT of the ML-DSA reference C computes the FIPS-204 negacyclic transform, mod $q$, and the
+proof is one connected chain from the C source to the specification: SAW for C $\equiv$ model,
+\code{cryptol-to-isabelle} for the lift, and the Isabelle theorem \code{ntt\_bridge} for model $\equiv$
+FIPS-204. The chain is honest about its one argued link, the \code{-fwrapv} step from model to C, which
+we support with a machine-checked overflow-freedom bound. We also verified the \code{reduce.c} layer end
+to end. Getting the transform proof required crossing a tractability boundary that we measured and
+characterized on a second implementation: wide-domain Barrett reduction does not fall to eager
+bit-blasting, the same relation in unbounded-integer arithmetic discharges in $0.04$\,s, and the
+total-invariant restructuring this motivates is what made the C overflow bound tractable. Mechanizing the
+\code{-fwrapv} step as a single theorem, proving the inverse NTT and the $256^{-1}$ scaling, and
+repointing the pipeline at the deployed optimized arithmetic are the natural next steps.
 
 \paragraph{Acknowledgments.} We thank the Galois SAW and the Isabelle communities for guidance on the
 toolchain. AI tools assisted with prose drafting; all proofs, scripts, measurements, and technical claims
