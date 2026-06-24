@@ -29,7 +29,7 @@
 
 \begin{abstract}
 We give a machine-checked proof that the forward number-theoretic transform (NTT) in the
-PQClean / pq-crystals ML-DSA reference C~\cite{pqclean,dilithium} computes the FIPS~204~\cite{fips204}
+PQClean / pq-crystals ML-DSA reference C~\cite{pqclean,dilithiumref} computes the FIPS~204~\cite{fips204}
 negacyclic transform, modulo $q$. The proof is one connected chain. SAW proves the C equal to a Cryptol
 model under a \code{-fwrapv} build; \code{cryptol-to-isabelle} lifts that model into Isabelle/HOL; and an
 Isabelle theorem, \code{ntt\_bridge}, shows the lifted model at each output position $k$ equals the
@@ -56,16 +56,18 @@ number-theoretic transform $\cdot$ tractability.
 
 \section{Introduction}\label{sec:intro}
 
-ML-DSA (FIPS~204)~\cite{fips204} is the lattice signature scheme standardized by NIST's post-quantum
-process~\cite{nistpqc}, derived from CRYSTALS-Dilithium~\cite{dilithium}. Its security analysis assumes that implementations compute the
+ML-DSA is the lattice signature scheme selected through NIST's post-quantum standardization
+process~\cite{nistpqc} and standardized in FIPS~204~\cite{fips204}, derived from
+CRYSTALS-Dilithium~\cite{dilithium}. Its security analysis assumes that implementations compute the
 specified function. Test vectors check that assumption on a finite set of inputs; formal verification
 checks it for all inputs, which matters for arithmetic kernels whose bugs are input-dependent and can
 pass test vectors~\cite{eprint1032}.
 
 This paper proves the forward NTT of the ML-DSA reference C correct against FIPS~204, as one connected
-machine-checked chain from the C source to the specification. The forward NTT is the natural target: it
-is where the reduction-placement and overflow defects that pass test vectors actually occur~\cite{eprint1032},
-and a single-primitive proof of \code{montgomery\_reduce} alone cannot reach it. The chain has three
+machine-checked chain from the C source to the specification. The forward NTT is the natural target:
+reduction-placement and overflow defects of the kind that pass test vectors have been observed in ML-DSA
+implementations~\cite{eprint1032}, and a single-primitive proof of \code{montgomery\_reduce} alone cannot
+reach the transform. The chain has three
 mechanized links and one argued one, and we are explicit about which is which (Section~\ref{sec:fwdntt},
 Table~\ref{tab:status}).
 
@@ -344,9 +346,9 @@ modulus or the formula size. At $x < 2^{46}$ the goal also failed to
 complete under \code{abc}~\cite{abc}, \code{cvc5}~\cite{cvc5}, \code{yices}~\cite{yices}, a
 \code{goal\_eval} rewrite pass before \code{z3}~\cite{z3}, and a hand-written carry-fold reformulation of
 the specification (six configurations in all, each to the
-same 300\,s timeout). All five solver back-ends decide \code{QF\_BV} by eager bit-blasting (\code{z3},
-\code{cvc5}, \code{yices} bit-blast; \code{abc} reasons on the AIG directly), so the experiment varies the
-solver but not the bit-blasting strategy. The corresponding narrow-domain Barrett reduction over
+same 300\,s timeout). In our runs each back-end reduces \code{QF\_BV} to a Boolean problem (\code{z3},
+\code{cvc5}, \code{yices} bit-blast to SAT; \code{abc} reasons on the AIG directly), so the experiment
+varies the solver but not the bit-level encoding strategy. The corresponding narrow-domain Barrett reduction over
 \code{u32} inputs, used elsewhere in ML-DSA, proves in seconds (Section~\ref{sec:rust}); the difference is
 the live input width alone.
 
@@ -481,9 +483,9 @@ down to executable artifacts: HACL*~\cite{hacl} and EverCrypt~\cite{evercrypt} i
 Fiat-Crypto~\cite{fiatcrypto} which synthesizes field arithmetic with Coq proofs, and Jasmin~\cite{jasmin}
 and Vale~\cite{vale} for verified high-speed assembly. These build verified-by-construction code or
 verify code written in their own languages. Our target is different: unmodified third-party reference C,
-checked as-is against FIPS~204 through SAW, Cryptol, and Isabelle. The reference is the code that
-integration projects such as the Open Quantum Safe project~\cite{liboqs} package for deployment, so
-checking it directly is worthwhile. The contribution is an independent assurance case for an exact public
+checked as-is against FIPS~204 through SAW, Cryptol, and Isabelle. Reference implementations like this one
+are what integration efforts such as the Open Quantum Safe project~\cite{liboqs} build on, so checking the
+reference directly is worthwhile. The contribution is an independent assurance case for an exact public
 implementation, not a verification method or a new implementation.
 
 \paragraph{Verification of PQC.} Apple's 2026 corecrypto verification~\cite{corecrypto} covers ML-KEM and
@@ -505,8 +507,8 @@ class our overflow-freedom bound targets.
 
 \paragraph{Bit-vector reasoning.} That wide bit-vector multiplication is hard for eager bit-blasting is
 established: the complexity of fixed-size bit-vector logic is studied by Kov\'asznai et
-al.~\cite{bvcomplexity}, and abstraction-refinement solvers such as Bitwuzla~\cite{bitwuzla} target it
-directly. Our proof-engineering note (Section~\ref{sec:boundary}) adds a specific same-goal
+al.~\cite{bvcomplexity}, and solvers such as Bitwuzla~\cite{bitwuzla} use abstraction-refinement aimed at
+hard bit-vector formulas, including multiplication-heavy ones. Our proof-engineering note (Section~\ref{sec:boundary}) adds a specific same-goal
 integer-versus-bit-vector measurement for a standardized primitive and the restructuring that avoids it;
 it is an observation supporting the main result, not a solver-independent claim.
 
@@ -568,7 +570,8 @@ discharged it.
   Springer. \url{https://doi.org/10.1007/978-3-642-03359-9_4}.
 \bibitem{cbmc} Daniel Kroening and Michael Tautschnig. \emph{CBMC -- C Bounded Model Checker.}
   TACAS 2014, LNCS 8413:389--391, Springer. \url{https://doi.org/10.1007/978-3-642-54862-8_26}.
-\bibitem{mirjson} Galois, Inc. \emph{mir-json.} \url{https://github.com/GaloisInc/mir-json}.
+\bibitem{mirjson} Galois, Inc. \emph{mir-json}, commit \texttt{7e12cece} (schema v8, the SAW 1.5.1
+  bundle). \url{https://github.com/GaloisInc/mir-json}, accessed June 2026.
 \bibitem{afpntt} Thomas Ammer and Katharina Kreuzer. \emph{Number Theoretic Transform.}
   Archive of Formal Proofs, 2022.
   \url{https://www.isa-afp.org/entries/Number_Theoretic_Transform.html}.
@@ -594,8 +597,9 @@ discharged it.
 
 % --- Verified cryptography and PQC verification ---
 \bibitem{corecrypto} Apple. \emph{A blueprint for formal verification of Apple corecrypto.}
-  Apple Security Research, 2026. \url{https://security.apple.com/blog/formal-verification-corecrypto/}.
-  Artifact: \url{https://github.com/apple/corecrypto/tree/2026-05}.
+  Apple Security Research, May 2026. \url{https://security.apple.com/blog/formal-verification-corecrypto/}.
+  Artifact and technical overview: \url{https://github.com/apple/corecrypto/tree/2026-05}
+  (see \texttt{corecrypto\_verify/technical\_overview/}).
 \bibitem{hacl} Jean Karim Zinzindohou\'e, Karthikeyan Bhargavan, Jonathan Protzenko, and Benjamin
   Beurdouche. \emph{HACL*: A Verified Modern Cryptographic Library.} ACM CCS 2017, pp.\ 1789--1806.
   \url{https://doi.org/10.1145/3133956.3134043}.
@@ -636,13 +640,14 @@ discharged it.
   \url{https://doi.org/10.1007/978-3-319-69453-5_2}.
 
 % --- Targets and artifacts ---
-\bibitem{pqclean} The PQClean project. \url{https://github.com/PQClean/PQClean}.
-\bibitem{dilithiumref} CRYSTALS-Dilithium reference implementation, pq-crystals.
-  \url{https://github.com/pq-crystals/dilithium}.
-\bibitem{rustcrypto} The RustCrypto project. \emph{ml-dsa.}
-  \url{https://github.com/RustCrypto/signatures}.
+\bibitem{pqclean} The PQClean project. ML-DSA-44 \code{clean} implementation, commit
+  \texttt{202a8f9}. \url{https://github.com/PQClean/PQClean}, accessed June 2026.
+\bibitem{dilithiumref} CRYSTALS-Dilithium reference implementation, pq-crystals; the \code{clean} target
+  tracks commit \texttt{cbcd875}. \url{https://github.com/pq-crystals/dilithium}, accessed June 2026.
+\bibitem{rustcrypto} The RustCrypto project. \emph{ml-dsa} (vendored at the commit pinned in the
+  artifact). \url{https://github.com/RustCrypto/signatures}, accessed June 2026.
 \bibitem{mldsanative} The PQ Code Package project. \emph{mldsa-native.}
-  \url{https://github.com/pq-code-package/mldsa-native}.
+  \url{https://github.com/pq-code-package/mldsa-native}, accessed June 2026.
 \bibitem{saw3306} R.\ Scott (Galois, Inc.) and A.\ Akshat. \emph{SAW/MIR: idiomatic way to prove
   Barrett reduction over $x < 2^{46}$ without bit-blasting?} saw-script discussion \#3306, 2026.
   \url{https://github.com/GaloisInc/saw-script/discussions/3306}.
