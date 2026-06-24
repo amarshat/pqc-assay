@@ -18,8 +18,8 @@
 \newcommand{\Q}{Q}
 \newcommand{\code}[1]{\texttt{#1}}
 
-\title{A Reproducible Refinement Proof of the ML-DSA Reference Forward NTT,\\
-       from C to FIPS 204}
+\title{Mechanically Checking the ML-DSA Reference Forward NTT\\
+       Against FIPS 204}
 
 \author{Amar Akshat\\Independent Researcher\\\texttt{amar.akshat@gmail.com}}
 \date{\today}
@@ -41,13 +41,12 @@ arithmetic layer (\code{montgomery\_reduce}, \code{reduce32}, \code{caddq}, \cod
 spec. Two choices keep the NTT result honest. The theorem is about the same model SAW checks the C
 against (the montgomery-domain model), joined to the FIPS transform by an explicit eight-layer bridge
 rather than a hand-written restatement; and a claim table separates what is machine-checked from what is
-argued or assumed. Alongside, we report a tractability boundary met on a second implementation
-(RustCrypto, via SAW over MIR): wide-domain Barrett reduction over $x<2^{46}$ does not discharge under
-eager bit-blasting across six solver and tactic configurations, while the same relation in
-unbounded-integer arithmetic discharges in $0.04$\,s. The proof restructurings that cross it include the
-total-invariant induction used for the C overflow bound. We disclose two off-by-one defects in the
-reference's documented contracts. The development reproduces from \code{make verify} (SAW plus the full
-Isabelle chain, including the NTT bridge) and runs green in CI; it uses no vendor verification artifacts.
+argued or assumed. A proof-engineering note records the restructuring the development relied on: a direct
+bit-vector equivalence for wide-domain modular reduction did not discharge in our setup, while the same
+relation in unbounded-integer arithmetic did, and the matching total-invariant induction is what makes
+the NTT overflow bound tractable. We disclose two off-by-one defects in the reference's documented
+contracts. The development reproduces from \code{make verify} (SAW plus the full Isabelle chain,
+including the NTT bridge) and runs green in CI; it uses no vendor verification artifacts.
 \end{abstract}
 
 \medskip
@@ -88,17 +87,8 @@ those restructurings is what makes the C overflow-freedom bound tractable.
   \item \textbf{The \code{reduce.c} layer, C to spec} (Section~\ref{sec:reduce}). All four primitives
   (\code{montgomery\_reduce}, \code{reduce32}, \code{caddq}, \code{freeze}) verified C $\equiv$ Cryptol by
   SAW and model $\equiv$ FIPS-derived spec in Isabelle, plus a machine-checked overflow-freedom bound for
-  the forward-NTT model.
-  \item \textbf{A tractability boundary, and the restructuring that crosses it} (Section~\ref{sec:boundary}).
-  On a second implementation (RustCrypto, via SAW over MIR), narrow-domain Barrett reduction ($x<2^{28}$)
-  proves in about four seconds while the cryptographically relevant wide domain ($x<2^{46}$) does not
-  complete under \code{z3}, \code{abc}, \code{cvc5}, \code{yices}, a \code{goal\_eval} rewrite pass, or a
-  carry-fold reformulation. We isolate the cause with a controlled experiment: the same goal over
-  $x<2^{46}$ in unbounded-integer arithmetic discharges in $0.04$\,s where the bit-vector form times out,
-  locating the difficulty in bit-blasting $(x\cdot M)\gg k$ across the eager back-ends tested, not in the
-  modulus or formula size. The total-invariant induction this motivates is what makes the C
-  overflow-freedom bound tractable, replacing a $\sim$3000-obligation SAW unrolling with an eight-step
-  proof.
+  the forward-NTT model, proved by a total-invariant induction over the eight levels rather than an
+  unrolled SMT goal (Section~\ref{sec:boundary} records why the unrolling does not discharge).
   \item \textbf{Two off-by-one defects} in the reference's documentation contracts, reproduced against
   the shipping code and disclosed upstream to pq-crystals/dilithium (Section~\ref{sec:findings}).
 \end{enumerate}
@@ -140,11 +130,12 @@ inverse NTT, $256^{-1}$ scaling & not claimed & --- \\
 \section{Background}\label{sec:background}
 
 \paragraph{Targets.} On the C side we verify PQClean~\cite{pqclean} \code{ml-dsa-44/clean}, files
-\code{reduce.c} and \code{ntt.c}, pinned by commit hash; this code is byte-identical to
-pq-crystals/dilithium~\cite{dilithium} up to a namespace prefix. (PQClean is scheduled for read-only
-archival in July 2026; because the vendored target is byte-identical to the canonical
-pq-crystals/dilithium reference, the results transfer to it and to the PQ Code Package
-\code{mldsa-native} successor.) On the Rust side we verify
+\code{reduce.c} and \code{ntt.c}, pinned by commit hash; this code is byte-identical (up to a namespace
+prefix) to the cited pq-crystals/dilithium~\cite{dilithium} reference at that revision, so the result
+applies to that identified source. (PQClean is scheduled for read-only archival in July 2026; the
+vendored copy is unaffected. The artifact pins the vendored files by SHA-256 and records the
+pq-crystals commit they track, checked by \code{scripts/check\_target\_identity.sh}, so a reviewer can
+diff against that reference directly.) On the Rust side we verify
 RustCrypto's \code{ml-dsa} crate~\cite{rustcrypto} and its shared \code{module-lattice} field core. ML-DSA
 fixes the prime modulus $Q = 8380417$ and ring dimension $N = 256$. \code{montgomery\_reduce} maps a
 64-bit input to a 32-bit value congruent to $a \cdot 2^{-32} \pmod Q$. \code{reduce32} is a
@@ -346,9 +337,9 @@ $x < 2^{44},\, 2^{46}$ & $>300$\,s (no completion) \\
 \end{tabular}
 \end{center}
 Solve time is flat up to about $2^{28}$ and then grows by a factor of roughly four to seven per two
-added bits ($7.3 \to 27.9 \to 183.6$\,s), crossing the timeout between $2^{34}$ and $2^{36}$ ---
-consistent with exponential growth in the live input width, not in the modulus or the formula size,
-though the growth region spans only three points. At $x < 2^{46}$ the goal also failed to
+added bits ($7.3 \to 27.9 \to 183.6$\,s), crossing the timeout between $2^{34}$ and $2^{36}$: a rapid,
+apparently superlinear growth in the live input width over the measured range (three points), not in the
+modulus or the formula size. At $x < 2^{46}$ the goal also failed to
 complete under \code{abc}, \code{cvc5}, \code{yices}, a \code{goal\_eval} rewrite pass before \code{z3},
 and a hand-written carry-fold reformulation of the specification (six configurations in all, each to the
 same 300\,s timeout). All five solver back-ends decide \code{QF\_BV} by eager bit-blasting (\code{z3},
@@ -373,9 +364,10 @@ $x - \lfloor x M / 2^{46} \rfloor\,Q \in [0, 2Q)$ for all $x \in [0, 2^{46})$, e
 \code{unsat} answer establishes the identity over the whole domain. It returns \code{unsat} in
 $0.04$\,s. The bit-vector form of the identical goal does not complete (Table above; $>300$\,s). A
 non-vacuity mutation --- replacing $Q$ by $Q+1$ --- flips the integer query to \code{sat} with an explicit
-witness ($x = 16760835$), so the fast \code{unsat} is not a modeling artifact. Same relation, same domain,
-two encodings, four orders of magnitude apart: the difficulty is the bit-blasting of $(x \cdot M) \gg k$,
-not the modular relation. (This integer identity is also the core of escape two below; what remains there
+witness ($x = 16760835$), so the fast \code{unsat} is not a modeling artifact. The same relation over the
+same domain, in two encodings, differs by about four orders of magnitude in our setup; this strongly
+indicates that the eager bit-vector encoding of $(x \cdot M) \gg k$, rather than the underlying modular
+identity, dominates the observed cost. (This integer identity is also the core of escape two below; what remains there
 is the bit-vector-to-integer bridge.) The three \code{.smt2} files and a runner are in the artifact.
 
 The boundary thus tracks the goal encoding rather than one back-end: across the eager bit-blasting
@@ -505,15 +497,6 @@ has not been done, to our knowledge, is to measure where the boundary falls for 
 primitive, show that the same symptom persists across two frontends, isolate eager bit-blasting as the
 cause by a same-goal integer-versus-bit-vector contrast, and pair the measurement with a completed escape
 and a partially-realized one. That measurement and those escapes are the contribution.
-
-The boundary and the escape route are corroborated by the toolchain's maintainers. In response to our
-report of this case, a SAW maintainer confirmed that ``proving the implementation of Barrett reduction
-is one of those things that SMT-based tools like SAW fundamentally struggle with,'' and identified the
-same remedy we pursue --- expressing the low-level operations in terms of unbounded \code{Integer}
-arithmetic (via \code{mir\_unsafe\_assume\_spec}) and rewriting the goal into a shape the solver can
-discharge, the technique they used for Montgomery reduction~\cite{saw3306}. This independently supports
-both halves of our finding: that the wall is a property of the goal class rather than our setup, and that
-the integer reformulation is the principled way across it.
 
 \section{Conclusion}\label{sec:conclusion}
 
