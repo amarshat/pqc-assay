@@ -56,8 +56,8 @@ number-theoretic transform $\cdot$ tractability.
 
 \section{Introduction}\label{sec:intro}
 
-ML-DSA (FIPS~204)~\cite{fips204} is the NIST-standardized lattice signature scheme derived from
-CRYSTALS-Dilithium~\cite{dilithium}. Its security analysis assumes that implementations compute the
+ML-DSA (FIPS~204)~\cite{fips204} is the lattice signature scheme standardized by NIST's post-quantum
+process~\cite{nistpqc}, derived from CRYSTALS-Dilithium~\cite{dilithium}. Its security analysis assumes that implementations compute the
 specified function. Test vectors check that assumption on a finite set of inputs; formal verification
 checks it for all inputs, which matters for arithmetic kernels whose bugs are input-dependent and can
 pass test vectors~\cite{eprint1032}.
@@ -131,23 +131,24 @@ inverse NTT, $256^{-1}$ scaling & not claimed & --- \\
 
 \paragraph{Targets.} On the C side we verify PQClean~\cite{pqclean} \code{ml-dsa-44/clean}, files
 \code{reduce.c} and \code{ntt.c}, pinned by commit hash; this code is byte-identical (up to a namespace
-prefix) to the cited pq-crystals/dilithium~\cite{dilithium} reference at that revision, so the result
+prefix) to the cited pq-crystals/dilithium~\cite{dilithiumref} reference at that revision, so the result
 applies to that identified source. (PQClean is scheduled for read-only archival in July 2026; the
 vendored copy is unaffected. The artifact pins the vendored files by SHA-256 and records the
 pq-crystals commit they track, checked by \code{scripts/check\_target\_identity.sh}, so a reviewer can
 diff against that reference directly.) On the Rust side we verify
 RustCrypto's \code{ml-dsa} crate~\cite{rustcrypto} and its shared \code{module-lattice} field core. ML-DSA
 fixes the prime modulus $Q = 8380417$ and ring dimension $N = 256$. \code{montgomery\_reduce} maps a
-64-bit input to a 32-bit value congruent to $a \cdot 2^{-32} \pmod Q$. \code{reduce32} is a
-Barrett-style reduction to a centered window; RustCrypto instead uses an explicit Barrett reduction
+64-bit input to a 32-bit value congruent to $a \cdot 2^{-32} \pmod Q$, in the style of Montgomery
+reduction~\cite{montgomery}. \code{reduce32} is a Barrett-style reduction to a centered window;
+RustCrypto instead uses an explicit Barrett reduction~\cite{barrett}
 $x \mapsto x - \lfloor (x \cdot M) / 2^{k} \rfloor\, Q$ with $M = \lfloor 2^{k}/Q \rfloor$. The forward
-NTT applies eight levels of Cooley-Tukey butterflies, each multiplying a coefficient by a precomputed
-twiddle factor and reducing.
+NTT applies eight levels of Cooley-Tukey butterflies~\cite{cooleytukey}, each multiplying a coefficient
+by a precomputed twiddle factor and reducing.
 
 \paragraph{Tools.} SAW (the Software Analysis Workbench)~\cite{saw} proves a compiled function
-equivalent to a Cryptol specification by symbolic execution and SMT; it targets LLVM bitcode for C and,
-via \code{mir-json}, Rust MIR. Cryptol is a word-level specification language. Isabelle/HOL is an
-interactive theorem prover. The \code{cryptol-to-isabelle} translator, first shipped with saw-script
+equivalent to a Cryptol~\cite{cryptol} specification by symbolic execution and SMT; it targets LLVM
+bitcode for C and, via \code{mir-json}, Rust MIR. Cryptol is a word-level specification language.
+Isabelle/HOL~\cite{isabelle} is an interactive theorem prover. The \code{cryptol-to-isabelle} translator, first shipped with saw-script
 1.5.1, lifts a Cryptol module into an Isabelle theory; we use it to compose the two C-side proof legs.
 All tool versions are pinned (Section~\ref{sec:repro}).
 
@@ -340,8 +341,9 @@ Solve time is flat up to about $2^{28}$ and then grows by a factor of roughly fo
 added bits ($7.3 \to 27.9 \to 183.6$\,s), crossing the timeout between $2^{34}$ and $2^{36}$: a rapid,
 apparently superlinear growth in the live input width over the measured range (three points), not in the
 modulus or the formula size. At $x < 2^{46}$ the goal also failed to
-complete under \code{abc}, \code{cvc5}, \code{yices}, a \code{goal\_eval} rewrite pass before \code{z3},
-and a hand-written carry-fold reformulation of the specification (six configurations in all, each to the
+complete under \code{abc}~\cite{abc}, \code{cvc5}~\cite{cvc5}, \code{yices}~\cite{yices}, a
+\code{goal\_eval} rewrite pass before \code{z3}~\cite{z3}, and a hand-written carry-fold reformulation of
+the specification (six configurations in all, each to the
 same 300\,s timeout). All five solver back-ends decide \code{QF\_BV} by eager bit-blasting (\code{z3},
 \code{cvc5}, \code{yices} bit-blast; \code{abc} reasons on the AIG directly), so the experiment varies the
 solver but not the bit-blasting strategy. The corresponding narrow-domain Barrett reduction over
@@ -474,29 +476,39 @@ timeout             300 s wall-clock, single thread
 
 \section{Related work}\label{sec:related}
 
-Apple's 2026 corecrypto verification~\cite{corecrypto} covers ML-KEM and ML-DSA in production code with
-SAW, Cryptol, and Isabelle, proving the Cryptol models faithful to FIPS~203/204, and is the direct
-methodological precedent for the C pipeline. Their pipeline discharges the wide-arithmetic goals through
-the interactive Isabelle leg --- structured proof rather than automated SMT over the wide bit-vector
-goal --- which is consistent with, not a counterexample to, our finding: the boundary is not that the
-relation cannot be proven, but that it does not fall to eager bit-blasting, so a verifier must restructure
-(as Apple does, and as our completed escape and the integer reformulation do). We do not claim a result
-beyond Apple's; we apply the same public toolchain independently to reference C, add a second frontend
-over Rust MIR, and center the tractability boundary and its escapes rather than a single implementation.
-The PQ Code Package \code{mldsa-native}~\cite{mldsanative} carries Isabelle/HOL proofs of Barrett-division
-for \code{Decompose} and of the Neon-NTT modular-arithmetic kernels; those establish correctness of
-specific optimized kernels, whereas we measure where the automated boundary falls and characterize the
-escapes across two frontends. Deployed implementations in OpenSSL, BoringSSL, and AWS-LC are verified by
-other toolchains such as CBMC and HOL-Light. A recent audit of reduction
-placement in production ML-DSA~\cite{eprint1032} reports missing-reduction and overflow defects that
-escaped test vectors, the defect class our overflow-freedom property targets. That SMT
-obligations for wide modular arithmetic can be hard to discharge is part of verification practice ---
-bit-vector reasoning over wide multiplication is a known scalability bottleneck, and abstraction-refinement
-solvers such as \code{bitwuzla} target it directly; what
-has not been done, to our knowledge, is to measure where the boundary falls for a specific standardized
-primitive, show that the same symptom persists across two frontends, isolate eager bit-blasting as the
-cause by a same-goal integer-versus-bit-vector contrast, and pair the measurement with a completed escape
-and a partially-realized one. That measurement and those escapes are the contribution.
+\paragraph{Verified cryptographic implementations.} A line of work proves cryptographic code correct
+down to executable artifacts: HACL*~\cite{hacl} and EverCrypt~\cite{evercrypt} in F$^\star$,
+Fiat-Crypto~\cite{fiatcrypto} which synthesizes field arithmetic with Coq proofs, and Jasmin~\cite{jasmin}
+and Vale~\cite{vale} for verified high-speed assembly. These build verified-by-construction code or
+verify code written in their own languages. Our target is different: unmodified third-party reference C,
+checked as-is against FIPS~204 through SAW, Cryptol, and Isabelle. The reference is the code that
+integration projects such as the Open Quantum Safe project~\cite{liboqs} package for deployment, so
+checking it directly is worthwhile. The contribution is an independent assurance case for an exact public
+implementation, not a verification method or a new implementation.
+
+\paragraph{Verification of PQC.} Apple's 2026 corecrypto verification~\cite{corecrypto} covers ML-KEM and
+ML-DSA in production code with SAW, Cryptol, and Isabelle (and a Cryptol-to-Isabelle translator), and is
+the direct methodological precedent for our C pipeline; we claim no result beyond it, and apply the same
+public toolchain independently to the reference C with the bridge to FIPS made explicit. For ML-KEM, the
+``Formally verifying Kyber'' work mechanizes implementation correctness in EasyCrypt~\cite{fvkyber4} and
+IND-CCA security and correctness of ML-KEM~\cite{fvkyber5}; for Dilithium, the Fiat-Shamir-with-aborts
+security proof is mechanized in EasyCrypt~\cite{jazzdilithium}. Those are security proofs or
+correctness proofs of code in a proof-oriented language; ours is a refinement of the unmodified reference
+C forward transform to the FIPS-204 negacyclic DFT. The PQ Code Package \code{mldsa-native}~\cite{mldsanative}
+carries CBMC~\cite{cbmc} memory-safety proofs, HOL-Light~\cite{hollight} proofs of its AArch64 NTT
+kernels, and experimental Isabelle/HOL proofs of scalar routines; those target the optimized successor,
+whereas we target the canonical reference and prove the forward transform itself. The Isabelle Cooley-Tukey
+NTT formalization in the Archive of Formal Proofs~\cite{afpntt} supplies the abstract transform our
+\code{fwd\_ntt\_correct} chains onto. A recent audit of reduction placement in production
+ML-DSA~\cite{eprint1032} reports overflow and missing-reduction defects that pass test vectors, the defect
+class our overflow-freedom bound targets.
+
+\paragraph{Bit-vector reasoning.} That wide bit-vector multiplication is hard for eager bit-blasting is
+established: the complexity of fixed-size bit-vector logic is studied by Kov\'asznai et
+al.~\cite{bvcomplexity}, and abstraction-refinement solvers such as Bitwuzla~\cite{bitwuzla} target it
+directly. Our proof-engineering note (Section~\ref{sec:boundary}) adds a specific same-goal
+integer-versus-bit-vector measurement for a standardized primitive and the restructuring that avoids it;
+it is an observation supporting the main result, not a solver-independent claim.
 
 \section{Conclusion}\label{sec:conclusion}
 
@@ -517,20 +529,120 @@ toolchain. AI tools assisted with prose drafting; all proofs, scripts, measureme
 were produced and checked by the author against the tools, and no proof result is reported unless a tool
 discharged it.
 
-\begin{thebibliography}{9}
+\begin{thebibliography}{99}
+
+% --- Standard, scheme, and classical algorithms ---
 \bibitem{fips204} National Institute of Standards and Technology.
-  \emph{FIPS 204: Module-Lattice-Based Digital Signature Standard.} 2024.
-\bibitem{corecrypto} Apple. \emph{Formal verification of corecrypto.}
-  \url{https://github.com/apple/corecrypto/tree/2026-05}, 2026.
-\bibitem{saw} Galois, Inc. \emph{SAW: The Software Analysis Workbench.}
-  \url{https://github.com/GaloisInc/saw-script}.
+  \emph{FIPS 204: Module-Lattice-Based Digital Signature Standard.} NIST FIPS 204, August 2024.
+  \url{https://doi.org/10.6028/NIST.FIPS.204}.
+\bibitem{nistpqc} Gorjan Alagic, Daniel Apon, David Cooper, Quynh Dang, Thinh Dang, John Kelsey,
+  Jacob Lichtinger, Carl Miller, Dustin Moody, Rene Peralta, Ray Perlner, Angela Robinson,
+  Daniel Smith-Tone, and Yi-Kai Liu. \emph{Status Report on the Third Round of the NIST Post-Quantum
+  Cryptography Standardization Process.} NIST IR 8413-upd1, 2022.
+  \url{https://doi.org/10.6028/NIST.IR.8413-upd1}.
+\bibitem{dilithium} L\'eo Ducas, Eike Kiltz, Tancr\`ede Lepoint, Vadim Lyubashevsky, Peter Schwabe,
+  Gregor Seiler, and Damien Stehl\'e. \emph{CRYSTALS-Dilithium: A Lattice-Based Digital Signature
+  Scheme.} IACR Trans.\ Cryptographic Hardware and Embedded Systems (TCHES), 2018(1):238--268, 2018.
+  \url{https://doi.org/10.46586/tches.v2018.i1.238-268}.
+\bibitem{montgomery} Peter L.\ Montgomery. \emph{Modular Multiplication Without Trial Division.}
+  Mathematics of Computation, 44(170):519--521, 1985.
+  \url{https://doi.org/10.1090/S0025-5718-1985-0777282-X}.
+\bibitem{barrett} Paul Barrett. \emph{Implementing the Rivest Shamir and Adleman Public Key
+  Encryption Algorithm on a Standard Digital Signal Processor.} CRYPTO~'86, LNCS 263:311--323,
+  Springer, 1987. \url{https://doi.org/10.1007/3-540-47721-7_24}.
+\bibitem{cooleytukey} James W.\ Cooley and John W.\ Tukey. \emph{An Algorithm for the Machine
+  Calculation of Complex Fourier Series.} Mathematics of Computation, 19(90):297--301, 1965.
+  \url{https://doi.org/10.1090/S0025-5718-1965-0178586-1}.
+
+% --- Verification tools ---
+\bibitem{saw} Robert Dockins, Adam Foltzer, Joe Hendrix, Brian Huffman, Dylan McNamee, and Aaron
+  Tomb. \emph{Constructing Semantic Models of Programs with the Software Analysis Workbench.}
+  VSTTE 2016, LNCS 9971:56--72, Springer. \url{https://doi.org/10.1007/978-3-319-48869-1_5}.
+  Tool: \url{https://github.com/GaloisInc/saw-script}.
+\bibitem{cryptol} Levent Erk\"ok and John Matthews. \emph{Pragmatic Equivalence and Safety Checking
+  in Cryptol.} PLPV 2009, ACM, pp.\ 73--82. \url{https://doi.org/10.1145/1481848.1481860}.
+\bibitem{isabelle} Tobias Nipkow, Lawrence C.\ Paulson, and Markus Wenzel. \emph{Isabelle/HOL:
+  A Proof Assistant for Higher-Order Logic.} LNCS 2283, Springer, 2002.
+  \url{https://doi.org/10.1007/3-540-45949-9}.
+\bibitem{hollight} John Harrison. \emph{HOL Light: An Overview.} TPHOLs 2009, LNCS 5674:60--66,
+  Springer. \url{https://doi.org/10.1007/978-3-642-03359-9_4}.
+\bibitem{cbmc} Daniel Kroening and Michael Tautschnig. \emph{CBMC -- C Bounded Model Checker.}
+  TACAS 2014, LNCS 8413:389--391, Springer. \url{https://doi.org/10.1007/978-3-642-54862-8_26}.
 \bibitem{mirjson} Galois, Inc. \emph{mir-json.} \url{https://github.com/GaloisInc/mir-json}.
+\bibitem{afpntt} Thomas Ammer and Katharina Kreuzer. \emph{Number Theoretic Transform.}
+  Archive of Formal Proofs, 2022.
+  \url{https://www.isa-afp.org/entries/Number_Theoretic_Transform.html}.
+
+% --- SMT/SAT back-ends and bit-vector reasoning ---
+\bibitem{z3} Leonardo de Moura and Nikolaj Bj\o rner. \emph{Z3: An Efficient SMT Solver.}
+  TACAS 2008, LNCS 4963:337--340, Springer. \url{https://doi.org/10.1007/978-3-540-78800-3_24}.
+\bibitem{cvc5} Haniel Barbosa, Clark Barrett, Martin Brain, Gereon Kremer, Hanna Lachnitt, Makai
+  Mann, Abdalrhman Mohamed, Mudathir Mohamed, Aina Niemetz, Andres N\"otzli, Alex Ozdemir, Mathias
+  Preiner, Andrew Reynolds, Ying Sheng, Cesare Tinelli, and Yoni Zohar. \emph{cvc5: A Versatile and
+  Industrial-Strength SMT Solver.} TACAS 2022, LNCS 13243:415--442, Springer.
+  \url{https://doi.org/10.1007/978-3-030-99524-9_24}.
+\bibitem{yices} Bruno Dutertre. \emph{Yices 2.2.} CAV 2014, LNCS 8559:737--744, Springer.
+  \url{https://doi.org/10.1007/978-3-319-08867-9_49}.
+\bibitem{abc} Robert K.\ Brayton and Alan Mishchenko. \emph{ABC: An Academic Industrial-Strength
+  Verification Tool.} CAV 2010, LNCS 6174:24--40, Springer.
+  \url{https://doi.org/10.1007/978-3-642-14295-6_5}.
+\bibitem{bitwuzla} Aina Niemetz and Mathias Preiner. \emph{Bitwuzla.} CAV 2023, LNCS 13965:3--17,
+  Springer. \url{https://doi.org/10.1007/978-3-031-37703-7_1}.
+\bibitem{bvcomplexity} Gergely Kov\'asznai, Andreas Fr\"ohlich, and Armin Biere. \emph{Complexity of
+  Fixed-Size Bit-Vector Logics.} Theory of Computing Systems, 59(2):323--376, 2016.
+  \url{https://doi.org/10.1007/s00224-015-9653-1}.
+
+% --- Verified cryptography and PQC verification ---
+\bibitem{corecrypto} Apple. \emph{A blueprint for formal verification of Apple corecrypto.}
+  Apple Security Research, 2026. \url{https://security.apple.com/blog/formal-verification-corecrypto/}.
+  Artifact: \url{https://github.com/apple/corecrypto/tree/2026-05}.
+\bibitem{hacl} Jean Karim Zinzindohou\'e, Karthikeyan Bhargavan, Jonathan Protzenko, and Benjamin
+  Beurdouche. \emph{HACL*: A Verified Modern Cryptographic Library.} ACM CCS 2017, pp.\ 1789--1806.
+  \url{https://doi.org/10.1145/3133956.3134043}.
+\bibitem{fiatcrypto} Andres Erbsen, Jade Philipoom, Jason Gross, Robert Sloan, and Adam Chlipala.
+  \emph{Simple High-Level Code for Cryptographic Arithmetic -- With Proofs, Without Compromises.}
+  IEEE S\&P 2019, pp.\ 1202--1219. \url{https://doi.org/10.1109/SP.2019.00005}.
+\bibitem{evercrypt} Jonathan Protzenko, Bryan Parno, Aymeric Fromherz, Chris Hawblitzel, Marina
+  Polubelova, Karthikeyan Bhargavan, Benjamin Beurdouche, Joonwon Choi, Antoine Delignat-Lavaud,
+  C\'edric Fournet, Natalia Kulatova, Tahina Ramananandro, Aseem Rastogi, Nikhil Swamy, Christoph
+  M.\ Wintersteiger, and Santiago Zanella-B\'eguelin. \emph{EverCrypt: A Fast, Verified,
+  Cross-Platform Cryptographic Provider.} IEEE S\&P 2020, pp.\ 983--1002.
+  \url{https://doi.org/10.1109/SP40000.2020.00114}.
+\bibitem{jasmin} Jos\'e Bacelar Almeida, Manuel Barbosa, Gilles Barthe, Arthur Blot, Benjamin
+  Gr\'egoire, Vincent Laporte, Tiago Oliveira, Hugo Pacheco, Benedikt Schmidt, and Pierre-Yves Strub.
+  \emph{Jasmin: High-Assurance and High-Speed Cryptography.} ACM CCS 2017, pp.\ 1807--1823.
+  \url{https://doi.org/10.1145/3133956.3134078}.
+\bibitem{vale} Barry Bond, Chris Hawblitzel, Manos Kapritsos, K.\ Rustan M.\ Leino, Jacob R.\ Lorch,
+  Bryan Parno, Ashay Rane, Srinath T.\ V.\ Setty, and Laure Thompson. \emph{Vale: Verifying
+  High-Performance Cryptographic Assembly Code.} USENIX Security 2017, pp.\ 917--934.
+  \url{https://www.usenix.org/conference/usenixsecurity17/technical-sessions/presentation/bond}.
+\bibitem{fvkyber4} Jos\'e Bacelar Almeida, Manuel Barbosa, Gilles Barthe, Benjamin Gr\'egoire,
+  Vincent Laporte, Jean-Christophe L\'echenet, Tiago Oliveira, Hugo Pacheco, Miguel Quaresma, Peter
+  Schwabe, Antoine S\'er\'e, and Pierre-Yves Strub. \emph{Formally Verifying Kyber -- Episode IV:
+  Implementation Correctness.} IACR TCHES, 2023(3):164--193.
+  \url{https://doi.org/10.46586/tches.v2023.i3.164-193}.
+\bibitem{fvkyber5} Jos\'e Bacelar Almeida, Santiago Arranz-Olmos, Manuel Barbosa, Gilles Barthe,
+  Fran\c{c}ois Dupressoir, Benjamin Gr\'egoire, Vincent Laporte, Jean-Christophe L\'echenet, Cameron
+  Low, Tiago Oliveira, Hugo Pacheco, Miguel Quaresma, Peter Schwabe, and Pierre-Yves Strub.
+  \emph{Formally Verifying Kyber -- Episode V: Machine-Checked IND-CCA Security and Correctness of
+  ML-KEM in EasyCrypt.} CRYPTO 2024, LNCS 14921:384--421, Springer.
+  \url{https://doi.org/10.1007/978-3-031-68379-4_12}.
+\bibitem{jazzdilithium} Manuel Barbosa, Gilles Barthe, Christian Doczkal, Jelle Don, Serge Fehr,
+  Benjamin Gr\'egoire, Yu-Hsuan Huang, Andreas H\"ulsing, Yi Lee, and Xiaodi Wu. \emph{Fixing and
+  Mechanizing the Security Proof of Fiat-Shamir with Aborts and Dilithium.} CRYPTO 2023,
+  LNCS 14085:358--389, Springer. \url{https://doi.org/10.1007/978-3-031-38554-4_12}.
+\bibitem{liboqs} Douglas Stebila and Michele Mosca. \emph{Post-Quantum Key Exchange for the Internet
+  and the Open Quantum Safe Project.} SAC 2016, LNCS 10532:1--24, Springer.
+  \url{https://doi.org/10.1007/978-3-319-69453-5_2}.
+
+% --- Targets and artifacts ---
 \bibitem{pqclean} The PQClean project. \url{https://github.com/PQClean/PQClean}.
-\bibitem{dilithium} CRYSTALS-Dilithium. \url{https://github.com/pq-crystals/dilithium}.
+\bibitem{dilithiumref} CRYSTALS-Dilithium reference implementation, pq-crystals.
+  \url{https://github.com/pq-crystals/dilithium}.
 \bibitem{rustcrypto} The RustCrypto project. \emph{ml-dsa.}
   \url{https://github.com/RustCrypto/signatures}.
-\bibitem{mldsanative} The PQ Code Package project. \emph{mldsa-native: Isabelle/HOL proofs.}
-  \url{https://github.com/pq-code-package/mldsa-native/tree/main/proofs/isabelle}.
+\bibitem{mldsanative} The PQ Code Package project. \emph{mldsa-native.}
+  \url{https://github.com/pq-code-package/mldsa-native}.
 \bibitem{saw3306} R.\ Scott (Galois, Inc.) and A.\ Akshat. \emph{SAW/MIR: idiomatic way to prove
   Barrett reduction over $x < 2^{46}$ without bit-blasting?} saw-script discussion \#3306, 2026.
   \url{https://github.com/GaloisInc/saw-script/discussions/3306}.
