@@ -23,15 +23,10 @@ saw-out/
 
 # Local toolchain
 /.tools/
-paper/*.zip
 
-# LaTeX build artifacts (compile locally with tectonic / Overleaf)
-paper/*.pdf
-paper/*.aux
-paper/*.log
-paper/*.out
-paper/*.bbl
-paper/*.blg
+# Paper kept local until publication (sources, build artifacts, submission notes).
+# The public artifact is the proofs/code, not the paper draft.
+/paper/
 implementations/**/target/
 implementations/rustcrypto-ml-dsa/build/
 *.linked-mir.json
