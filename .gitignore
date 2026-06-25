@@ -24,6 +24,14 @@ saw-out/
 # Local toolchain
 /.tools/
 paper/*.zip
+
+# LaTeX build artifacts (compile locally with tectonic / Overleaf)
+paper/*.pdf
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.bbl
+paper/*.blg
 implementations/**/target/
 implementations/rustcrypto-ml-dsa/build/
 *.linked-mir.json

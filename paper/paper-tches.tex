@@ -9,6 +9,7 @@
 \documentclass[journal=tches,submission,review]{iacrtrans}
 
 \usepackage{amsmath,amssymb}
+\usepackage[htt]{hyphenat} % let \texttt tokens (cryptol-to-isabelle, ...) break at hyphens
 \usepackage{xcolor}
 \usepackage{tabularx}
 \usepackage{listings}
@@ -20,10 +21,19 @@
 \newcommand{\Q}{Q}
 \newcommand{\code}[1]{\texttt{#1}}
 
+% Anonymity toggle. TCHES submission is anonymous (iacrtrans 'submission' implies it), so keep this
+% TRUE for submission. For camera-ready, set it FALSE (or \submissionanonfalse) to restore the repo
+% URL, Zenodo DOI, and the discussion author names.
+\newif\ifsubmissionanon \submissionanontrue
+
 \title{Mechanically Checking the ML-DSA Reference Forward NTT Against FIPS 204}
 
 \author{Amar Akshat}
 \institute{Independent Researcher, \email{amar.akshat@gmail.com}}
+% \keywords must be declared in the preamble (before \maketitle), not after the abstract.
+\keywords{ML-DSA \and FIPS~204 \and formal verification \and refinement proof \and SAW \and Cryptol
+  \and Isabelle/HOL \and number-theoretic transform \and Montgomery reduction \and post-quantum
+  cryptography}
 
 \begin{document}
 \maketitle
@@ -49,10 +59,6 @@ the NTT overflow bound tractable. We disclose two off-by-one defects in the refe
 contracts. The development reproduces from \code{make verify} (SAW plus the full Isabelle chain,
 including the NTT bridge) and runs green in CI; it uses no vendor verification artifacts.
 \end{abstract}
-
-\keywords{ML-DSA \and FIPS~204 \and formal verification \and refinement proof \and SAW \and Cryptol
-  \and Isabelle/HOL \and number-theoretic transform \and Montgomery reduction \and post-quantum
-  cryptography}
 
 \section{Introduction}\label{sec:intro}
 
@@ -473,9 +479,15 @@ host (timings)      Apple M4, 16 GB, macOS (arm64)
 timeout             300 s wall-clock, single thread
 \end{lstlisting}
 
-\noindent The artifact is archived on Zenodo, DOI
+\noindent
+\ifsubmissionanon
+The artifact (source, proofs, pinned toolchain, and scripts) is provided as anonymized supplementary
+material for review; the public repository and Zenodo archive links are added in the final version.
+\else
+The artifact is archived on Zenodo, DOI
 \href{https://doi.org/10.5281/zenodo.20641411}{10.5281/zenodo.20641411}, and the source is at
 \url{https://github.com/amarshat/pqc-assay}.
+\fi
 
 \section{Related work}\label{sec:related}
 
@@ -649,8 +661,10 @@ discharged it.
   artifact). \url{https://github.com/RustCrypto/signatures}, accessed June 2026.
 \bibitem{mldsanative} The PQ Code Package project. \emph{mldsa-native.}
   \url{https://github.com/pq-code-package/mldsa-native}, accessed June 2026.
-\bibitem{saw3306} R.\ Scott (Galois, Inc.) and A.\ Akshat. \emph{SAW/MIR: idiomatic way to prove
-  Barrett reduction over $x < 2^{46}$ without bit-blasting?} saw-script discussion \#3306, 2026.
+\bibitem{saw3306} \ifsubmissionanon \emph{SAW/MIR: idiomatic way to prove Barrett reduction over
+  $x < 2^{46}$ without bit-blasting?} saw-script discussion \#3306, 2026.\else R.\ Scott (Galois, Inc.)
+  and A.\ Akshat. \emph{SAW/MIR: idiomatic way to prove Barrett reduction over $x < 2^{46}$ without
+  bit-blasting?} saw-script discussion \#3306, 2026.\fi
   \url{https://github.com/GaloisInc/saw-script/discussions/3306}.
 \bibitem{eprint1032} Sunwoo Lee, Hyuk Lim, and Seunghyun Yoon.
   \emph{When Removing Reductions Goes Wrong: Auditing Reduction Placement in Production ML-DSA
