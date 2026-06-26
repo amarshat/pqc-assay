@@ -122,3 +122,36 @@ nttLevel i a = [ bf m | m <- [0 .. 255] : [256][16] ]
 ntt : [256][32] -> [256][32]
 ntt a0 = foldl step a0 ([0, 1, 2, 3, 4, 5, 6, 7] : [8][16])
   where step a i = nttLevel i a
+
+// --- inverse NTT (ntt.c invntt_tomont) -------------------------------------------------
+// Bit-exact model of the C `invntt_tomont`. 8 Gentleman-Sande levels (len = 2^L, L = 0..7,
+// the reverse of the forward len order), then a final per-coefficient multiply by
+// f = mont^2/256 = 41978 that folds in the 256^{-1} normalization and leaves the result in
+// the Montgomery domain (the "tomont"). Built element-wise like the forward model:
+// at level L (len = 2^L, twolen = 2*len), index m is a "low" leg j when (m mod twolen) < len,
+// with new value a[j] + a[j+len] (no reduction, matching the C); otherwise it is a "high" leg
+// j+len, with new value montgomery_reduce(zeta * (a[j] - a[j+len])) on the OLD legs.
+// The C counter runs k = 256 down to 1 with `zeta = -zetas[--k]`, so block b of level L uses
+// zeta = -zetas[(256>>L) - 1 - b], where b = m / twolen. (Forward uses +zetas[2^i + b]; the
+// inverse walks the table in reverse and negates.)
+invf : [32]
+invf = 41978   // f = mont^2 / 256 (ntt.c)
+
+invnttLevel : [16] -> [256][32] -> [256][32]
+invnttLevel ell a = [ bf m | m <- [0 .. 255] : [256][16] ]
+  where
+    len    = (1 : [16]) << ell
+    twolen = len << 1
+    kbase  = (256 : [16]) >> ell
+    bf : [16] -> [32]
+    bf m = if (m % twolen) < len
+             then (a @ m) + (a @ (m + len))
+             else montgomery_reduce (sext64 zeta * sext64 ((a @ (m - len)) - (a @ m)))
+           where zeta = - (zetas @ (kbase - 1 - (m / twolen)))
+
+invntt : [256][32] -> [256][32]
+invntt a0 =
+  [ montgomery_reduce (sext64 invf * sext64 (b @ j)) | j <- [0 .. 255] : [256][16] ]
+  where
+    b = foldl step a0 ([0, 1, 2, 3, 4, 5, 6, 7] : [8][16])
+    step a ell = invnttLevel ell a
