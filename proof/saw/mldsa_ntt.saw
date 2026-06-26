@@ -96,3 +96,19 @@ ntt_ov <- llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_ntt" [mr_ov_w] true ntt_spec
                       (w4_unint_z3 ["montgomery_reduce"]);
 
 print "VERIFIED: PQCLEAN_MLDSA44_CLEAN_ntt == Cryptol ntt (two's-complement wrapping; montgomery_reduce override)";
+
+// --- inverse NTT: C invntt_tomont(a[256]) ≡ Cryptol invntt, under two's-complement wrapping -----
+// Same setup as the forward NTT. The Gentleman-Sande butterflies do unreduced int32 add/sub that wrap,
+// so we use the -fwrapv module (equivalence for ALL inputs, no bound precondition). montgomery_reduce is
+// the uninterpreted override, so both its call sites (the butterfly reduce and the final
+// f = mont^2/256 scaling loop) collapse to a structural array equality against the Cryptol `invntt`.
+let invntt_spec = do {
+    (a, pa) <- ptr_to_fresh "a" (llvm_array 256 (llvm_int 32));
+    llvm_execute_func [pa];
+    llvm_points_to pa (llvm_term {{ invntt a }});
+};
+
+invntt_ov <- llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_invntt_tomont" [mr_ov_w] true invntt_spec
+                       (w4_unint_z3 ["montgomery_reduce"]);
+
+print "VERIFIED: PQCLEAN_MLDSA44_CLEAN_invntt_tomont == Cryptol invntt (two's-complement wrapping; montgomery_reduce override)";
