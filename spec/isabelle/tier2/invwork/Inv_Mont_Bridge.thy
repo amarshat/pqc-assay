@@ -134,14 +134,104 @@ proof -
     using mont_mod_q[OF ok2] by (simp add: sint_sext64_mult)
 qed
 
-text \<open>NEXT (sub-step 2 continuation, not in this commit): the 8 Gentleman-Sande layer
-  unfolds invlevel0..7 (mirror Mont_Bridge.mlevel0..7_lo/hi/coeff; level \<open>ell\<close> has
-  \<open>len = 2^ell\<close>, the reverse of the forward order), the 8 per-layer congruences (mirror
-  mbfly0..7, bridging invnttLevel to the normal-domain nttLayerInv per position via
-  inv_butterfly_cong and the no-overflow add/sub lifts), the 8 range-preservation
-  lemmas (mirror pres0..7; GS low legs grow by addition, so a growth bound is needed),
-  then the invf final scale composed into theorem invntt_bridge. The layer unfolds need
-  the per-level [16]-word shift/index recipe (1<<ell, 256>>ell, mod/div twolen) that
-  Mont_Bridge resolves level by level.\<close>
+section \<open>Gentleman-Sande layer unfolds\<close>
+
+text \<open>Per-position unfold of the montgomery inverse layers, mirroring Mont_Bridge's
+  \<open>mlevel\<close> unfolds. The cryptol-notation context is needed for the \<open>[256][32]\<close> types;
+  coercion is disabled so the nat/int index arithmetic goes through \<open>linarith\<close>. Inverse
+  butterfly: low leg \<open>a[m] + a[m+len]\<close> (plain int32 add, no reduce), high leg
+  \<open>montgomery_reduce(zeta * (a[m-len] - a[m]))\<close>, \<open>zeta = -zetas[(256>>ell)-1-(m div twolen)]\<close>.
+  Level \<open>ell\<close> has \<open>len = 2^ell\<close> (the reverse of the forward layer order).\<close>
+
+context includes cryptol_syntax begin
+
+declare [[coercion_enabled = false]]
+
+text \<open>Level 0 (\<open>len = 1\<close>, \<open>twolen = 2\<close>, \<open>kbase = 256\<close>): even positions are low legs.\<close>
+lemma invlevel0_lo:
+  fixes a :: "[256][32]"
+  assumes n: "n < (256::nat)" and ev: "n mod 2 = 0"
+  shows "nth_seq (invnttLevel 0 a) n = nth_seq a n + nth_seq a (n + 1)"
+proof -
+  have n256: "n < 256" using n by simp
+  have e1: "n mod 65536 = n" using n by simp
+  have e2: "Suc n mod 65536 = Suc n" using n by simp
+  have sh: "unat ((1::16 word) << 1) = 2" "((1::16 word) << 1) = 2"
+           "unat ((1::16 word) << 0) = 1" "((1::16 word) << 0) = 1"
+           "((0x100::16 word) >> 0) = 0x100" by eval+
+  have wm: "(word_of_nat n :: 16 word) mod 2 = 0"
+  proof -
+    have "unat ((word_of_nat n :: 16 word) mod 2) = 0" using ev e1 by (simp add: unat_mod unat_of_nat)
+    thus ?thesis by (simp add: unat_eq_zero)
+  qed
+  show ?thesis
+    using n ev
+    apply (simp add: invnttLevel_def fromTo_def Let_def n256)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths sh)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 e2 ev sh wm)
+    done
+qed
+
+text \<open>Odd positions are high legs: \<open>montgomery_reduce(-zetas[255 - n div 2] * (a[n-1] - a[n]))\<close>.\<close>
+lemma invlevel0_hi:
+  fixes a :: "[256][32]"
+  assumes n: "n < (256::nat)" and oddn: "n mod 2 = 1"
+  shows "nth_seq (invnttLevel 0 a) n
+       = montgomery_reduce (sext64 (- nth_seq zetas (255 - n div 2)) * sext64 (nth_seq a (n - 1) - nth_seq a n))"
+proof -
+  have n256: "n < 256" using n by simp
+  have e1: "n mod 65536 = n" using n by simp
+  have nge1: "1 \<le> n" using oddn by (cases "n = 0") auto
+  have ndv: "n div 2 < 128" using n by linarith
+  have sh: "unat ((1::16 word) << 1) = 2" "((1::16 word) << 1) = 2"
+           "unat ((1::16 word) << 0) = 1" "((1::16 word) << 0) = 1"
+           "((0x100::16 word) >> 0) = 0x100" by eval+
+  have wm: "(word_of_nat n :: 16 word) mod 2 = 1"
+  proof -
+    have "unat ((word_of_nat n :: 16 word) mod 2) = 1" using oddn e1 by (simp add: unat_mod unat_of_nat)
+    thus ?thesis by (metis unat_1 word_unat.Rep_inject)
+  qed
+  have es: "unat (word_of_nat n - (1::16 word)) = n - 1"
+    using nge1 by (simp add: unat_sub word_le_nat_alt unat_of_nat e1)
+  have zle: "(word_of_nat n div 2 :: 16 word) \<le> 0xFF"
+    using ndv by (simp add: word_le_nat_alt unat_div unat_of_nat e1)
+  have ez: "unat ((0xFF::16 word) - word_of_nat n div 2) = 255 - n div 2"
+    using zle by (simp add: unat_sub unat_div unat_of_nat e1)
+  show ?thesis
+    using n oddn
+    apply (simp add: invnttLevel_def fromTo_def Let_def n256)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths sh)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 oddn sh wm es ez)
+    done
+qed
+
+lemma invlevel0_coeff:
+  fixes a :: "[256][32]"
+  assumes n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 0 a) n
+       = (if n mod 2 = 0
+          then nth_seq a n + nth_seq a (n + 1)
+          else montgomery_reduce (sext64 (- nth_seq zetas (255 - n div 2)) * sext64 (nth_seq a (n - 1) - nth_seq a n)))"
+proof (cases "n mod 2 = 0")
+  case True thus ?thesis using invlevel0_lo[OF n True] by simp
+next
+  case False hence "n mod 2 = 1" by simp
+  thus ?thesis using invlevel0_hi[OF n] by simp
+qed
+
+end
+
+text \<open>REMAINING (sub-step 2 bulk + sub-step 3): invlevel0_hi/coeff, the 7 further levels,
+  the per-layer congruences (mirror mbfly0..7 via inv_butterfly_cong + the no-overflow
+  add/sub lifts), range preservation (mirror pres0..7), the invf final scale, then compose
+  with sub-step 1 and the forward ntt_bridge into theorem invntt_bridge.\<close>
 
 end
