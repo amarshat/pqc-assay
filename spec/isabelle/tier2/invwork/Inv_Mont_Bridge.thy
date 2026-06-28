@@ -685,9 +685,60 @@ lemma invlevel7_coeff:
 
 end
 
-text \<open>REMAINING (sub-step 2 bulk + sub-step 3): invlevel0_hi/coeff, the 7 further levels,
-  the per-layer congruences (mirror mbfly0..7 via inv_butterfly_cong + the no-overflow
-  add/sub lifts), range preservation (mirror pres0..7), the invf final scale, then compose
-  with sub-step 1 and the forward ntt_bridge into theorem invntt_bridge.\<close>
+section \<open>The abstract Gentleman-Sande layer\<close>
+
+text \<open>The inverse analog of CT_Routing's \<open>bflyLayer\<close>: one abstract Gentleman-Sande
+  layer on an int-coefficient function, the common shape both the montgomery model
+  and the normal-domain model reduce to mod q. Stride \<open>L\<close>, twiddle base \<open>ZB\<close> (= the
+  level's \<open>kbase - 1\<close>). Lower leg is the unreduced sum \<open>g n + g(n+L)\<close>; upper leg is
+  the negated-twiddle product on the difference, matching the C's Gentleman-Sande
+  butterfly. Pure nat/int (coercion off, as in CT_Routing).\<close>
+
+declare [[coercion_enabled = false]]
+
+definition gsLayer :: "nat \<Rightarrow> nat \<Rightarrow> (nat \<Rightarrow> int) \<Rightarrow> (nat \<Rightarrow> int)" where
+  "gsLayer L ZB g = (\<lambda>n.
+     if n mod (2*L) < L
+     then (g n + g (n + L)) mod 8380417
+     else (zt (ZB - n div (2*L)) * (g n - g (n - L))) mod 8380417)"
+
+lemma gsLayer_lt: "gsLayer L ZB g n < 8380417"
+  by (simp add: gsLayer_def)
+
+lemma gsLayer_ge: "0 \<le> gsLayer L ZB g n"
+  by (simp add: gsLayer_def)
+
+text \<open>The abstract Gentleman-Sande layer respects pointwise mod-q congruence of its
+  coefficient function (analog of \<open>bflyLayer_cong_g\<close>); the engine of the per-layer
+  composition.\<close>
+lemma gsLayer_cong_g:
+  fixes g g' :: "nat \<Rightarrow> int"
+  assumes cg: "\<And>m. g m mod 8380417 = g' m mod 8380417"
+  shows "gsLayer L ZB g n mod 8380417 = gsLayer L ZB g' n mod 8380417"
+proof -
+  have lo: "(g n + g (n + L)) mod 8380417 = (g' n + g' (n + L)) mod 8380417"
+    by (rule mod_add_cong[OF cg cg])
+  have hi: "(zt i * (g n - g (n - L))) mod 8380417
+          = (zt i * (g' n - g' (n - L))) mod 8380417" for i
+  proof -
+    have d: "(g n - g (n - L)) mod 8380417 = (g' n - g' (n - L)) mod 8380417"
+      by (rule mod_diff_cong[OF cg cg])
+    show ?thesis by (rule mod_mult_cong[OF refl d])
+  qed
+  show ?thesis
+  proof (cases "n mod (2*L) < L")
+    case True thus ?thesis unfolding gsLayer_def using lo by simp
+  next
+    case False thus ?thesis unfolding gsLayer_def using hi by simp
+  qed
+qed
+
+text \<open>REMAINING (task #4 + #5): the per-layer montgomery congruences mbfly_inv0..7
+  (sf (invnttLevel ell a) == gsLayer L ZB (sf a) mod q, via invlevelN_coeff +
+  inv_butterfly_cong + the no-overflow add/sub lifts, under a doubling coefficient
+  bound -- GS low legs are unreduced sums, so |coeff| can double each layer); the
+  normal-side nttLayerInv unfolds (abs_inv, analog of CT_Routing.abs_*); the
+  bound-growth chain; the invf final scale (invf_scale_cong); and the compose with
+  sub-step 1 and the forward ntt_bridge into theorem invntt_bridge.\<close>
 
 end
