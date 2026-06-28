@@ -24,3 +24,21 @@ session Tier2 in "work" = Tier2_Base +
     CT_Routing
     Negacyclic_Bridge
     Mont_Bridge
+
+(* Inverse leg (fork 1, piece 4). Thin child on Tier2_Base so the bounded
+   sub-step 1 (negacyclic invertibility) iterates without rebuilding the forward
+   Mont_Bridge. *)
+session Tier2_Inv in "inv" = Tier2_Base +
+  options [document = false]
+  theories
+    Negacyclic_Inv
+
+(* Inverse montgomery bridge (sub-step 2): the SAW-checked montgomery invntt model
+   == the normal-domain nttInvAllRef mod q, plus the invf=mont^2/256 final scale.
+   Thin child on the forward Tier2 (work) session so it reuses butterfly_cong /
+   mont_mod_q / zeta_rel / sint_seq_add_eq and iterates without reproving the
+   forward chain. One-time parent build materializes the Tier2 + Assay heaps. *)
+session Tier2_InvWork in "invwork" = Tier2 +
+  options [document = false]
+  theories
+    Inv_Mont_Bridge
