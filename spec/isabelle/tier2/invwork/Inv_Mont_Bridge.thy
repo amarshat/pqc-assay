@@ -733,12 +733,188 @@ proof -
   qed
 qed
 
-text \<open>REMAINING (task #4 + #5): the per-layer montgomery congruences mbfly_inv0..7
-  (sf (invnttLevel ell a) == gsLayer L ZB (sf a) mod q, via invlevelN_coeff +
-  inv_butterfly_cong + the no-overflow add/sub lifts, under a doubling coefficient
-  bound -- GS low legs are unreduced sums, so |coeff| can double each layer); the
-  normal-side nttLayerInv unfolds (abs_inv, analog of CT_Routing.abs_*); the
-  bound-growth chain; the invf final scale (invf_scale_cong); and the compose with
-  sub-step 1 and the forward ntt_bridge into theorem invntt_bridge.\<close>
+section \<open>Per-layer montgomery congruences\<close>
+
+text \<open>A looser-cap variant of \<open>mont_input_ok_of_bounds\<close>. The forward version caps the
+  coefficient magnitude at \<open>2139103230\<close> (it only ever sees \<open>coeff +/- mont(...)\<close>, bounded
+  by \<open>B + Q\<close>). The Gentleman-Sande high leg instead feeds the montgomery reduce a
+  *difference* of two coefficients, magnitude up to \<open>2B\<close>; for the loosest per-layer bound
+  \<open>B \<le> 2^30 - 1\<close> that is \<open>2B \<le> 2^31 - 1\<close>, just over the forward cap. The precondition
+  \<open>|zeta * x| < 2^31 * q\<close> still holds with wide margin: \<open>2^22 * (2^31 - 1) < 2^31 * q\<close>.\<close>
+lemma mont_input_ok_of_bounds':
+  fixes z x :: int
+  assumes zlo: "- 4194304 \<le> z" and zhi: "z \<le> 4194304"
+      and xlo: "- C \<le> x" and xhi: "x \<le> C" and Chi: "C \<le> 2147483647"
+  shows "mont_input_ok (z * x)"
+proof -
+  have az: "\<bar>z\<bar> \<le> 4194304" using zlo zhi by (simp add: abs_le_iff)
+  have ax: "\<bar>x\<bar> \<le> C" using xlo xhi by (simp add: abs_le_iff)
+  have "\<bar>z * x\<bar> \<le> 4194304 * C" unfolding abs_mult using az ax by (intro mult_mono) auto
+  also have "\<dots> \<le> 4194304 * 2147483647" using Chi by simp
+  finally have "\<bar>z * x\<bar> \<le> 9007199250546688" by simp
+  thus ?thesis unfolding mont_input_ok_def MLDSA_NTT_Spec.q_def by (simp add: abs_le_iff)
+qed
+
+context includes cryptol_syntax begin
+
+text \<open>The generic per-position Gentleman-Sande congruence: given a layer output \<open>b\<close> whose
+  position \<open>n\<close> unfolds to the inverse butterfly (low = unreduced add \<open>a[n]+a[n+L]\<close>, high =
+  \<open>montgomery_reduce(-zetas[ZB - n div 2L] * (a[n-L]-a[n]))\<close>), the signed view of \<open>b\<close> at
+  \<open>n\<close> is congruent mod q to one abstract \<open>gsLayer L ZB\<close> on the montgomery sint-view of \<open>a\<close>.
+  The coefficient hypothesis is exactly \<open>invlevelN_coeff\<close>; the two index side-conditions
+  (\<open>0 < ZB - n div 2L\<close>, \<open>ZB - n div 2L < 256\<close>) are discharged per level by \<open>linarith\<close>.
+  Input bound \<open>B \<le> 2^30 - 1\<close> so both legs avoid int32 overflow (the sum/difference of two
+  \<open>B\<close>-bounded coefficients stays in \<open>(-2^31, 2^31)\<close>). The inverse mirror of
+  \<open>Mont_Bridge.mbfly0..7\<close>, generalized over the layer so it is proved once.\<close>
+lemma gs_congruence:
+  fixes a b :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 1073741823" and n: "n < 256"
+      and Lpos: "0 < L"
+      and coeff: "nth_seq b n =
+            (if n mod (2 * L) < L
+             then nth_seq a n + nth_seq a (n + L)
+             else montgomery_reduce (sext64 (- nth_seq zetas (ZB - n div (2 * L)))
+                                     * sext64 (nth_seq a (n - L) - nth_seq a n)))"
+      and idxpos: "0 < ZB - n div (2 * L)"
+      and idxlt: "ZB - n div (2 * L) < 256"
+  shows "sf b n mod 8380417 = gsLayer L ZB (sf a) n mod 8380417"
+proof (cases "n mod (2 * L) < L")
+  case True
+  \<comment> \<open>low leg: an unreduced int32 add of two bounded coefficients\<close>
+  have aP: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B"
+    using B unfolding ntt_bounded_def by auto
+  have aQ: "- B \<le> sint_seq (nth_seq a (n + L))" "sint_seq (nth_seq a (n + L)) \<le> B"
+    using B unfolding ntt_bounded_def by auto
+  have noov: "sint_seq (nth_seq a n + nth_seq a (n + L))
+            = sint_seq (nth_seq a n) + sint_seq (nth_seq a (n + L))"
+    by (rule sint_seq_add_eq) (use aP aQ Bhi in linarith)+
+  have L: "sf b n mod 8380417 = (sf a n + sf a (n + L)) mod 8380417"
+    using coeff True noov by (simp add: sf_def)
+  have R: "gsLayer L ZB (sf a) n mod 8380417 = (sf a n + sf a (n + L)) mod 8380417"
+    using True by (simp add: gsLayer_def)
+  show ?thesis using L R by simp
+next
+  case False
+  \<comment> \<open>high leg: a montgomery reduce of the negated twiddle on the int32 difference\<close>
+  have aP: "- B \<le> sint_seq (nth_seq a (n - L))" "sint_seq (nth_seq a (n - L)) \<le> B"
+    using B unfolding ntt_bounded_def by auto
+  have aR: "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B"
+    using B unfolding ntt_bounded_def by auto
+  have dsub: "sint_seq (nth_seq a (n - L) - nth_seq a n)
+            = sint_seq (nth_seq a (n - L)) - sint_seq (nth_seq a n)"
+    by (rule sint_seq_sub_eq) (use aP aR Bhi in linarith)+
+  have dlo: "- (2 * B) \<le> sint_seq (nth_seq a (n - L) - nth_seq a n)"
+    using dsub aP aR by linarith
+  have dhi: "sint_seq (nth_seq a (n - L) - nth_seq a n) \<le> 2 * B"
+    using dsub aP aR by linarith
+  have zQn: "- 4194304 \<le> - sint_seq (nth_seq zetas (ZB - n div (2 * L)))"
+            "- sint_seq (nth_seq zetas (ZB - n div (2 * L))) \<le> 4194304"
+    using Assay_Equivalence.zeta_bound[of "ZB - n div (2 * L)"] by auto
+  have B2: "2 * B \<le> 2147483647" using Bhi by linarith
+  have ok: "mont_input_ok (- sint_seq (nth_seq zetas (ZB - n div (2 * L)))
+                           * sint_seq (nth_seq a (n - L) - nth_seq a n))"
+  proof -
+    have "mont_input_ok ((- sint_seq (nth_seq zetas (ZB - n div (2 * L))))
+                         * sint_seq (nth_seq a (n - L) - nth_seq a n))"
+      by (rule mont_input_ok_of_bounds'[OF zQn(1) zQn(2) dlo dhi B2])
+    thus ?thesis by simp
+  qed
+  have bc: "sint_seq (montgomery_reduce (sext64 (- nth_seq zetas (ZB - n div (2 * L)))
+                                         * sext64 (nth_seq a (n - L) - nth_seq a n))) mod 8380417
+          = (- uint_seq (nth_seq zetabrv (ZB - n div (2 * L)))
+             * sint_seq (nth_seq a (n - L) - nth_seq a n)) mod 8380417"
+    using inv_butterfly_cong[OF idxpos idxlt ok] .
+  have lhs: "sf b n mod 8380417
+           = (- uint_seq (nth_seq zetabrv (ZB - n div (2 * L)))
+              * sint_seq (nth_seq a (n - L) - nth_seq a n)) mod 8380417"
+    using coeff False bc by (simp add: sf_def)
+  have rhsalg: "(- uint_seq (nth_seq zetabrv (ZB - n div (2 * L)))
+                 * sint_seq (nth_seq a (n - L) - nth_seq a n)) mod 8380417
+              = (zt (ZB - n div (2 * L)) * (sf a n - sf a (n - L))) mod 8380417"
+  proof -
+    have "(- uint_seq (nth_seq zetabrv (ZB - n div (2 * L)))
+           * sint_seq (nth_seq a (n - L) - nth_seq a n))
+        = - uint_seq (nth_seq zetabrv (ZB - n div (2 * L)))
+          * (sint_seq (nth_seq a (n - L)) - sint_seq (nth_seq a n))"
+      by (simp only: dsub)
+    also have "\<dots> = zt (ZB - n div (2 * L)) * (sf a n - sf a (n - L))"
+      by (simp add: zt_def sf_def algebra_simps)
+    finally show ?thesis by simp
+  qed
+  have R: "gsLayer L ZB (sf a) n mod 8380417
+         = (zt (ZB - n div (2 * L)) * (sf a n - sf a (n - L))) mod 8380417"
+    using False by (simp add: gsLayer_def)
+  show ?thesis using lhs rhsalg R by simp
+qed
+
+text \<open>The eight per-layer instances. Each feeds \<open>gs_congruence\<close> the matching
+  \<open>invlevelN_coeff\<close> unfold and the two index facts (\<open>linarith\<close> from \<open>n < 256\<close>). The
+  abstract layer is \<open>gsLayer (2^ell) (2^(8-ell) - 1)\<close>: stride \<open>len = 2^ell\<close>, twiddle base
+  \<open>ZB = kbase - 1\<close>. Level 0 needs the \<open>n mod 2 < 1 \<longleftrightarrow> n mod 2 = 0\<close> bridge.\<close>
+
+lemma mbfly_inv0:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 1073741823" and n: "n < 256"
+  shows "sf (invnttLevel 0 a) n mod 8380417 = gsLayer 1 255 (sf a) n mod 8380417"
+  by (rule gs_congruence[OF B Bhi n])
+     (use invlevel0_coeff[OF n] n in \<open>simp_all add: linorder_not_less\<close>)
+
+lemma mbfly_inv1:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 1073741823" and n: "n < 256"
+  shows "sf (invnttLevel 1 a) n mod 8380417 = gsLayer 2 127 (sf a) n mod 8380417"
+  by (rule gs_congruence[OF B Bhi n])
+     (use invlevel1_coeff[OF n] n in simp_all)
+
+lemma mbfly_inv2:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 1073741823" and n: "n < 256"
+  shows "sf (invnttLevel 2 a) n mod 8380417 = gsLayer 4 63 (sf a) n mod 8380417"
+  by (rule gs_congruence[OF B Bhi n])
+     (use invlevel2_coeff[OF n] n in simp_all)
+
+lemma mbfly_inv3:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 1073741823" and n: "n < 256"
+  shows "sf (invnttLevel 3 a) n mod 8380417 = gsLayer 8 31 (sf a) n mod 8380417"
+  by (rule gs_congruence[OF B Bhi n])
+     (use invlevel3_coeff[OF n] n in simp_all)
+
+lemma mbfly_inv4:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 1073741823" and n: "n < 256"
+  shows "sf (invnttLevel 4 a) n mod 8380417 = gsLayer 16 15 (sf a) n mod 8380417"
+  by (rule gs_congruence[OF B Bhi n])
+     (use invlevel4_coeff[OF n] n in simp_all)
+
+lemma mbfly_inv5:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 1073741823" and n: "n < 256"
+  shows "sf (invnttLevel 5 a) n mod 8380417 = gsLayer 32 7 (sf a) n mod 8380417"
+  by (rule gs_congruence[OF B Bhi n])
+     (use invlevel5_coeff[OF n] n in simp_all)
+
+lemma mbfly_inv6:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 1073741823" and n: "n < 256"
+  shows "sf (invnttLevel 6 a) n mod 8380417 = gsLayer 64 3 (sf a) n mod 8380417"
+  by (rule gs_congruence[OF B Bhi n])
+     (use invlevel6_coeff[OF n] n in simp_all)
+
+lemma mbfly_inv7:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 1073741823" and n: "n < 256"
+  shows "sf (invnttLevel 7 a) n mod 8380417 = gsLayer 128 1 (sf a) n mod 8380417"
+  by (rule gs_congruence[OF B Bhi n])
+     (use invlevel7_coeff[OF n] n in simp_all)
+
+end
+
+text \<open>REMAINING (sub-step 2 tail + sub-step 3): the eight range-preservation lemmas
+  pres_inv0..7 carrying the *doubling* coefficient bound (GS low legs are unreduced sums,
+  so |coeff| can double each layer -- a growth bound B_ell = 2^ell * B_0, intertwined with
+  piece 5's inverse overflow bound); the normal-side nttLayerInv unfolds (abs_inv, analog of
+  CT_Routing.abs_*); the Rcong/pres_inv compose; the invf final scale (invf_scale_cong); and
+  the compose with sub-step 1 and the forward ntt_bridge into theorem invntt_bridge.\<close>
 
 end
