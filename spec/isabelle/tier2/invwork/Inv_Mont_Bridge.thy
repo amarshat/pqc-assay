@@ -2380,10 +2380,229 @@ qed
 
 end
 
-text \<open>REMAINING (sub-step 3, the FIPS leg, a separate effort): the inverse \<open>Negacyclic_Bridge\<close>
-  proving \<open>nttInvAllRef == FIPS-204 inverse transform mod q\<close> (the inverse of \<open>fwd_ntt_correct\<close>,
-  reusing AFP \<open>inv_ntt_correct\<close> + the negacyclic untwist from \<open>Negacyclic_Inv\<close>). Composed with
-  \<open>invntt_scale_bridge\<close> it gives the full \<open>invntt\<close> == montgomery-scaled FIPS inverse, closing the
-  C ==SAW== invntt ==(this bridge)== nttInvAllRef ==(FIPS leg)== spec chain.\<close>
+section \<open>Decoupling the word seam: nttInvAllRef as one abstract Gentleman-Sande transform\<close>
+
+text \<open>The inverse mirror of \<open>CT_Routing.fwd_as_bfly\<close>. The lifted normal-domain inverse NTT, at
+  every position, equals the eight-fold abstract Gentleman-Sande butterfly transform on the
+  int-coefficient view. This decouples the word/seq seam from the combinatorial correctness
+  argument, exactly as the forward direction did. The per-layer abstractions are \<open>abs_invN\<close>
+  (\<open>cf(nttLayerInv) == gsLayer (cf) (mod q)\<close>); the range stays in [0,q) (\<open>bounded_invN\<close>), so the
+  mod-q congruence chain collapses to equality at the end.
+
+  These are pure nat/int lemmas (coercion disabled, like the forward routing block).\<close>
+
+context begin
+
+declare [[coercion_enabled = false]]
+
+text \<open>The eight-fold abstract Gentleman-Sande transform (analog of \<open>fwdBfly\<close>). Layer order is
+  the reverse of the forward: stride grows \<open>1, 2, 4, ..., 128\<close> (innermost to outermost).\<close>
+definition invBfly :: "(nat \<Rightarrow> int) \<Rightarrow> (nat \<Rightarrow> int)" where
+  "invBfly = gsLayer 128 1 \<circ> gsLayer 64 3 \<circ> gsLayer 32 7 \<circ> gsLayer 16 15
+           \<circ> gsLayer 8 31 \<circ> gsLayer 4 63 \<circ> gsLayer 2 127 \<circ> gsLayer 1 255"
+
+text \<open>Transitivity of mod-q agreement on positions below 256.\<close>
+lemma agree_q_trans:
+  fixes f g h :: "nat \<Rightarrow> int"
+  assumes "\<forall>m. (m::nat) < 256 \<longrightarrow> f m mod 8380417 = g m mod 8380417"
+      and "\<forall>m. (m::nat) < 256 \<longrightarrow> g m mod 8380417 = h m mod 8380417"
+  shows "\<forall>m. (m::nat) < 256 \<longrightarrow> f m mod 8380417 = h m mod 8380417"
+proof (intro allI impI)
+  fix m :: nat assume m: "m < 256"
+  from assms(1) m have "f m mod 8380417 = g m mod 8380417" by blast
+  moreover from assms(2) m have "g m mod 8380417 = h m mod 8380417" by blast
+  ultimately show "f m mod 8380417 = h m mod 8380417" by simp
+qed
+
+text \<open>The low-leg partner bound: when \<open>2L\<close> divides 256 (true for every concrete GS stride) and
+  \<open>m\<close> is in the low half of its \<open>2L\<close>-block, the partner \<open>m+L\<close> is still below 256. Proven from
+  the div/mod decomposition by \<open>linarith\<close> (NOT \<open>presburger\<close>: the cryptol-derived theory leaves a
+  coercion residue that makes \<open>presburger\<close> hang here, even with coercion disabled).\<close>
+lemma gs_partner:
+  fixes L m :: nat
+  assumes dvd: "(2 * L) dvd 256" and m: "m < 256" and lo: "m mod (2 * L) < L"
+  shows "m + L < 256"
+proof -
+  have L0: "0 < L" using lo by (cases "L = 0") auto
+  have dec: "(2 * L) * (m div (2 * L)) + m mod (2 * L) = m" by (metis div_mult_mod_eq mult.commute)
+  from dvd obtain c where c: "256 = (2 * L) * c" by (metis dvd_def)
+  have lt: "(2 * L) * (m div (2 * L)) < (2 * L) * c" using dec m c by linarith
+  have qc: "m div (2 * L) < c" using lt L0 by (simp add: mult_less_cancel1)
+  hence q1c: "m div (2 * L) + 1 \<le> c" by simp
+  have "m + L < (2 * L) * (m div (2 * L)) + 2 * L" using dec lo by linarith
+  also have "\<dots> = (2 * L) * (m div (2 * L) + 1)" by (simp add: algebra_simps)
+  also have "\<dots> \<le> (2 * L) * c" using q1c by (rule mult_le_mono2)
+  also have "\<dots> = 256" using c by simp
+  finally show ?thesis .
+qed
+
+text \<open>Agree-below-256 congruence for one abstract GS layer (mod q). The layer reads its input
+  at \<open>n\<close>, \<open>n+L\<close> (low leg) and \<open>n-L\<close> (high leg). \<open>n-L \<le> n < 256\<close> is free; the low-leg partner
+  bound \<open>n+L < 256\<close> follows from \<open>2L dvd 256\<close> via \<open>gs_partner\<close>. The mod-q version of
+  \<open>bflyLayer_cong\<close>, leaning on \<open>mod_add_cong\<close> / \<open>mod_mult_cong\<close> / \<open>mod_diff_cong\<close> like
+  \<open>gsLayer_cong_g\<close>.\<close>
+lemma gsLayer_cong_below:
+  fixes A B :: "nat \<Rightarrow> int" and L ZB :: nat
+  assumes dvd: "(2 * L) dvd 256"
+    and ag: "\<forall>m. (m::nat) < 256 \<longrightarrow> A m mod 8380417 = B m mod 8380417"
+  shows "\<forall>n. (n::nat) < 256 \<longrightarrow> gsLayer L ZB A n mod 8380417 = gsLayer L ZB B n mod 8380417"
+proof (intro allI impI)
+  fix n :: nat assume n: "n < 256"
+  show "gsLayer L ZB A n mod 8380417 = gsLayer L ZB B n mod 8380417"
+  proof (cases "n mod (2*L) < L")
+    case True
+    have pl: "n + L < 256" by (rule gs_partner[OF dvd n True])
+    have an: "A n mod 8380417 = B n mod 8380417" using ag n by blast
+    have al: "A (n + L) mod 8380417 = B (n + L) mod 8380417" using ag pl by blast
+    have "gsLayer L ZB A n mod 8380417 = (A n + A (n + L)) mod 8380417"
+      using True by (simp add: gsLayer_def)
+    also have "\<dots> = (B n + B (n + L)) mod 8380417" by (rule mod_add_cong[OF an al])
+    also have "\<dots> = gsLayer L ZB B n mod 8380417" using True by (simp add: gsLayer_def)
+    finally show ?thesis .
+  next
+    case False
+    have ml: "n - L < 256" using n by simp
+    have an: "A n mod 8380417 = B n mod 8380417" using ag n by blast
+    have am: "A (n - L) mod 8380417 = B (n - L) mod 8380417" using ag ml by blast
+    have d: "(A n - A (n - L)) mod 8380417 = (B n - B (n - L)) mod 8380417"
+      by (rule mod_diff_cong[OF an am])
+    have "gsLayer L ZB A n mod 8380417 = (zt (ZB - n div (2*L)) * (A n - A (n - L))) mod 8380417"
+      using False by (simp add: gsLayer_def)
+    also have "\<dots> = (zt (ZB - n div (2*L)) * (B n - B (n - L))) mod 8380417"
+      by (rule mod_mult_cong[OF refl d])
+    also have "\<dots> = gsLayer L ZB B n mod 8380417" using False by (simp add: gsLayer_def)
+    finally show ?thesis .
+  qed
+qed
+
+text \<open>The full lifted inverse NTT equals the eight-fold abstract GS butterfly transform on the
+  int-coefficient view. Chains the per-layer abstractions \<open>abs_invN\<close> inside-out under range
+  preservation, with the agree-below-256 congruence at each step; the final mod-q congruence
+  collapses to equality since both sides lie in [0,q).\<close>
+theorem inv_as_bfly:
+  assumes "bounded w" and "n < 256"
+  shows "cf (nttInvAllRef w) n = invBfly (cf w) n"
+proof -
+  define w1 where "w1 = nttLayerInv 1 128 256 w"
+  define w2 where "w2 = nttLayerInv 2 64 128 w1"
+  define w3 where "w3 = nttLayerInv 4 32 64 w2"
+  define w4 where "w4 = nttLayerInv 8 16 32 w3"
+  define w5 where "w5 = nttLayerInv 16 8 16 w4"
+  define w6 where "w6 = nttLayerInv 32 4 8 w5"
+  define w7 where "w7 = nttLayerInv 64 2 4 w6"
+  have b1: "bounded w1" unfolding w1_def using assms(1) by (rule bounded_inv0)
+  have b2: "bounded w2" unfolding w2_def using b1 by (rule bounded_inv1)
+  have b3: "bounded w3" unfolding w3_def using b2 by (rule bounded_inv2)
+  have b4: "bounded w4" unfolding w4_def using b3 by (rule bounded_inv3)
+  have b5: "bounded w5" unfolding w5_def using b4 by (rule bounded_inv4)
+  have b6: "bounded w6" unfolding w6_def using b5 by (rule bounded_inv5)
+  have b7: "bounded w7" unfolding w7_def using b6 by (rule bounded_inv6)
+  \<comment> \<open>per-layer abstraction (mod q), all positions\<close>
+  have a1: "\<forall>m. (m::nat) < 256 \<longrightarrow> cf w1 m mod 8380417 = gsLayer 1 255 (cf w) m mod 8380417"
+    unfolding w1_def using abs_inv0[OF assms(1)] by blast
+  have a2: "\<forall>m. (m::nat) < 256 \<longrightarrow> cf w2 m mod 8380417 = gsLayer 2 127 (cf w1) m mod 8380417"
+    unfolding w2_def using abs_inv1[OF b1] by blast
+  have a3: "\<forall>m. (m::nat) < 256 \<longrightarrow> cf w3 m mod 8380417 = gsLayer 4 63 (cf w2) m mod 8380417"
+    unfolding w3_def using abs_inv2[OF b2] by blast
+  have a4: "\<forall>m. (m::nat) < 256 \<longrightarrow> cf w4 m mod 8380417 = gsLayer 8 31 (cf w3) m mod 8380417"
+    unfolding w4_def using abs_inv3[OF b3] by blast
+  have a5: "\<forall>m. (m::nat) < 256 \<longrightarrow> cf w5 m mod 8380417 = gsLayer 16 15 (cf w4) m mod 8380417"
+    unfolding w5_def using abs_inv4[OF b4] by blast
+  have a6: "\<forall>m. (m::nat) < 256 \<longrightarrow> cf w6 m mod 8380417 = gsLayer 32 7 (cf w5) m mod 8380417"
+    unfolding w6_def using abs_inv5[OF b5] by blast
+  have a7: "\<forall>m. (m::nat) < 256 \<longrightarrow> cf w7 m mod 8380417 = gsLayer 64 3 (cf w6) m mod 8380417"
+    unfolding w7_def using abs_inv6[OF b6] by blast
+  \<comment> \<open>fold the abstractions into the nested composition, inside-out\<close>
+  have P1: "\<forall>m. (m::nat) < 256 \<longrightarrow> cf w1 m mod 8380417 = gsLayer 1 255 (cf w) m mod 8380417"
+    by (rule a1)
+  have P2: "\<forall>m. (m::nat) < 256 \<longrightarrow> cf w2 m mod 8380417
+      = gsLayer 2 127 (gsLayer 1 255 (cf w)) m mod 8380417"
+  proof -
+    have c: "\<forall>m. (m::nat) < 256 \<longrightarrow> gsLayer 2 127 (cf w1) m mod 8380417
+        = gsLayer 2 127 (gsLayer 1 255 (cf w)) m mod 8380417"
+      by (rule gsLayer_cong_below[OF _ P1]) simp
+    show ?thesis by (rule agree_q_trans[OF a2 c])
+  qed
+  have P3: "\<forall>m. (m::nat) < 256 \<longrightarrow> cf w3 m mod 8380417
+      = gsLayer 4 63 (gsLayer 2 127 (gsLayer 1 255 (cf w))) m mod 8380417"
+  proof -
+    have c: "\<forall>m. (m::nat) < 256 \<longrightarrow> gsLayer 4 63 (cf w2) m mod 8380417
+        = gsLayer 4 63 (gsLayer 2 127 (gsLayer 1 255 (cf w))) m mod 8380417"
+      by (rule gsLayer_cong_below[OF _ P2]) simp
+    show ?thesis by (rule agree_q_trans[OF a3 c])
+  qed
+  have P4: "\<forall>m. (m::nat) < 256 \<longrightarrow> cf w4 m mod 8380417
+      = gsLayer 8 31 (gsLayer 4 63 (gsLayer 2 127 (gsLayer 1 255 (cf w)))) m mod 8380417"
+  proof -
+    have c: "\<forall>m. (m::nat) < 256 \<longrightarrow> gsLayer 8 31 (cf w3) m mod 8380417
+        = gsLayer 8 31 (gsLayer 4 63 (gsLayer 2 127 (gsLayer 1 255 (cf w)))) m mod 8380417"
+      by (rule gsLayer_cong_below[OF _ P3]) simp
+    show ?thesis by (rule agree_q_trans[OF a4 c])
+  qed
+  have P5: "\<forall>m. (m::nat) < 256 \<longrightarrow> cf w5 m mod 8380417
+      = gsLayer 16 15 (gsLayer 8 31 (gsLayer 4 63 (gsLayer 2 127 (gsLayer 1 255 (cf w))))) m mod 8380417"
+  proof -
+    have c: "\<forall>m. (m::nat) < 256 \<longrightarrow> gsLayer 16 15 (cf w4) m mod 8380417
+        = gsLayer 16 15 (gsLayer 8 31 (gsLayer 4 63 (gsLayer 2 127 (gsLayer 1 255 (cf w))))) m mod 8380417"
+      by (rule gsLayer_cong_below[OF _ P4]) simp
+    show ?thesis by (rule agree_q_trans[OF a5 c])
+  qed
+  have P6: "\<forall>m. (m::nat) < 256 \<longrightarrow> cf w6 m mod 8380417
+      = gsLayer 32 7 (gsLayer 16 15 (gsLayer 8 31 (gsLayer 4 63 (gsLayer 2 127 (gsLayer 1 255 (cf w)))))) m mod 8380417"
+  proof -
+    have c: "\<forall>m. (m::nat) < 256 \<longrightarrow> gsLayer 32 7 (cf w5) m mod 8380417
+        = gsLayer 32 7 (gsLayer 16 15 (gsLayer 8 31 (gsLayer 4 63 (gsLayer 2 127 (gsLayer 1 255 (cf w)))))) m mod 8380417"
+      by (rule gsLayer_cong_below[OF _ P5]) simp
+    show ?thesis by (rule agree_q_trans[OF a6 c])
+  qed
+  have P7: "\<forall>m. (m::nat) < 256 \<longrightarrow> cf w7 m mod 8380417
+      = gsLayer 64 3 (gsLayer 32 7 (gsLayer 16 15 (gsLayer 8 31 (gsLayer 4 63 (gsLayer 2 127 (gsLayer 1 255 (cf w))))))) m mod 8380417"
+  proof -
+    have c: "\<forall>m. (m::nat) < 256 \<longrightarrow> gsLayer 64 3 (cf w6) m mod 8380417
+        = gsLayer 64 3 (gsLayer 32 7 (gsLayer 16 15 (gsLayer 8 31 (gsLayer 4 63 (gsLayer 2 127 (gsLayer 1 255 (cf w))))))) m mod 8380417"
+      by (rule gsLayer_cong_below[OF _ P6]) simp
+    show ?thesis by (rule agree_q_trans[OF a7 c])
+  qed
+  \<comment> \<open>outermost layer at the single position n, then the unfold\<close>
+  have unf: "nttInvAllRef w = nttLayerInv 128 1 2 w7"
+    unfolding w7_def w6_def w5_def w4_def w3_def w2_def w1_def by (rule invAllRef_unfold)
+  have congN: "\<forall>k. (k::nat) < 256 \<longrightarrow> gsLayer 128 1 (cf w7) k mod 8380417
+      = gsLayer 128 1 (gsLayer 64 3 (gsLayer 32 7 (gsLayer 16 15 (gsLayer 8 31
+          (gsLayer 4 63 (gsLayer 2 127 (gsLayer 1 255 (cf w)))))))) k mod 8380417"
+    by (rule gsLayer_cong_below[OF _ P7]) simp
+  have cong_n: "cf (nttInvAllRef w) n mod 8380417 = invBfly (cf w) n mod 8380417"
+  proof -
+    have "cf (nttInvAllRef w) n mod 8380417 = cf (nttLayerInv 128 1 2 w7) n mod 8380417"
+      using unf by simp
+    also have "\<dots> = gsLayer 128 1 (cf w7) n mod 8380417" using abs_inv7[OF b7 assms(2)] by simp
+    also have "\<dots> = gsLayer 128 1 (gsLayer 64 3 (gsLayer 32 7 (gsLayer 16 15 (gsLayer 8 31
+          (gsLayer 4 63 (gsLayer 2 127 (gsLayer 1 255 (cf w)))))))) n mod 8380417"
+      using congN assms(2) by blast
+    also have "\<dots> = invBfly (cf w) n mod 8380417" by (simp add: invBfly_def)
+    finally show ?thesis .
+  qed
+  \<comment> \<open>collapse the mod-q congruence to equality: both sides lie in [0,q)\<close>
+  have b8: "bounded (nttInvAllRef w)"
+  proof -
+    have "bounded (nttLayerInv 128 1 2 w7)" using b7 by (rule bounded_inv7)
+    thus ?thesis using unf by simp
+  qed
+  have lhs_lt: "cf (nttInvAllRef w) n < 8380417"
+    using boundedD[OF b8 assms(2)] by (simp add: cf_def)
+  have lhs_ge: "0 \<le> cf (nttInvAllRef w) n" by (simp add: cf_def ui_seq_ge0)
+  have rhs_lt: "invBfly (cf w) n < 8380417" by (simp add: invBfly_def gsLayer_lt)
+  have rhs_ge: "0 \<le> invBfly (cf w) n" by (simp add: invBfly_def gsLayer_ge)
+  show ?thesis
+    using cong_n lhs_lt lhs_ge rhs_lt rhs_ge by (simp add: mod_pos_pos_trivial)
+qed
+
+end
+
+text \<open>REMAINING (the rest of the FIPS leg): from \<open>inv_as_bfly\<close> (nttInvAllRef == invBfly, the
+  abstract GS transform) to \<open>nttInvAllRef == FIPS-204 inverse transform mod q\<close>. Either a
+  self-contained closed-form (mirror the forward stage-invariant induction \<open>applyN_inv\<close> for the
+  GS direction) or the round-trip via \<open>Negacyclic_Inv.INNTT_NNTT\<close> + forward \<open>fwd_as_bfly\<close>.
+  Then compose with \<open>invntt_scale_bridge\<close> for the full \<open>invntt\<close> == montgomery-scaled FIPS
+  inverse, closing C ==SAW== invntt ==(this bridge)== nttInvAllRef ==(FIPS leg)== spec.\<close>
 
 end
