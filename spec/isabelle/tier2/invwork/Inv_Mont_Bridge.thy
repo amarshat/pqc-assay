@@ -2274,11 +2274,116 @@ qed
 
 end
 
-text \<open>REMAINING (sub-step 2 tail + sub-step 3): compose the doubling bound chain (the eight
-  \<open>invlevelN_bounded\<close> above, from \<open>B_0 = 8380416\<close> to \<open>2^8 * B_0\<close>) with the normal-side bounded
-  preservation (\<open>nttLayerInv\<close> keeps \<open>bounded\<close>) and the foldl unfolds for \<open>invntt\<close> / \<open>nttInvAllRef\<close>,
-  chaining pres_inv0..7 into Rcong (invntt-prefix) (nttInvAllRef); then the invf final scale
-  (invf_scale_cong) and sub-step 1 + forward ntt_bridge into theorem invntt_bridge. Plus an
-  inverse Negacyclic_Bridge (nttInvAllRef == FIPS inverse), inverse of fwd_ntt_correct.\<close>
+section \<open>The final invf scale (montgomery 256^-1 normalization)\<close>
+
+text \<open>The full montgomery \<open>invntt\<close> applies, after the eight Gentleman-Sande layers, a final
+  per-coefficient scale \<open>montgomery_reduce(invf * .)\<close> with \<open>invf = 0xa3fa = mont^2/256\<close>. On the
+  signed view the montgomery factor \<open>2^32\<close> times that output is congruent mod q to
+  \<open>invf \<cdot> (eight-layer core)\<close>, and the core is \<open>nttInvAllRef\<close> mod q (\<open>Rcong_invcore\<close>). So the
+  deployed montgomery inverse NTT equals, coefficient by coefficient mod q, the normal-domain
+  \<open>nttInvAllRef\<close> scaled by \<open>2^{-32} \<cdot> invf = mont/256\<close>. This is the inverse counterpart of
+  \<open>ntt_bridge\<close>'s montgomery-vs-normal statement; the \<open>2^32\<close> on the left and \<open>invf\<close> on the right
+  carry the montgomery domain and the \<open>256^{-1}\<close> normalization explicitly.\<close>
+
+context includes cryptol_syntax begin
+declare [[coercion_enabled = false]]
+
+text \<open>The eight-layer Gentleman-Sande core (the foldl body of \<open>invntt\<close>, before the scale).\<close>
+definition invnttCore :: "[256][32] \<Rightarrow> [256][32]" where
+  "invnttCore w = invnttLevel 7 (invnttLevel 6 (invnttLevel 5 (invnttLevel 4
+                  (invnttLevel 3 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w)))))))"
+
+text \<open>The core stays overflow-free: eight doublings from \<open>B_0 = 8380416\<close> reach
+  \<open>2^8 * B_0 = 2145386496 < 2^31\<close> (the largest layer INPUT, \<open>2^7 * B_0 = 1072693248\<close>, is within
+  the per-layer cap, so no int32 add/sub overflows).\<close>
+lemma invcore_bounded:
+  assumes bw: "bounded w"
+  shows "ntt_bounded 2145386496 (invnttCore w)"
+proof -
+  have nb0: "ntt_bounded 8380416 w" by (rule ntt_bounded_of_bounded[OF bw])
+  have nb1: "ntt_bounded 16760832 (invnttLevel 0 w)" using invlevel0_bounded[OF nb0] by simp
+  have nb2: "ntt_bounded 33521664 (invnttLevel 1 (invnttLevel 0 w))" using invlevel1_bounded[OF nb1] by simp
+  have nb3: "ntt_bounded 67043328 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w)))" using invlevel2_bounded[OF nb2] by simp
+  have nb4: "ntt_bounded 134086656 (invnttLevel 3 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w))))" using invlevel3_bounded[OF nb3] by simp
+  have nb5: "ntt_bounded 268173312 (invnttLevel 4 (invnttLevel 3 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w)))))" using invlevel4_bounded[OF nb4] by simp
+  have nb6: "ntt_bounded 536346624 (invnttLevel 5 (invnttLevel 4 (invnttLevel 3 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w))))))" using invlevel5_bounded[OF nb5] by simp
+  have nb7: "ntt_bounded 1072693248 (invnttLevel 6 (invnttLevel 5 (invnttLevel 4 (invnttLevel 3 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w)))))))" using invlevel6_bounded[OF nb6] by simp
+  have nb8: "ntt_bounded 2145386496 (invnttLevel 7 (invnttLevel 6 (invnttLevel 5 (invnttLevel 4 (invnttLevel 3 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w))))))))"
+    using invlevel7_bounded[OF nb7] by simp
+  show ?thesis using nb8 unfolding invnttCore_def by simp
+qed
+
+text \<open>The per-coefficient scale unfold: position \<open>k\<close> of \<open>invntt w\<close> is the montgomery reduce
+  of \<open>invf\<close> against the core coefficient at \<open>k\<close>. Unfolds the inner foldl (\<open>foldl_seq.rep_eq\<close>,
+  like \<open>ntt_unfold\<close>) then the seq comprehension at \<open>k\<close> (the \<open>fromTo\<close> / word-index lowering used
+  in the layer unfolds).\<close>
+lemma invntt_scale_coeff:
+  fixes w :: "[256][32]"
+  assumes k: "k < (256::nat)"
+  shows "nth_seq (invntt w) k
+       = montgomery_reduce (sext64 invf * sext64 (nth_seq (invnttCore w) k))"
+proof -
+  have k256: "k < 256" using k by simp
+  have e1: "k mod 65536 = k" using k256 by simp
+  show ?thesis
+    unfolding invntt_def invnttCore_def Let_def
+    apply (simp add: foldl_seq.rep_eq)
+    apply (simp add: fromTo_def k256)
+    apply (simp add: cryptol_prim_defs word_seq_convs from_nat_def from_int_word_def
+                     of_int_of_nat_eq ucast_of_nat_small unsigned_ucast_eq
+                     unsigned_take_bit_eq uint_up_ucast is_up unat_of_nat unat_word_ariths k256 e1)
+    done
+qed
+
+text \<open>The scale constant \<open>invf = 0xa3fa = 41978\<close> is within the twiddle magnitude bound \<open>2^22\<close>,
+  so it satisfies the montgomery precondition like a table entry.\<close>
+lemma invf_sint_bound: "- 4194304 \<le> sint_seq invf \<and> sint_seq invf \<le> 4194304"
+  unfolding invf_def by eval
+
+text \<open>CAPSTONE: the deployed montgomery inverse NTT equals normal \<open>nttInvAllRef\<close> mod q, scaled
+  by \<open>2^{-32} \<cdot> invf = mont/256\<close>. \<open>invntt\<close> is \<open>MLDSA_NTT.invntt\<close>, the model SAW proves the PQClean
+  C \<open>invntt_tomont\<close> equal to under -fwrapv.\<close>
+theorem invntt_scale_bridge:
+  assumes bw: "bounded w" and k: "k < 256"
+  shows "(4294967296 * sint_seq (nth_seq (invntt w) k)) mod 8380417
+       = (sint_seq invf * cf (nttInvAllRef w) k) mod 8380417"
+proof -
+  have cb: "- 2145386496 \<le> sint_seq (nth_seq (invnttCore w) k)"
+           "sint_seq (nth_seq (invnttCore w) k) \<le> 2145386496"
+    using invcore_bounded[OF bw] unfolding ntt_bounded_def by auto
+  have ivb: "- 4194304 \<le> sint_seq invf" "sint_seq invf \<le> 4194304" using invf_sint_bound by auto
+  have ok: "mont_input_ok (sint_seq invf * sint_seq (nth_seq (invnttCore w) k))"
+    by (rule mont_input_ok_of_bounds'[OF ivb(1) ivb(2) cb(1) cb(2)]) simp
+  have sc: "(4294967296 * sint_seq (montgomery_reduce (sext64 invf
+              * sext64 (nth_seq (invnttCore w) k)))) mod 8380417
+          = (sint_seq invf * sint_seq (nth_seq (invnttCore w) k)) mod 8380417"
+    by (rule invf_scale_cong[OF ok])
+  have Rc: "Rcong (invnttCore w) (nttInvAllRef w)"
+    using Rcong_invcore[OF bw] unfolding invnttCore_def .
+  have cong_k: "sf (invnttCore w) k mod 8380417 = cf (nttInvAllRef w) k mod 8380417"
+    using Rc by (simp add: Rcong_def)
+  have "(4294967296 * sint_seq (nth_seq (invntt w) k)) mod 8380417
+      = (4294967296 * sint_seq (montgomery_reduce (sext64 invf
+           * sext64 (nth_seq (invnttCore w) k)))) mod 8380417"
+    by (simp add: invntt_scale_coeff[OF k])
+  also have "\<dots> = (sint_seq invf * sint_seq (nth_seq (invnttCore w) k)) mod 8380417"
+    by (rule sc)
+  also have "\<dots> = (sint_seq invf * cf (nttInvAllRef w) k) mod 8380417"
+  proof -
+    have "(sint_seq invf * sf (invnttCore w) k) mod 8380417
+        = (sint_seq invf * cf (nttInvAllRef w) k) mod 8380417"
+      by (rule mod_mult_cong[OF refl cong_k])
+    thus ?thesis by (simp add: sf_def)
+  qed
+  finally show ?thesis .
+qed
+
+end
+
+text \<open>REMAINING (sub-step 3, the FIPS leg, a separate effort): the inverse \<open>Negacyclic_Bridge\<close>
+  proving \<open>nttInvAllRef == FIPS-204 inverse transform mod q\<close> (the inverse of \<open>fwd_ntt_correct\<close>,
+  reusing AFP \<open>inv_ntt_correct\<close> + the negacyclic untwist from \<open>Negacyclic_Inv\<close>). Composed with
+  \<open>invntt_scale_bridge\<close> it gives the full \<open>invntt\<close> == montgomery-scaled FIPS inverse, closing the
+  C ==SAW== invntt ==(this bridge)== nttInvAllRef ==(FIPS leg)== spec chain.\<close>
 
 end
