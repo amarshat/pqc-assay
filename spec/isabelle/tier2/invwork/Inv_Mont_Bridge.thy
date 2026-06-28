@@ -2098,6 +2098,182 @@ lemma invlevel7_bounded:
 
 end
 
+section \<open>Normal-side range preservation\<close>
+
+text \<open>The normal-domain inverse layer keeps every coefficient in [0, q): both legs of
+  \<open>invlayerN_coeff\<close> are reduced (\<open>_ mod q\<close>), so the output is \<open>< q\<close> by \<open>pos_mod_bound\<close>. The
+  inverse mirror of \<open>bounded_128 .. bounded_2\<close>. Eight thin instances feeding the matching
+  \<open>invlayerN_coeff\<close>.\<close>
+
+context includes cryptol_syntax begin
+
+lemma bounded_inv0:
+  assumes "bounded w" shows "bounded (nttLayerInv 1 128 256 w)"
+proof -
+  have bw: "\<And>j. j < 256 \<Longrightarrow> uint_seq (nth_seq w j) < 8380417" using boundedD[OF assms] by blast
+  show ?thesis unfolding bounded_def
+  proof (intro allI impI)
+    fix i :: nat assume i: "i < 256"
+    show "uint_seq (nth_seq (nttLayerInv 1 128 256 w) i) < 8380417"
+      by (simp add: invlayer0_coeff[OF i bw] pos_mod_bound)
+  qed
+qed
+
+lemma bounded_inv1:
+  assumes "bounded w" shows "bounded (nttLayerInv 2 64 128 w)"
+proof -
+  have bw: "\<And>j. j < 256 \<Longrightarrow> uint_seq (nth_seq w j) < 8380417" using boundedD[OF assms] by blast
+  show ?thesis unfolding bounded_def
+  proof (intro allI impI)
+    fix i :: nat assume i: "i < 256"
+    show "uint_seq (nth_seq (nttLayerInv 2 64 128 w) i) < 8380417"
+      by (simp add: invlayer1_coeff[OF i bw] pos_mod_bound)
+  qed
+qed
+
+lemma bounded_inv2:
+  assumes "bounded w" shows "bounded (nttLayerInv 4 32 64 w)"
+proof -
+  have bw: "\<And>j. j < 256 \<Longrightarrow> uint_seq (nth_seq w j) < 8380417" using boundedD[OF assms] by blast
+  show ?thesis unfolding bounded_def
+  proof (intro allI impI)
+    fix i :: nat assume i: "i < 256"
+    show "uint_seq (nth_seq (nttLayerInv 4 32 64 w) i) < 8380417"
+      by (simp add: invlayer2_coeff[OF i bw] pos_mod_bound)
+  qed
+qed
+
+lemma bounded_inv3:
+  assumes "bounded w" shows "bounded (nttLayerInv 8 16 32 w)"
+proof -
+  have bw: "\<And>j. j < 256 \<Longrightarrow> uint_seq (nth_seq w j) < 8380417" using boundedD[OF assms] by blast
+  show ?thesis unfolding bounded_def
+  proof (intro allI impI)
+    fix i :: nat assume i: "i < 256"
+    show "uint_seq (nth_seq (nttLayerInv 8 16 32 w) i) < 8380417"
+      by (simp add: invlayer3_coeff[OF i bw] pos_mod_bound)
+  qed
+qed
+
+lemma bounded_inv4:
+  assumes "bounded w" shows "bounded (nttLayerInv 16 8 16 w)"
+proof -
+  have bw: "\<And>j. j < 256 \<Longrightarrow> uint_seq (nth_seq w j) < 8380417" using boundedD[OF assms] by blast
+  show ?thesis unfolding bounded_def
+  proof (intro allI impI)
+    fix i :: nat assume i: "i < 256"
+    show "uint_seq (nth_seq (nttLayerInv 16 8 16 w) i) < 8380417"
+      by (simp add: invlayer4_coeff[OF i bw] pos_mod_bound)
+  qed
+qed
+
+lemma bounded_inv5:
+  assumes "bounded w" shows "bounded (nttLayerInv 32 4 8 w)"
+proof -
+  have bw: "\<And>j. j < 256 \<Longrightarrow> uint_seq (nth_seq w j) < 8380417" using boundedD[OF assms] by blast
+  show ?thesis unfolding bounded_def
+  proof (intro allI impI)
+    fix i :: nat assume i: "i < 256"
+    show "uint_seq (nth_seq (nttLayerInv 32 4 8 w) i) < 8380417"
+      by (simp add: invlayer5_coeff[OF i bw] pos_mod_bound)
+  qed
+qed
+
+lemma bounded_inv6:
+  assumes "bounded w" shows "bounded (nttLayerInv 64 2 4 w)"
+proof -
+  have bw: "\<And>j. j < 256 \<Longrightarrow> uint_seq (nth_seq w j) < 8380417" using boundedD[OF assms] by blast
+  show ?thesis unfolding bounded_def
+  proof (intro allI impI)
+    fix i :: nat assume i: "i < 256"
+    show "uint_seq (nth_seq (nttLayerInv 64 2 4 w) i) < 8380417"
+      by (simp add: invlayer6_coeff[OF i bw] pos_mod_bound)
+  qed
+qed
+
+lemma bounded_inv7:
+  assumes "bounded w" shows "bounded (nttLayerInv 128 1 2 w)"
+proof -
+  have bw: "\<And>j. j < 256 \<Longrightarrow> uint_seq (nth_seq w j) < 8380417" using boundedD[OF assms] by blast
+  show ?thesis unfolding bounded_def
+  proof (intro allI impI)
+    fix i :: nat assume i: "i < 256"
+    show "uint_seq (nth_seq (nttLayerInv 128 1 2 w) i) < 8380417"
+      by (simp add: invlayer7_coeff[OF i bw] pos_mod_bound)
+  qed
+qed
+
+text \<open>The normal inverse transform is the foldl over the eight \<open>invParamsRef\<close> tuples,
+  unfolding (innermost first) to \<open>nttLayerInv 1 128 256\<close> through \<open>nttLayerInv 128 1 2\<close>.
+  The inverse mirror of \<open>fwd_unfold\<close>.\<close>
+lemma invAllRef_unfold:
+  "nttInvAllRef w =
+     nttLayerInv 128 1 2 (nttLayerInv 64 2 4 (nttLayerInv 32 4 8
+     (nttLayerInv 16 8 16 (nttLayerInv 8 16 32 (nttLayerInv 4 32 64
+     (nttLayerInv 2 64 128 (nttLayerInv 1 128 256 w)))))))"
+  unfolding nttInvAllRef_def invParamsRef_def Let_def
+  by (simp add: foldl_seq.rep_eq)
+
+end
+
+section \<open>The inverse montgomery-vs-normal bridge (the eight-layer compose)\<close>
+
+text \<open>The Gentleman-Sande mirror of \<open>ntt_bridge\<close>'s core: the montgomery inverse NTT
+  (eight \<open>invnttLevel\<close>, what SAW checks the C \<open>invntt_tomont\<close> against, before the final
+  \<open>invf\<close> scale) is congruent mod q, coefficient by coefficient, to the normal-domain
+  \<open>nttInvAllRef\<close>. Same shape as the forward chain (same \<open>bounded w\<close> input gives both
+  \<open>ntt_bounded 8380416 w\<close> and \<open>Rcong w w\<close>): the montgomery bound DOUBLES per level
+  (\<open>invlevelN_bounded\<close>, largest input \<open>2^7*8380416 = 1072693248 \<le> 1073741823\<close>), the normal
+  range is preserved (\<open>bounded_invN\<close>), and the per-layer R-preservation (\<open>pres_invN\<close>)
+  threads the congruence through.\<close>
+
+context includes cryptol_syntax begin
+
+theorem Rcong_invcore:
+  assumes bw: "bounded w"
+  shows "Rcong (invnttLevel 7 (invnttLevel 6 (invnttLevel 5 (invnttLevel 4
+                (invnttLevel 3 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w))))))))
+               (nttInvAllRef w)"
+proof -
+  have nb0: "ntt_bounded 8380416 w" by (rule ntt_bounded_of_bounded[OF bw])
+  have R0: "Rcong w w" by (rule Rcong_base[OF bw])
+  \<comment> \<open>montgomery bound chain: ntt_bounded DOUBLES each layer\<close>
+  have nb1: "ntt_bounded 16760832 (invnttLevel 0 w)"
+    using invlevel0_bounded[OF nb0] by simp
+  have nb2: "ntt_bounded 33521664 (invnttLevel 1 (invnttLevel 0 w))"
+    using invlevel1_bounded[OF nb1] by simp
+  have nb3: "ntt_bounded 67043328 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w)))"
+    using invlevel2_bounded[OF nb2] by simp
+  have nb4: "ntt_bounded 134086656 (invnttLevel 3 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w))))"
+    using invlevel3_bounded[OF nb3] by simp
+  have nb5: "ntt_bounded 268173312 (invnttLevel 4 (invnttLevel 3 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w)))))"
+    using invlevel4_bounded[OF nb4] by simp
+  have nb6: "ntt_bounded 536346624 (invnttLevel 5 (invnttLevel 4 (invnttLevel 3 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w))))))"
+    using invlevel5_bounded[OF nb5] by simp
+  have nb7: "ntt_bounded 1072693248 (invnttLevel 6 (invnttLevel 5 (invnttLevel 4 (invnttLevel 3 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w)))))))"
+    using invlevel6_bounded[OF nb6] by simp
+  \<comment> \<open>normal-side range chain\<close>
+  have d1: "bounded (nttLayerInv 1 128 256 w)" by (rule bounded_inv0[OF bw])
+  have d2: "bounded (nttLayerInv 2 64 128 (nttLayerInv 1 128 256 w))" by (rule bounded_inv1[OF d1])
+  have d3: "bounded (nttLayerInv 4 32 64 (nttLayerInv 2 64 128 (nttLayerInv 1 128 256 w)))" by (rule bounded_inv2[OF d2])
+  have d4: "bounded (nttLayerInv 8 16 32 (nttLayerInv 4 32 64 (nttLayerInv 2 64 128 (nttLayerInv 1 128 256 w))))" by (rule bounded_inv3[OF d3])
+  have d5: "bounded (nttLayerInv 16 8 16 (nttLayerInv 8 16 32 (nttLayerInv 4 32 64 (nttLayerInv 2 64 128 (nttLayerInv 1 128 256 w)))))" by (rule bounded_inv4[OF d4])
+  have d6: "bounded (nttLayerInv 32 4 8 (nttLayerInv 16 8 16 (nttLayerInv 8 16 32 (nttLayerInv 4 32 64 (nttLayerInv 2 64 128 (nttLayerInv 1 128 256 w))))))" by (rule bounded_inv5[OF d5])
+  have d7: "bounded (nttLayerInv 64 2 4 (nttLayerInv 32 4 8 (nttLayerInv 16 8 16 (nttLayerInv 8 16 32 (nttLayerInv 4 32 64 (nttLayerInv 2 64 128 (nttLayerInv 1 128 256 w)))))))" by (rule bounded_inv6[OF d6])
+  \<comment> \<open>congruence chain\<close>
+  have R1: "Rcong (invnttLevel 0 w) (nttLayerInv 1 128 256 w)" by (rule pres_inv0[OF nb0 _ bw R0]) simp
+  have R2: "Rcong (invnttLevel 1 (invnttLevel 0 w)) (nttLayerInv 2 64 128 (nttLayerInv 1 128 256 w))" by (rule pres_inv1[OF nb1 _ d1 R1]) simp
+  have R3: "Rcong (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w))) (nttLayerInv 4 32 64 (nttLayerInv 2 64 128 (nttLayerInv 1 128 256 w)))" by (rule pres_inv2[OF nb2 _ d2 R2]) simp
+  have R4: "Rcong (invnttLevel 3 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w)))) (nttLayerInv 8 16 32 (nttLayerInv 4 32 64 (nttLayerInv 2 64 128 (nttLayerInv 1 128 256 w))))" by (rule pres_inv3[OF nb3 _ d3 R3]) simp
+  have R5: "Rcong (invnttLevel 4 (invnttLevel 3 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w))))) (nttLayerInv 16 8 16 (nttLayerInv 8 16 32 (nttLayerInv 4 32 64 (nttLayerInv 2 64 128 (nttLayerInv 1 128 256 w)))))" by (rule pres_inv4[OF nb4 _ d4 R4]) simp
+  have R6: "Rcong (invnttLevel 5 (invnttLevel 4 (invnttLevel 3 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w)))))) (nttLayerInv 32 4 8 (nttLayerInv 16 8 16 (nttLayerInv 8 16 32 (nttLayerInv 4 32 64 (nttLayerInv 2 64 128 (nttLayerInv 1 128 256 w))))))" by (rule pres_inv5[OF nb5 _ d5 R5]) simp
+  have R7: "Rcong (invnttLevel 6 (invnttLevel 5 (invnttLevel 4 (invnttLevel 3 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w))))))) (nttLayerInv 64 2 4 (nttLayerInv 32 4 8 (nttLayerInv 16 8 16 (nttLayerInv 8 16 32 (nttLayerInv 4 32 64 (nttLayerInv 2 64 128 (nttLayerInv 1 128 256 w)))))))" by (rule pres_inv6[OF nb6 _ d6 R6]) simp
+  have R8: "Rcong (invnttLevel 7 (invnttLevel 6 (invnttLevel 5 (invnttLevel 4 (invnttLevel 3 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w)))))))) (nttLayerInv 128 1 2 (nttLayerInv 64 2 4 (nttLayerInv 32 4 8 (nttLayerInv 16 8 16 (nttLayerInv 8 16 32 (nttLayerInv 4 32 64 (nttLayerInv 2 64 128 (nttLayerInv 1 128 256 w))))))))" by (rule pres_inv7[OF nb7 _ d7 R7]) simp
+  show ?thesis using R8 by (simp add: invAllRef_unfold)
+qed
+
+end
+
 text \<open>REMAINING (sub-step 2 tail + sub-step 3): compose the doubling bound chain (the eight
   \<open>invlevelN_bounded\<close> above, from \<open>B_0 = 8380416\<close> to \<open>2^8 * B_0\<close>) with the normal-side bounded
   preservation (\<open>nttLayerInv\<close> keeps \<open>bounded\<close>) and the foldl unfolds for \<open>invntt\<close> / \<open>nttInvAllRef\<close>,
