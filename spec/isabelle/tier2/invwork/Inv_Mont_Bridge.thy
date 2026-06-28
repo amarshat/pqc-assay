@@ -1916,12 +1916,193 @@ lemma pres_inv7:
 
 end
 
-text \<open>REMAINING (sub-step 2 tail + sub-step 3): the doubling bound-growth chain (an
-  invnttLevel_bounded growth lemma: input ntt_bounded B, Q <= B ==> output ntt_bounded (2*B);
-  thread B_ell = 2^ell * B_0, B_0 = 8380416 so 2^7 * B_0 = 1072693248 <= mbfly cap 1073741823);
-  the bounded chain on the normal side (nttLayerInv preserves bounded); compose pres_inv0..7
-  into Rcong (invntt-prefix) (nttInvAllRef), then the invf final scale (invf_scale_cong) and
-  sub-step 1 + forward ntt_bridge into theorem invntt_bridge. Plus an inverse Negacyclic_Bridge
-  (nttInvAllRef == FIPS inverse), inverse of fwd_ntt_correct.\<close>
+section \<open>Bound growth across one Gentleman-Sande layer\<close>
+
+text \<open>The montgomery inverse NTT keeps its coefficients overflow-free, but the bound
+  GROWS differently from the forward direction. The forward Cooley-Tukey leg is
+  \<open>coeff +/- montgomery(zeta * coeff)\<close>, where the montgomery term is reduced (\<open>< Q\<close>), so the
+  bound grows by at most \<open>Q\<close> per level (\<open>nttLevel_bounded\<close>). The Gentleman-Sande low leg is the
+  UNREDUCED sum \<open>a[n] + a[n+L]\<close> of two full coefficients, so the bound can DOUBLE per level; the
+  high leg \<open>montgomery(-zeta * (a[n-L] - a[n]))\<close> is reduced (\<open>< Q\<close>) and stays well within \<open>2B\<close>.
+  Hence one layer maps \<open>ntt_bounded B\<close> to \<open>ntt_bounded (2*B)\<close>, given \<open>B\<close> leaves room
+  (\<open>B \<le> 2^30 - 1\<close>, so the difference of two coefficients fits int32) and \<open>Q \<le> 2*B\<close> (so the
+  reduced high leg also fits the doubled bound). Threaded over the eight levels from
+  \<open>B_0 = Q - 1 = 8380416\<close> (the inverse C input precondition \<open>|coeff| < Q\<close>), the largest input is
+  \<open>2^7 * B_0 = 1072693248 \<le> 1073741823\<close>, so the cap holds throughout.\<close>
+
+context includes cryptol_syntax begin
+
+text \<open>Low leg: the unreduced int32 sum of two \<open>B\<close>-bounded coefficients is bounded by \<open>2B\<close> and
+  does not overflow (\<open>2B \<le> 2^31 - 1\<close> for \<open>B \<le> 2^30 - 1\<close>). Index-agnostic (any \<open>p\<close>, \<open>r\<close>).\<close>
+lemma gs_node_low_bound:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and Bhi: "B \<le> 1073741823"
+  shows "- (2 * B) \<le> sint_seq (nth_seq a p + nth_seq a r)
+       \<and> sint_seq (nth_seq a p + nth_seq a r) \<le> 2 * B"
+proof -
+  have aP: "- B \<le> sint_seq (nth_seq a p)" "sint_seq (nth_seq a p) \<le> B"
+    using B unfolding ntt_bounded_def by auto
+  have aR: "- B \<le> sint_seq (nth_seq a r)" "sint_seq (nth_seq a r) \<le> B"
+    using B unfolding ntt_bounded_def by auto
+  have noov: "sint_seq (nth_seq a p + nth_seq a r)
+            = sint_seq (nth_seq a p) + sint_seq (nth_seq a r)"
+    by (rule sint_seq_add_eq) (use aP aR Bhi in linarith)+
+  show ?thesis using noov aP aR by linarith
+qed
+
+text \<open>High leg: the montgomery reduce of the negated twiddle on the int32 difference is bounded
+  by \<open>Q\<close> (it is a reduced term, via \<open>mont_butterfly_bound\<close>), hence by \<open>2B\<close> when \<open>Q \<le> 2B\<close>. The
+  montgomery precondition needs the difference \<open>a[p] - a[r]\<close> (magnitude up to \<open>2B \<le> 2^31 - 1\<close>) to
+  be a valid input, discharged by the looser-cap \<open>mont_input_ok_of_bounds'\<close>. Index-agnostic.\<close>
+lemma gs_node_high_bound:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and QB: "8380417 \<le> 2 * B" and Bhi: "B \<le> 1073741823"
+  shows "- (2 * B)
+       \<le> sint_seq (montgomery_reduce (sext64 (- nth_seq zetas kz)
+                    * sext64 (nth_seq a p - nth_seq a r)))
+       \<and> sint_seq (montgomery_reduce (sext64 (- nth_seq zetas kz)
+                    * sext64 (nth_seq a p - nth_seq a r))) \<le> 2 * B"
+proof -
+  have aP: "- B \<le> sint_seq (nth_seq a p)" "sint_seq (nth_seq a p) \<le> B"
+    using B unfolding ntt_bounded_def by auto
+  have aR: "- B \<le> sint_seq (nth_seq a r)" "sint_seq (nth_seq a r) \<le> B"
+    using B unfolding ntt_bounded_def by auto
+  have dsub: "sint_seq (nth_seq a p - nth_seq a r)
+            = sint_seq (nth_seq a p) - sint_seq (nth_seq a r)"
+    by (rule sint_seq_sub_eq) (use aP aR Bhi in linarith)+
+  have dlo: "- (2 * B) \<le> sint_seq (nth_seq a p - nth_seq a r)" using dsub aP aR by linarith
+  have dhi: "sint_seq (nth_seq a p - nth_seq a r) \<le> 2 * B" using dsub aP aR by linarith
+  have zQn: "- 4194304 \<le> - sint_seq (nth_seq zetas kz)"
+            "- sint_seq (nth_seq zetas kz) \<le> 4194304"
+    using Assay_Equivalence.zeta_bound[of kz] by auto
+  have B2: "2 * B \<le> 2147483647" using Bhi by linarith
+  have nz: "sint_seq (- nth_seq zetas kz) = - sint_seq (nth_seq zetas kz)"
+    by (rule sint_seq_uminus_small) (use Assay_Equivalence.zeta_bound[of kz] in linarith)+
+  have ok: "mont_input_ok (sint_seq (- nth_seq zetas kz)
+                           * sint_seq (nth_seq a p - nth_seq a r))"
+  proof -
+    have "mont_input_ok ((- sint_seq (nth_seq zetas kz))
+                         * sint_seq (nth_seq a p - nth_seq a r))"
+      by (rule mont_input_ok_of_bounds'[OF zQn(1) zQn(2) dlo dhi B2])
+    thus ?thesis by (simp add: nz)
+  qed
+  have mb: "- 8380417 < sint_seq (montgomery_reduce (sext64 (- nth_seq zetas kz)
+                         * sext64 (nth_seq a p - nth_seq a r)))"
+           "sint_seq (montgomery_reduce (sext64 (- nth_seq zetas kz)
+                         * sext64 (nth_seq a p - nth_seq a r))) < 8380417"
+    using mont_butterfly_bound[OF ok] by simp_all
+  show ?thesis using mb QB by linarith
+qed
+
+text \<open>The generic per-layer growth lemma: any layer output \<open>b\<close> whose positions unfold to the
+  inverse butterfly (the \<open>invlevelN_coeff\<close> form) is \<open>ntt_bounded (2*B)\<close>. In-bounds positions are
+  bounded by the two node lemmas; out-of-bounds indices fall to position 255 (\<open>oob255\<close>).\<close>
+lemma invlevel_bounded_gen:
+  fixes a b :: "[256][32]"
+  assumes B: "ntt_bounded B a" and QB: "8380417 \<le> 2 * B" and Bhi: "B \<le> 1073741823"
+      and coeff: "\<And>n. n < 256 \<Longrightarrow> nth_seq b n =
+            (if n mod (2 * L) < L
+             then nth_seq a n + nth_seq a (n + L)
+             else montgomery_reduce (sext64 (- nth_seq zetas (ZB - n div (2 * L)))
+                                     * sext64 (nth_seq a (n - L) - nth_seq a n)))"
+  shows "ntt_bounded (2 * B) b"
+proof -
+  have pos: "- (2 * B) \<le> sint_seq (nth_seq b n) \<and> sint_seq (nth_seq b n) \<le> 2 * B"
+    if n: "n < 256" for n
+  proof (cases "n mod (2 * L) < L")
+    case True
+    have eq: "nth_seq b n = nth_seq a n + nth_seq a (n + L)" using coeff[OF n] True by simp
+    show ?thesis unfolding eq by (rule gs_node_low_bound[OF B Bhi])
+  next
+    case False
+    have eq: "nth_seq b n = montgomery_reduce (sext64 (- nth_seq zetas (ZB - n div (2 * L)))
+                                               * sext64 (nth_seq a (n - L) - nth_seq a n))"
+      using coeff[OF n] False by simp
+    show ?thesis unfolding eq by (rule gs_node_high_bound[OF B QB Bhi])
+  qed
+  show ?thesis unfolding ntt_bounded_def
+  proof (intro allI)
+    fix n
+    show "- (2 * B) \<le> sint_seq (nth_seq b n) \<and> sint_seq (nth_seq b n) \<le> 2 * B"
+    proof (cases "n < 256")
+      case True thus ?thesis using pos by simp
+    next
+      case False
+      hence ge: "256 \<le> n" by simp
+      have p255: "- (2 * B) \<le> sint_seq (nth_seq b 255) \<and> sint_seq (nth_seq b 255) \<le> 2 * B"
+        using pos by simp
+      thus ?thesis using oob255[OF ge, of b] by simp
+    qed
+  qed
+qed
+
+text \<open>The eight per-layer instances. Each feeds \<open>invlevel_bounded_gen\<close> the matching
+  \<open>invlevelN_coeff\<close> with stride \<open>L = 2^N\<close> and twiddle base \<open>ZB = 2^(8-N) - 1\<close>. Level 0
+  (\<open>L = 1\<close>) needs \<open>n mod 2 < 1 \<longleftrightarrow> n mod 2 = 0\<close> (\<open>less_Suc0\<close>).\<close>
+
+lemma invlevel0_bounded:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and QB: "8380417 \<le> 2 * B" and Bhi: "B \<le> 1073741823"
+  shows "ntt_bounded (2 * B) (invnttLevel 0 a)"
+  by (rule invlevel_bounded_gen[OF B QB Bhi, where L = "1::nat" and ZB = "255::nat"])
+     (simp add: invlevel0_coeff less_Suc0)
+
+lemma invlevel1_bounded:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and QB: "8380417 \<le> 2 * B" and Bhi: "B \<le> 1073741823"
+  shows "ntt_bounded (2 * B) (invnttLevel 1 a)"
+  by (rule invlevel_bounded_gen[OF B QB Bhi, where L = "2::nat" and ZB = "127::nat"])
+     (simp add: invlevel1_coeff)
+
+lemma invlevel2_bounded:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and QB: "8380417 \<le> 2 * B" and Bhi: "B \<le> 1073741823"
+  shows "ntt_bounded (2 * B) (invnttLevel 2 a)"
+  by (rule invlevel_bounded_gen[OF B QB Bhi, where L = "4::nat" and ZB = "63::nat"])
+     (simp add: invlevel2_coeff)
+
+lemma invlevel3_bounded:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and QB: "8380417 \<le> 2 * B" and Bhi: "B \<le> 1073741823"
+  shows "ntt_bounded (2 * B) (invnttLevel 3 a)"
+  by (rule invlevel_bounded_gen[OF B QB Bhi, where L = "8::nat" and ZB = "31::nat"])
+     (simp add: invlevel3_coeff)
+
+lemma invlevel4_bounded:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and QB: "8380417 \<le> 2 * B" and Bhi: "B \<le> 1073741823"
+  shows "ntt_bounded (2 * B) (invnttLevel 4 a)"
+  by (rule invlevel_bounded_gen[OF B QB Bhi, where L = "16::nat" and ZB = "15::nat"])
+     (simp add: invlevel4_coeff)
+
+lemma invlevel5_bounded:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and QB: "8380417 \<le> 2 * B" and Bhi: "B \<le> 1073741823"
+  shows "ntt_bounded (2 * B) (invnttLevel 5 a)"
+  by (rule invlevel_bounded_gen[OF B QB Bhi, where L = "32::nat" and ZB = "7::nat"])
+     (simp add: invlevel5_coeff)
+
+lemma invlevel6_bounded:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and QB: "8380417 \<le> 2 * B" and Bhi: "B \<le> 1073741823"
+  shows "ntt_bounded (2 * B) (invnttLevel 6 a)"
+  by (rule invlevel_bounded_gen[OF B QB Bhi, where L = "64::nat" and ZB = "3::nat"])
+     (simp add: invlevel6_coeff)
+
+lemma invlevel7_bounded:
+  fixes a :: "[256][32]"
+  assumes B: "ntt_bounded B a" and QB: "8380417 \<le> 2 * B" and Bhi: "B \<le> 1073741823"
+  shows "ntt_bounded (2 * B) (invnttLevel 7 a)"
+  by (rule invlevel_bounded_gen[OF B QB Bhi, where L = "128::nat" and ZB = "1::nat"])
+     (simp add: invlevel7_coeff)
+
+end
+
+text \<open>REMAINING (sub-step 2 tail + sub-step 3): compose the doubling bound chain (the eight
+  \<open>invlevelN_bounded\<close> above, from \<open>B_0 = 8380416\<close> to \<open>2^8 * B_0\<close>) with the normal-side bounded
+  preservation (\<open>nttLayerInv\<close> keeps \<open>bounded\<close>) and the foldl unfolds for \<open>invntt\<close> / \<open>nttInvAllRef\<close>,
+  chaining pres_inv0..7 into Rcong (invntt-prefix) (nttInvAllRef); then the invf final scale
+  (invf_scale_cong) and sub-step 1 + forward ntt_bridge into theorem invntt_bridge. Plus an
+  inverse Negacyclic_Bridge (nttInvAllRef == FIPS inverse), inverse of fwd_ntt_correct.\<close>
 
 end
