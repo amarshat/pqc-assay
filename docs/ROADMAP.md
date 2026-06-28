@@ -55,8 +55,38 @@ The whole strategy is **depth, scoped tight**. One finished proof beats three ha
   stage invariant `inv_form` (lower/upper recursion) + induction `applyN_inv`; self-contained, does not
   use the AFP recursive-FFT theorem. Next: wire `Tier2` into `make verify` / CI (currently ungated; the
   proof-hole grep excludes `tier2`).
-- **Still open:** the *inverse* NTT == FIPS-204 Algorithm 42 and the `256^-1` normalization (the AFP
-  `IFNTT_correct` / round-trip lemmas are available to reuse); a forward+inverse round-trip in Isabelle.
+- **Inverse NTT (fork 1): in progress.** See the fork-1 section below.
+
+## fork 1 — complete the NTT (inverse NTT, then the -fwrapv seam)
+Goal: extend the forward result to the **inverse** NTT (`invntt_tomont` = `mont * NTT^-1`,
+folding the `256^-1` normalization), so the published chain covers forward **and** inverse rather
+than the forward half only. Pieces, in order:
+1. **Cryptol inverse model (DONE).** `invntt`/`invnttLevel`/`invf=41978` added to
+   `model/cryptol/MLDSA_NTT.cry` (Gentleman-Sande, 8 levels, final `montgomery_reduce(invf*b)`).
+   Round-trip `invntt(ntt(x)) = mont*x mod q` validated in Cryptol.
+2. **SAW C ≡ Cryptol (DONE).** `proof/saw/mldsa_ntt.saw` proves the C `invntt_tomont` ≡ Cryptol
+   `invntt` (mirror of the forward proof; `make saw` exits 0).
+3. **Lift (DONE).** `cryptol-to-isabelle` regenerated; `make lift-check` green.
+4. **Isabelle `invntt_bridge` (IN PROGRESS).** montgomery `invntt` model ≡ FIPS-204 inverse
+   transform mod q, the inverse mirror of `ntt_bridge`.
+   - *Sub-step 1 (DONE):* negacyclic invertibility. `spec/isabelle/tier2/inv/Negacyclic_Inv.thy`,
+     session `Tier2_Inv` (exit 0, no holes). `INNTT = untwist ∘ AFP-INTT`, with
+     `INNTT_NNTT`/`NNTT_INNTT` proving `NNTT` is a bijection mod q (inverse = `(n^-1)·INNTT`).
+   - *Sub-step 2 foundation (DONE):* `spec/isabelle/tier2/invwork/Inv_Mont_Bridge.thy`, session
+     `Tier2_InvWork` on the forward `Tier2` heap (exit 0, no holes). `inv_butterfly_cong` (the
+     Gentleman-Sande negated-twiddle congruence), `invf_scale_cong` (the `mont^2/256` final scale),
+     and the supporting `sint_seq_uminus_small` / `mont32_cancel` helpers. Discovery: a normal-domain
+     inverse `nttInvAllRef` already exists in `Tier2_Base`, so the bridge is a true mirror of the
+     forward `Mont_Bridge` (montgomery `invntt` ≡ `nttInvAllRef` mod q + the `invf` scale).
+   - *Remaining (sub-step 2 bulk + sub-step 3):* 8 Gentleman-Sande layer unfolds, 8 per-layer
+     congruences, 8 range-preservation lemmas, the final scale, then compose with sub-step 1 and the
+     forward `ntt_bridge` into `invntt_bridge`. This mirrors the forward `Mont_Bridge` (~1500 lines);
+     multi-session.
+5. **Mechanize / scope the `-fwrapv` no-UB seam** for the inverse (the one argued link), as for forward.
+
+After fork 1: wire `Tier2_InvWork` into `make verify` / CI like the forward `Tier2`, add an inverse row
+to the README claim table, and use the **complete forward+inverse chain** as the publication anchor
+(it closes the "no inverse / one argued link" gap that drew the ePrint rejections).
 
 ## v2 — verify a used-but-unverified implementation
 **Target chosen by survey (2026-06-11): the RustCrypto `ml-dsa` crate.** Rationale over the earlier
@@ -101,6 +131,39 @@ Phased (multi-month):
 - **Different targets.** `montgomery_reduce` is already trivially CT (branch/division/table-free). The
   real CT risk is rejection sampling (`rej_eta`, `poly_uniform*`, challenge gen) and
   `decompose`/`make_hint`/`use_hint` — data-dependent control flow on secret-adjacent values.
+
+## Next targets after fork 1 (shortlist)
+A 2026-06 deep-research scan ranked 20 production crypto libraries (secp256k1, rustls-webpki, OpenSSL,
+rust-lightning, openCryptoki, tpm2-tss, liboqs, wolfSSL, NSS, Mbed TLS, ...). That list ranks by
+deployment / "payment fit" / defect odds. It underweights the one filter that decides feasibility here:
+**toolchain fit.** SAW → Cryptol → Isabelle is an *arithmetic-equivalence* tool. It is strong on
+bit-exact modular arithmetic (what we proved for ML-DSA) and weak on DER/ASN.1 parsing, stateful
+protocol machines, and cert path-validation — where fuzzing/CBMC/Frama-C are the cheaper fit. Filtering
+the 20 to "where this exact pipeline has an edge" collapses it to a handful:
+
+- **Tier A (leverage — do first, builds on what exists):** finish the ML-DSA *arithmetic* story beyond
+  the NTT (decompose/rounding/packing; partly touched in the v2 Rust audit), or cross to **ML-KEM**
+  arithmetic (reduce + NTT). Reuses the Cryptol specs, the wired toolchain, and the v1.5 bound machinery.
+  Strongest *paper* ("complete verified ML-DSA arithmetic", not "a 4th unrelated thing") and lowest
+  start-up cost. Recommended next, after fork 1 lands and one artifact is published.
+- **Tier B (greenfield, deliberate new domain):** **bitcoin-core/secp256k1 field reduction** (the
+  5×52 / 10×26 limb reduce — same shape as our Montgomery/Barrett work). Best *external* story
+  (wallet/Bitcoin money, name recognition) and clean methodological transfer. Caveat: novelty is
+  narrower than the doc implies (safegcd inverse and a scalarmult subset already have public proofs),
+  so scope the first slice to field reduction, not the whole signing path. **curve25519-dalek**
+  non-fiat backends are a secondary Tier-B option.
+- **Avoid for this pipeline (despite high doc ranks):** rustls-webpki cert validation, openCryptoki
+  PKCS#11 templates, tpm2-tss marshalling, GnuTLS/OpenSSL X.509/CMS. Parser/state-machine heavy; you'd
+  fight the toolchain, and the defects there are parsing bugs fuzzing finds more cheaply.
+
+Effort reality-check: the doc's "L = 2–4 months for one researcher" is optimistic for the full
+SAW→Isabelle pipeline. The ML-DSA forward NTT alone was weeks of grind for one subroutine, and the
+inverse is still in progress. Scope first slices to a single arithmetic kernel, not a library.
+
+**Sequencing rule (hard-learned):** do not start a new target until fork 1 lands AND one credible
+artifact is published. The ePrint rejections (3×) came from shipping proof work without a landed
+publication; broadening targets before fixing that just repeats the pattern. Leverage beats greenfield
+until there is one external win on the board.
 
 ## Non-goals (for now)
 - Full end-to-end ML-DSA. Whole-algorithm correctness. Multiple implementations at once.
