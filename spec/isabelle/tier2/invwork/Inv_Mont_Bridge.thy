@@ -292,6 +292,397 @@ lemma invlevel1_coeff:
           else montgomery_reduce (sext64 (- nth_seq zetas (127 - n div 4)) * sext64 (nth_seq a (n - 2) - nth_seq a n)))"
   using invlevel1_lo[OF _ n] invlevel1_hi[OF _ n] by simp
 
+text \<open>Level 2 (\<open>len = 4\<close>, \<open>twolen = 8\<close>, \<open>kbase = 64\<close>), twiddle \<open>-zetas[63 - n div 8]\<close>.\<close>
+lemma invlevel2_lo:
+  fixes a :: "[256][32]"
+  assumes hlo: "n mod 8 < 4" and n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 2 a) n = nth_seq a n + nth_seq a (n + 4)"
+proof -
+  have dec: "8 * (n div 8) + n mod 8 = n" by simp
+  have ndlt: "n div 8 < 32" using n by linarith
+  have np: "n + 4 < 256" using dec hlo ndlt by linarith
+  have e1: "n mod 65536 = n" using n by simp
+  have e2: "(n + 4) mod 65536 = n + 4" using np by simp
+  have sh: "unat ((1::16 word) << 2) = 4" "((1::16 word) << 2) = 4"
+           "unat ((4::16 word) << 1) = 8" "((4::16 word) << 1) = 8"
+           "unat ((0x100::16 word) >> 2) = 64" "((0x100::16 word) >> 2) = 0x40" by eval+
+  show ?thesis
+    using hlo n
+    apply (simp add: invnttLevel_def fromTo_def Let_def n)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths sh)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 e2 hlo ndlt sh)
+    done
+qed
+
+lemma invlevel2_hi:
+  fixes a :: "[256][32]"
+  assumes hhi: "\<not> n mod 8 < 4" and n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 2 a) n
+       = montgomery_reduce (sext64 (- nth_seq zetas (63 - n div 8)) * sext64 (nth_seq a (n - 4) - nth_seq a n))"
+proof -
+  have nge: "4 \<le> n" using hhi by (cases "n < 4") auto
+  have e1: "n mod 65536 = n" using n by simp
+  have ndlt: "n div 8 < 32" using n by linarith
+  have es: "unat (word_of_nat n - (4::16 word)) = n - 4"
+    using nge by (simp add: unat_sub word_le_nat_alt unat_of_nat e1)
+  have zle: "(word_of_nat n div 8 :: 16 word) \<le> 0x3F"
+    using ndlt by (simp add: word_le_nat_alt unat_div unat_of_nat e1)
+  have ez: "unat ((0x3F::16 word) - word_of_nat n div 8) = 63 - n div 8"
+    using zle by (simp add: unat_sub unat_div unat_of_nat e1)
+  have sh: "unat ((1::16 word) << 2) = 4" "((1::16 word) << 2) = 4"
+           "unat ((4::16 word) << 1) = 8" "((4::16 word) << 1) = 8"
+           "unat ((0x100::16 word) >> 2) = 64" "((0x100::16 word) >> 2) = 0x40" by eval+
+  show ?thesis
+    using hhi n
+    apply (simp add: invnttLevel_def fromTo_def Let_def n)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths sh)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 hhi ndlt es ez sh)
+    done
+qed
+
+lemma invlevel2_coeff:
+  fixes a :: "[256][32]"
+  assumes n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 2 a) n
+       = (if n mod 8 < 4
+          then nth_seq a n + nth_seq a (n + 4)
+          else montgomery_reduce (sext64 (- nth_seq zetas (63 - n div 8)) * sext64 (nth_seq a (n - 4) - nth_seq a n)))"
+  using invlevel2_lo[OF _ n] invlevel2_hi[OF _ n] by simp
+
+text \<open>Level 3 (\<open>len = 8\<close>, \<open>twolen = 16\<close>, \<open>kbase = 32\<close>), twiddle \<open>-zetas[31 - n div 16]\<close>.\<close>
+lemma invlevel3_lo:
+  fixes a :: "[256][32]"
+  assumes hlo: "n mod 16 < 8" and n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 3 a) n = nth_seq a n + nth_seq a (n + 8)"
+proof -
+  have dec: "16 * (n div 16) + n mod 16 = n" by simp
+  have ndlt: "n div 16 < 16" using n by linarith
+  have np: "n + 8 < 256" using dec hlo ndlt by linarith
+  have e1: "n mod 65536 = n" using n by simp
+  have e2: "(n + 8) mod 65536 = n + 8" using np by simp
+  have sh: "unat ((1::16 word) << 3) = 8" "((1::16 word) << 3) = 8"
+           "unat ((8::16 word) << 1) = 16" "((8::16 word) << 1) = 16"
+           "unat ((0x100::16 word) >> 3) = 32" "((0x100::16 word) >> 3) = 0x20" by eval+
+  show ?thesis
+    using hlo n
+    apply (simp add: invnttLevel_def fromTo_def Let_def n)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths sh)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 e2 hlo ndlt sh)
+    done
+qed
+
+lemma invlevel3_hi:
+  fixes a :: "[256][32]"
+  assumes hhi: "\<not> n mod 16 < 8" and n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 3 a) n
+       = montgomery_reduce (sext64 (- nth_seq zetas (31 - n div 16)) * sext64 (nth_seq a (n - 8) - nth_seq a n))"
+proof -
+  have nge: "8 \<le> n" using hhi by (cases "n < 8") auto
+  have e1: "n mod 65536 = n" using n by simp
+  have ndlt: "n div 16 < 16" using n by linarith
+  have es: "unat (word_of_nat n - (8::16 word)) = n - 8"
+    using nge by (simp add: unat_sub word_le_nat_alt unat_of_nat e1)
+  have zle: "(word_of_nat n div 16 :: 16 word) \<le> 0x1F"
+    using ndlt by (simp add: word_le_nat_alt unat_div unat_of_nat e1)
+  have ez: "unat ((0x1F::16 word) - word_of_nat n div 16) = 31 - n div 16"
+    using zle by (simp add: unat_sub unat_div unat_of_nat e1)
+  have sh: "unat ((1::16 word) << 3) = 8" "((1::16 word) << 3) = 8"
+           "unat ((8::16 word) << 1) = 16" "((8::16 word) << 1) = 16"
+           "unat ((0x100::16 word) >> 3) = 32" "((0x100::16 word) >> 3) = 0x20" by eval+
+  show ?thesis
+    using hhi n
+    apply (simp add: invnttLevel_def fromTo_def Let_def n)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths sh)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 hhi ndlt es ez sh)
+    done
+qed
+
+lemma invlevel3_coeff:
+  fixes a :: "[256][32]"
+  assumes n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 3 a) n
+       = (if n mod 16 < 8
+          then nth_seq a n + nth_seq a (n + 8)
+          else montgomery_reduce (sext64 (- nth_seq zetas (31 - n div 16)) * sext64 (nth_seq a (n - 8) - nth_seq a n)))"
+  using invlevel3_lo[OF _ n] invlevel3_hi[OF _ n] by simp
+
+text \<open>Level 4 (\<open>len = 16\<close>, \<open>twolen = 32\<close>, \<open>kbase = 16\<close>), twiddle \<open>-zetas[15 - n div 32]\<close>.\<close>
+lemma invlevel4_lo:
+  fixes a :: "[256][32]"
+  assumes hlo: "n mod 32 < 16" and n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 4 a) n = nth_seq a n + nth_seq a (n + 16)"
+proof -
+  have dec: "32 * (n div 32) + n mod 32 = n" by simp
+  have ndlt: "n div 32 < 8" using n by linarith
+  have np: "n + 16 < 256" using dec hlo ndlt by linarith
+  have e1: "n mod 65536 = n" using n by simp
+  have e2: "(n + 16) mod 65536 = n + 16" using np by simp
+  have sh: "unat ((1::16 word) << 4) = 16" "((1::16 word) << 4) = 16"
+           "unat ((16::16 word) << 1) = 32" "((16::16 word) << 1) = 32"
+           "unat ((0x100::16 word) >> 4) = 16" "((0x100::16 word) >> 4) = 0x10" by eval+
+  show ?thesis
+    using hlo n
+    apply (simp add: invnttLevel_def fromTo_def Let_def n)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths sh)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 e2 hlo ndlt sh)
+    done
+qed
+
+lemma invlevel4_hi:
+  fixes a :: "[256][32]"
+  assumes hhi: "\<not> n mod 32 < 16" and n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 4 a) n
+       = montgomery_reduce (sext64 (- nth_seq zetas (15 - n div 32)) * sext64 (nth_seq a (n - 16) - nth_seq a n))"
+proof -
+  have nge: "16 \<le> n" using hhi by (cases "n < 16") auto
+  have e1: "n mod 65536 = n" using n by simp
+  have ndlt: "n div 32 < 8" using n by linarith
+  have es: "unat (word_of_nat n - (16::16 word)) = n - 16"
+    using nge by (simp add: unat_sub word_le_nat_alt unat_of_nat e1)
+  have zle: "(word_of_nat n div 32 :: 16 word) \<le> 0xF"
+    using ndlt by (simp add: word_le_nat_alt unat_div unat_of_nat e1)
+  have ez: "unat ((0xF::16 word) - word_of_nat n div 32) = 15 - n div 32"
+    using zle by (simp add: unat_sub unat_div unat_of_nat e1)
+  have sh: "unat ((1::16 word) << 4) = 16" "((1::16 word) << 4) = 16"
+           "unat ((16::16 word) << 1) = 32" "((16::16 word) << 1) = 32"
+           "unat ((0x100::16 word) >> 4) = 16" "((0x100::16 word) >> 4) = 0x10" by eval+
+  show ?thesis
+    using hhi n
+    apply (simp add: invnttLevel_def fromTo_def Let_def n)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths sh)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 hhi ndlt es ez sh)
+    done
+qed
+
+lemma invlevel4_coeff:
+  fixes a :: "[256][32]"
+  assumes n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 4 a) n
+       = (if n mod 32 < 16
+          then nth_seq a n + nth_seq a (n + 16)
+          else montgomery_reduce (sext64 (- nth_seq zetas (15 - n div 32)) * sext64 (nth_seq a (n - 16) - nth_seq a n)))"
+  using invlevel4_lo[OF _ n] invlevel4_hi[OF _ n] by simp
+
+text \<open>Level 5 (\<open>len = 32\<close>, \<open>twolen = 64\<close>, \<open>kbase = 8\<close>), twiddle \<open>-zetas[7 - n div 64]\<close>.\<close>
+lemma invlevel5_lo:
+  fixes a :: "[256][32]"
+  assumes hlo: "n mod 64 < 32" and n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 5 a) n = nth_seq a n + nth_seq a (n + 32)"
+proof -
+  have dec: "64 * (n div 64) + n mod 64 = n" by simp
+  have ndlt: "n div 64 < 4" using n by linarith
+  have np: "n + 32 < 256" using dec hlo ndlt by linarith
+  have e1: "n mod 65536 = n" using n by simp
+  have e2: "(n + 32) mod 65536 = n + 32" using np by simp
+  have sh: "unat ((1::16 word) << 5) = 32" "((1::16 word) << 5) = 32"
+           "unat ((32::16 word) << 1) = 64" "((32::16 word) << 1) = 64"
+           "unat ((0x100::16 word) >> 5) = 8" "((0x100::16 word) >> 5) = 0x8" by eval+
+  show ?thesis
+    using hlo n
+    apply (simp add: invnttLevel_def fromTo_def Let_def n)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths sh)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 e2 hlo ndlt sh)
+    done
+qed
+
+lemma invlevel5_hi:
+  fixes a :: "[256][32]"
+  assumes hhi: "\<not> n mod 64 < 32" and n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 5 a) n
+       = montgomery_reduce (sext64 (- nth_seq zetas (7 - n div 64)) * sext64 (nth_seq a (n - 32) - nth_seq a n))"
+proof -
+  have nge: "32 \<le> n" using hhi by (cases "n < 32") auto
+  have e1: "n mod 65536 = n" using n by simp
+  have ndlt: "n div 64 < 4" using n by linarith
+  have es: "unat (word_of_nat n - (32::16 word)) = n - 32"
+    using nge by (simp add: unat_sub word_le_nat_alt unat_of_nat e1)
+  have zle: "(word_of_nat n div 64 :: 16 word) \<le> 0x7"
+    using ndlt by (simp add: word_le_nat_alt unat_div unat_of_nat e1)
+  have ez: "unat ((0x7::16 word) - word_of_nat n div 64) = 7 - n div 64"
+    using zle by (simp add: unat_sub unat_div unat_of_nat e1)
+  have sh: "unat ((1::16 word) << 5) = 32" "((1::16 word) << 5) = 32"
+           "unat ((32::16 word) << 1) = 64" "((32::16 word) << 1) = 64"
+           "unat ((0x100::16 word) >> 5) = 8" "((0x100::16 word) >> 5) = 0x8" by eval+
+  show ?thesis
+    using hhi n
+    apply (simp add: invnttLevel_def fromTo_def Let_def n)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths sh)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 hhi ndlt es ez sh)
+    done
+qed
+
+lemma invlevel5_coeff:
+  fixes a :: "[256][32]"
+  assumes n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 5 a) n
+       = (if n mod 64 < 32
+          then nth_seq a n + nth_seq a (n + 32)
+          else montgomery_reduce (sext64 (- nth_seq zetas (7 - n div 64)) * sext64 (nth_seq a (n - 32) - nth_seq a n)))"
+  using invlevel5_lo[OF _ n] invlevel5_hi[OF _ n] by simp
+
+text \<open>Level 6 (\<open>len = 64\<close>, \<open>twolen = 128\<close>, \<open>kbase = 4\<close>), twiddle \<open>-zetas[3 - n div 128]\<close>.\<close>
+lemma invlevel6_lo:
+  fixes a :: "[256][32]"
+  assumes hlo: "n mod 128 < 64" and n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 6 a) n = nth_seq a n + nth_seq a (n + 64)"
+proof -
+  have dec: "128 * (n div 128) + n mod 128 = n" by simp
+  have ndlt: "n div 128 < 2" using n by linarith
+  have np: "n + 64 < 256" using dec hlo ndlt by linarith
+  have e1: "n mod 65536 = n" using n by simp
+  have e2: "(n + 64) mod 65536 = n + 64" using np by simp
+  have sh: "unat ((1::16 word) << 6) = 64" "((1::16 word) << 6) = 64"
+           "unat ((64::16 word) << 1) = 128" "((64::16 word) << 1) = 128"
+           "unat ((0x100::16 word) >> 6) = 4" "((0x100::16 word) >> 6) = 0x4" by eval+
+  show ?thesis
+    using hlo n
+    apply (simp add: invnttLevel_def fromTo_def Let_def n)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths sh)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 e2 hlo ndlt sh)
+    done
+qed
+
+lemma invlevel6_hi:
+  fixes a :: "[256][32]"
+  assumes hhi: "\<not> n mod 128 < 64" and n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 6 a) n
+       = montgomery_reduce (sext64 (- nth_seq zetas (3 - n div 128)) * sext64 (nth_seq a (n - 64) - nth_seq a n))"
+proof -
+  have nge: "64 \<le> n" using hhi by (cases "n < 64") auto
+  have e1: "n mod 65536 = n" using n by simp
+  have ndlt: "n div 128 < 2" using n by linarith
+  have es: "unat (word_of_nat n - (64::16 word)) = n - 64"
+    using nge by (simp add: unat_sub word_le_nat_alt unat_of_nat e1)
+  have zle: "(word_of_nat n div 128 :: 16 word) \<le> 0x3"
+    using ndlt by (simp add: word_le_nat_alt unat_div unat_of_nat e1)
+  have ez: "unat ((0x3::16 word) - word_of_nat n div 128) = 3 - n div 128"
+    using zle by (simp add: unat_sub unat_div unat_of_nat e1)
+  have sh: "unat ((1::16 word) << 6) = 64" "((1::16 word) << 6) = 64"
+           "unat ((64::16 word) << 1) = 128" "((64::16 word) << 1) = 128"
+           "unat ((0x100::16 word) >> 6) = 4" "((0x100::16 word) >> 6) = 0x4" by eval+
+  show ?thesis
+    using hhi n
+    apply (simp add: invnttLevel_def fromTo_def Let_def n)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths sh)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 hhi ndlt es ez sh)
+    done
+qed
+
+lemma invlevel6_coeff:
+  fixes a :: "[256][32]"
+  assumes n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 6 a) n
+       = (if n mod 128 < 64
+          then nth_seq a n + nth_seq a (n + 64)
+          else montgomery_reduce (sext64 (- nth_seq zetas (3 - n div 128)) * sext64 (nth_seq a (n - 64) - nth_seq a n)))"
+  using invlevel6_lo[OF _ n] invlevel6_hi[OF _ n] by simp
+
+text \<open>Level 7 (\<open>len = 128\<close>, \<open>twolen = 256\<close>, \<open>kbase = 2\<close>), twiddle constant \<open>-zetas[1]\<close>.\<close>
+lemma invlevel7_lo:
+  fixes a :: "[256][32]"
+  assumes hlo: "n mod 256 < 128" and n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 7 a) n = nth_seq a n + nth_seq a (n + 128)"
+proof -
+  have dec: "256 * (n div 256) + n mod 256 = n" by simp
+  have ndlt: "n div 256 < 1" using n by linarith
+  have np: "n + 128 < 256" using dec hlo ndlt by linarith
+  have e1: "n mod 65536 = n" using n by simp
+  have e2: "(n + 128) mod 65536 = n + 128" using np by simp
+  have sh: "unat ((1::16 word) << 7) = 128" "((1::16 word) << 7) = 128"
+           "unat ((128::16 word) << 1) = 256" "((128::16 word) << 1) = 256"
+           "unat ((0x100::16 word) >> 7) = 2" "((0x100::16 word) >> 7) = 0x2" by eval+
+  show ?thesis
+    using hlo n
+    apply (simp add: invnttLevel_def fromTo_def Let_def n)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths sh)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 e2 hlo ndlt sh)
+    done
+qed
+
+lemma invlevel7_hi:
+  fixes a :: "[256][32]"
+  assumes hhi: "\<not> n mod 256 < 128" and n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 7 a) n
+       = montgomery_reduce (sext64 (- nth_seq zetas (1 - n div 256)) * sext64 (nth_seq a (n - 128) - nth_seq a n))"
+proof -
+  have nge: "128 \<le> n" using hhi by (cases "n < 128") auto
+  have e1: "n mod 65536 = n" using n by simp
+  have ndlt: "n div 256 < 1" using n by linarith
+  have nd0: "n div 256 = 0" using n by simp
+  have es: "unat (word_of_nat n - (128::16 word)) = n - 128"
+    using nge by (simp add: unat_sub word_le_nat_alt unat_of_nat e1)
+  have zle: "(word_of_nat n div 256 :: 16 word) \<le> 0x1"
+    using ndlt by (simp add: word_le_nat_alt unat_div unat_of_nat e1)
+  have ez: "unat ((0x1::16 word) - word_of_nat n div 256) = 1 - n div 256"
+    using zle by (simp add: unat_sub unat_div unat_of_nat e1)
+  have sh: "unat ((1::16 word) << 7) = 128" "((1::16 word) << 7) = 128"
+           "unat ((128::16 word) << 1) = 256" "((128::16 word) << 1) = 256"
+           "unat ((0x100::16 word) >> 7) = 2" "((0x100::16 word) >> 7) = 0x2" by eval+
+  show ?thesis
+    using hhi n
+    apply (simp add: invnttLevel_def fromTo_def Let_def n)
+    apply (simp add: cryptol_prim_defs word_seq_convs
+                     from_nat_def from_int_word_def of_int_of_nat_eq ucast_of_nat_small
+                     unsigned_ucast_eq unsigned_take_bit_eq uint_up_ucast is_up
+                     unat_of_nat unat_word_ariths sh)
+    apply (simp add: word_less_nat_alt word_le_nat_alt unat_div unat_mod unat_of_nat
+                     e1 hhi ndlt nd0 es ez sh)
+    done
+qed
+
+lemma invlevel7_coeff:
+  fixes a :: "[256][32]"
+  assumes n: "n < (256::nat)"
+  shows "nth_seq (invnttLevel 7 a) n
+       = (if n mod 256 < 128
+          then nth_seq a n + nth_seq a (n + 128)
+          else montgomery_reduce (sext64 (- nth_seq zetas (1 - n div 256)) * sext64 (nth_seq a (n - 128) - nth_seq a n)))"
+  using invlevel7_lo[OF _ n] invlevel7_hi[OF _ n] by simp
+
 end
 
 text \<open>REMAINING (sub-step 2 bulk + sub-step 3): invlevel0_hi/coeff, the 7 further levels,
