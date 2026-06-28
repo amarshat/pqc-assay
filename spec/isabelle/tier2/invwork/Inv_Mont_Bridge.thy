@@ -1698,14 +1698,230 @@ lemma invlayer5_coeff:
                mod 8380417)"
   using invlayer5_lo[OF _ n bw] invlayer5_hi[OF _ n bw] by simp
 
+section \<open>Normal-side cf == gsLayer bridge\<close>
+
+text \<open>The inverse analog of CT_Routing's @{text abs_N}: each normal-domain inverse layer,
+  viewed on the cf coefficient function, is congruent mod q to the abstract @{const gsLayer}.
+  The low leg is a literal match; the high leg is a mod-q congruence, since the normal model
+  computes the negated twiddle and the high difference reduced (@{text "(q - z) mod q"},
+  @{text "(a + q - c) mod q"}) where @{const gsLayer} keeps @{text "z * (c - a)"} minus-free:
+  @{text "(q - z)(a + q - c) = z(c - a) + q*(...)"}, an integer identity, so equal mod q.\<close>
+lemma abs_inv_cong:
+  fixes w b :: "[256][32]"
+  assumes n: "n < 256" and Lpos: "0 < L"
+      and coeff: "uint_seq (nth_seq b n) =
+            (if n mod (2 * L) < L
+             then (uint_seq (nth_seq w n) + uint_seq (nth_seq w (n + L))) mod 8380417
+             else ((8380417 - uint_seq (nth_seq zetabrv (ZB - n div (2 * L)))) mod 8380417
+                   * ((uint_seq (nth_seq w (n - L)) + 8380417 - uint_seq (nth_seq w n)) mod 8380417))
+                  mod 8380417)"
+  shows "cf b n mod 8380417 = gsLayer L ZB (cf w) n mod 8380417"
+proof (cases "n mod (2 * L) < L")
+  case True
+  have l: "cf b n mod 8380417 = (cf w n + cf w (n + L)) mod 8380417"
+    using coeff True by (simp add: cf_def)
+  have r: "gsLayer L ZB (cf w) n mod 8380417 = (cf w n + cf w (n + L)) mod 8380417"
+    using True by (simp add: gsLayer_def)
+  show ?thesis using l r by simp
+next
+  case False
+  define zb where "zb = uint_seq (nth_seq zetabrv (ZB - n div (2 * L)))"
+  define av where "av = cf w (n - L)"
+  define cv where "cv = cf w n"
+  have eq: "(8380417 - zb) * (av + 8380417 - cv)
+          = zb * (cv - av) + 8380417 * (av + 8380417 - cv - zb)"
+    by (simp add: algebra_simps)
+  have key: "cf b n mod 8380417 = (zb * (cv - av)) mod 8380417"
+  proof -
+    have "cf b n = ((8380417 - zb) mod 8380417 * ((av + 8380417 - cv) mod 8380417)) mod 8380417"
+      using coeff False by (simp add: cf_def zb_def av_def cv_def)
+    hence "cf b n mod 8380417
+         = ((8380417 - zb) mod 8380417 * ((av + 8380417 - cv) mod 8380417)) mod 8380417" by simp
+    also have "\<dots> = ((8380417 - zb) * (av + 8380417 - cv)) mod 8380417"
+      by (metis mod_mult_eq)
+    also have "\<dots> = (zb * (cv - av)) mod 8380417"
+      by (subst eq) (rule mod_mult_self2)
+    finally show ?thesis .
+  qed
+  have r: "gsLayer L ZB (cf w) n mod 8380417 = (zb * (cv - av)) mod 8380417"
+    using False by (simp add: gsLayer_def zt_def zb_def cv_def av_def)
+  show ?thesis using key r by simp
+qed
+
+text \<open>The eight instances. Each feeds @{text abs_inv_cong} the matching @{text invlayerN_coeff}
+  unfold (@{text simp_all} bridges \<open>2*L\<close> to the concrete \<open>2len\<close>); level 7's constant index
+  needs \<open>n div 256 = 0\<close>.\<close>
+lemma abs_inv0:
+  fixes w :: "[256][32]"
+  assumes bnd: "bounded w" and n: "n < 256"
+  shows "cf (nttLayerInv 1 128 256 w) n mod 8380417 = gsLayer 1 255 (cf w) n mod 8380417"
+proof -
+  have bw: "\<And>i. i < 256 \<Longrightarrow> uint_seq (nth_seq w i) < 8380417" using boundedD[OF bnd] by blast
+  show ?thesis by (rule abs_inv_cong[OF n]) (simp_all add: invlayer0_coeff[OF n bw])
+qed
+
+lemma abs_inv1:
+  fixes w :: "[256][32]"
+  assumes bnd: "bounded w" and n: "n < 256"
+  shows "cf (nttLayerInv 2 64 128 w) n mod 8380417 = gsLayer 2 127 (cf w) n mod 8380417"
+proof -
+  have bw: "\<And>i. i < 256 \<Longrightarrow> uint_seq (nth_seq w i) < 8380417" using boundedD[OF bnd] by blast
+  show ?thesis by (rule abs_inv_cong[OF n]) (simp_all add: invlayer1_coeff[OF n bw])
+qed
+
+lemma abs_inv2:
+  fixes w :: "[256][32]"
+  assumes bnd: "bounded w" and n: "n < 256"
+  shows "cf (nttLayerInv 4 32 64 w) n mod 8380417 = gsLayer 4 63 (cf w) n mod 8380417"
+proof -
+  have bw: "\<And>i. i < 256 \<Longrightarrow> uint_seq (nth_seq w i) < 8380417" using boundedD[OF bnd] by blast
+  show ?thesis by (rule abs_inv_cong[OF n]) (simp_all add: invlayer2_coeff[OF n bw])
+qed
+
+lemma abs_inv3:
+  fixes w :: "[256][32]"
+  assumes bnd: "bounded w" and n: "n < 256"
+  shows "cf (nttLayerInv 8 16 32 w) n mod 8380417 = gsLayer 8 31 (cf w) n mod 8380417"
+proof -
+  have bw: "\<And>i. i < 256 \<Longrightarrow> uint_seq (nth_seq w i) < 8380417" using boundedD[OF bnd] by blast
+  show ?thesis by (rule abs_inv_cong[OF n]) (simp_all add: invlayer3_coeff[OF n bw])
+qed
+
+lemma abs_inv4:
+  fixes w :: "[256][32]"
+  assumes bnd: "bounded w" and n: "n < 256"
+  shows "cf (nttLayerInv 16 8 16 w) n mod 8380417 = gsLayer 16 15 (cf w) n mod 8380417"
+proof -
+  have bw: "\<And>i. i < 256 \<Longrightarrow> uint_seq (nth_seq w i) < 8380417" using boundedD[OF bnd] by blast
+  show ?thesis by (rule abs_inv_cong[OF n]) (simp_all add: invlayer4_coeff[OF n bw])
+qed
+
+lemma abs_inv5:
+  fixes w :: "[256][32]"
+  assumes bnd: "bounded w" and n: "n < 256"
+  shows "cf (nttLayerInv 32 4 8 w) n mod 8380417 = gsLayer 32 7 (cf w) n mod 8380417"
+proof -
+  have bw: "\<And>i. i < 256 \<Longrightarrow> uint_seq (nth_seq w i) < 8380417" using boundedD[OF bnd] by blast
+  show ?thesis by (rule abs_inv_cong[OF n]) (simp_all add: invlayer5_coeff[OF n bw])
+qed
+
+lemma abs_inv6:
+  fixes w :: "[256][32]"
+  assumes bnd: "bounded w" and n: "n < 256"
+  shows "cf (nttLayerInv 64 2 4 w) n mod 8380417 = gsLayer 64 3 (cf w) n mod 8380417"
+proof -
+  have bw: "\<And>i. i < 256 \<Longrightarrow> uint_seq (nth_seq w i) < 8380417" using boundedD[OF bnd] by blast
+  show ?thesis by (rule abs_inv_cong[OF n]) (simp_all add: invlayer6_coeff[OF n bw])
+qed
+
+lemma abs_inv7:
+  fixes w :: "[256][32]"
+  assumes bnd: "bounded w" and n: "n < 256"
+  shows "cf (nttLayerInv 128 1 2 w) n mod 8380417 = gsLayer 128 1 (cf w) n mod 8380417"
+proof -
+  have bw: "\<And>i. i < 256 \<Longrightarrow> uint_seq (nth_seq w i) < 8380417" using boundedD[OF bnd] by blast
+  have nd: "n div 256 = 0" using n by simp
+  show ?thesis by (rule abs_inv_cong[OF n]) (simp_all add: invlayer7_coeff[OF n bw] nd)
+qed
+
 end
 
-text \<open>REMAINING (sub-step 2 tail + sub-step 3): replicate invlayer7 to levels 0..6 (the
-  per-level index constants change like forward layer2..8); the generic cf -> gsLayer bridge
-  abs_inv (low leg equal, high leg a mod-q congruence: (q-z)*(a+q-b) == z*(b-a) mod q); the
-  eight range-preservation lemmas pres_inv0..7 carrying the *doubling* coefficient bound (GS
-  low legs are unreduced sums, so |coeff| can double each layer -- a growth bound B_ell =
-  2^ell * B_0); the Rcong/pres_inv compose; the invf final scale (invf_scale_cong); and the
-  compose with sub-step 1 and the forward ntt_bridge into theorem invntt_bridge.\<close>
+section \<open>Per-layer R-preservation (the inverse pres chain)\<close>
+
+text \<open>The inverse analog of Mont_Bridge's pres0..7: one Gentleman-Sande layer preserves
+  the congruence relation @{const Rcong} between the montgomery model and the normal model.
+  Generic over the layer: given the montgomery layer @{text mb} (== @{const gsLayer} on the sf
+  view, from @{text mbfly_invN}) and the normal layer @{text ab} (== @{const gsLayer} on the cf
+  view, from @{text abs_invN}), @{const gsLayer} respecting pointwise mod-q congruence
+  (@{thm gsLayer_cong_g}) bridges the two. OOB indices (>= 256) fall to position 255 on both
+  sides (@{thm oob255}).\<close>
+
+context includes cryptol_syntax begin
+
+lemma pres_inv_gen:
+  fixes a w bb cc :: "[256][32]"
+  assumes mb: "\<And>k. k < 256 \<Longrightarrow> sf bb k mod 8380417 = gsLayer L ZB (sf a) k mod 8380417"
+      and ab: "\<And>k. k < 256 \<Longrightarrow> cf cc k mod 8380417 = gsLayer L ZB (cf w) k mod 8380417"
+      and R: "Rcong a w"
+  shows "Rcong bb cc"
+proof -
+  have Rg: "sf a m mod 8380417 = cf w m mod 8380417" for m using R by (simp add: Rcong_def)
+  have main: "sf bb k mod 8380417 = cf cc k mod 8380417" if k: "k < 256" for k
+  proof -
+    have "sf bb k mod 8380417 = gsLayer L ZB (sf a) k mod 8380417" using mb[OF k] .
+    also have "\<dots> = gsLayer L ZB (cf w) k mod 8380417" by (rule gsLayer_cong_g[OF Rg])
+    also have "\<dots> = cf cc k mod 8380417" using ab[OF k] by simp
+    finally show ?thesis .
+  qed
+  show ?thesis unfolding Rcong_def
+  proof (intro allI)
+    fix m show "sf bb m mod 8380417 = cf cc m mod 8380417"
+    proof (cases "m < 256")
+      case True thus ?thesis using main by simp
+    next
+      case False hence ge: "256 \<le> m" by simp
+      show ?thesis using main[of 255] oob255[OF ge, of bb] oob255[OF ge, of cc]
+        by (simp add: sf_def cf_def)
+    qed
+  qed
+qed
+
+lemma pres_inv0:
+  fixes a w :: "[256][32]"
+  assumes B: "ntt_bounded BB a" and Bhi: "BB \<le> 1073741823" and bw: "bounded w" and R: "Rcong a w"
+  shows "Rcong (invnttLevel 0 a) (nttLayerInv 1 128 256 w)"
+  by (rule pres_inv_gen[OF mbfly_inv0[OF B Bhi] abs_inv0[OF bw] R])
+
+lemma pres_inv1:
+  fixes a w :: "[256][32]"
+  assumes B: "ntt_bounded BB a" and Bhi: "BB \<le> 1073741823" and bw: "bounded w" and R: "Rcong a w"
+  shows "Rcong (invnttLevel 1 a) (nttLayerInv 2 64 128 w)"
+  by (rule pres_inv_gen[OF mbfly_inv1[OF B Bhi] abs_inv1[OF bw] R])
+
+lemma pres_inv2:
+  fixes a w :: "[256][32]"
+  assumes B: "ntt_bounded BB a" and Bhi: "BB \<le> 1073741823" and bw: "bounded w" and R: "Rcong a w"
+  shows "Rcong (invnttLevel 2 a) (nttLayerInv 4 32 64 w)"
+  by (rule pres_inv_gen[OF mbfly_inv2[OF B Bhi] abs_inv2[OF bw] R])
+
+lemma pres_inv3:
+  fixes a w :: "[256][32]"
+  assumes B: "ntt_bounded BB a" and Bhi: "BB \<le> 1073741823" and bw: "bounded w" and R: "Rcong a w"
+  shows "Rcong (invnttLevel 3 a) (nttLayerInv 8 16 32 w)"
+  by (rule pres_inv_gen[OF mbfly_inv3[OF B Bhi] abs_inv3[OF bw] R])
+
+lemma pres_inv4:
+  fixes a w :: "[256][32]"
+  assumes B: "ntt_bounded BB a" and Bhi: "BB \<le> 1073741823" and bw: "bounded w" and R: "Rcong a w"
+  shows "Rcong (invnttLevel 4 a) (nttLayerInv 16 8 16 w)"
+  by (rule pres_inv_gen[OF mbfly_inv4[OF B Bhi] abs_inv4[OF bw] R])
+
+lemma pres_inv5:
+  fixes a w :: "[256][32]"
+  assumes B: "ntt_bounded BB a" and Bhi: "BB \<le> 1073741823" and bw: "bounded w" and R: "Rcong a w"
+  shows "Rcong (invnttLevel 5 a) (nttLayerInv 32 4 8 w)"
+  by (rule pres_inv_gen[OF mbfly_inv5[OF B Bhi] abs_inv5[OF bw] R])
+
+lemma pres_inv6:
+  fixes a w :: "[256][32]"
+  assumes B: "ntt_bounded BB a" and Bhi: "BB \<le> 1073741823" and bw: "bounded w" and R: "Rcong a w"
+  shows "Rcong (invnttLevel 6 a) (nttLayerInv 64 2 4 w)"
+  by (rule pres_inv_gen[OF mbfly_inv6[OF B Bhi] abs_inv6[OF bw] R])
+
+lemma pres_inv7:
+  fixes a w :: "[256][32]"
+  assumes B: "ntt_bounded BB a" and Bhi: "BB \<le> 1073741823" and bw: "bounded w" and R: "Rcong a w"
+  shows "Rcong (invnttLevel 7 a) (nttLayerInv 128 1 2 w)"
+  by (rule pres_inv_gen[OF mbfly_inv7[OF B Bhi] abs_inv7[OF bw] R])
+
+end
+
+text \<open>REMAINING (sub-step 2 tail + sub-step 3): the doubling bound-growth chain (an
+  invnttLevel_bounded growth lemma: input ntt_bounded B, Q <= B ==> output ntt_bounded (2*B);
+  thread B_ell = 2^ell * B_0, B_0 = 8380416 so 2^7 * B_0 = 1072693248 <= mbfly cap 1073741823);
+  the bounded chain on the normal side (nttLayerInv preserves bounded); compose pres_inv0..7
+  into Rcong (invntt-prefix) (nttInvAllRef), then the invf final scale (invf_scale_cong) and
+  sub-step 1 + forward ntt_bridge into theorem invntt_bridge. Plus an inverse Negacyclic_Bridge
+  (nttInvAllRef == FIPS inverse), inverse of fwd_ntt_correct.\<close>
 
 end
