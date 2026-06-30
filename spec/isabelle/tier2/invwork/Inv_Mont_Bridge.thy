@@ -3400,6 +3400,159 @@ proof -
   thus ?thesis unfolding ZB_def hi_def .
 qed
 
+subsection \<open>The induction and the inverse-NTT closed form\<close>
+
+text \<open>The GS stage invariant holds mod q after every layer (mirror of the forward
+  \<open>applyN_inv\<close>): each stage unfolds one \<open>gsLayer\<close> and matches the recursion via the
+  induction hypothesis at the in-range partner positions.\<close>
+lemma applyG_inv:
+  fixes h :: "nat \<Rightarrow> int"
+  shows "t \<le> 8 \<Longrightarrow> \<forall>n<256. [applyG t h n = ginv_form t h n] (mod 8380417)"
+proof (induct t)
+  case 0
+  show ?case
+  proof (intro allI impI)
+    fix n :: nat assume "n < 256"
+    hence "ginv_form 0 h n = h n" by (rule ginv_form_0)
+    thus "[applyG 0 h n = ginv_form 0 h n] (mod 8380417)" by simp
+  qed
+next
+  case (Suc t)
+  from Suc.prems have t8: "t < 8" by simp
+  have IH: "\<forall>n<256. [applyG t h n = ginv_form t h n] (mod 8380417)" using Suc by simp
+  show ?case
+  proof (intro allI impI)
+    fix n :: nat assume n: "n < 256"
+    have key: "(2::nat)*2^t = 2^(t+1)" by simp
+    have bl: "applyG (Suc t) h n
+        = (if n mod 2^(t+1) < 2^t
+           then (applyG t h n + applyG t h (n + 2^t)) mod 8380417
+           else (zt (2^(8-t)-1 - n div 2^(t+1)) * (applyG t h n - applyG t h (n - 2^t))) mod 8380417)"
+    proof -
+      have "applyG (Suc t) h n = gsLayer (2^t) (2^(8-t)-1) (applyG t h) n"
+        by (simp only: applyG.simps(2) gstep_def)
+      also have "\<dots> = (if n mod (2*2^t) < 2^t
+           then (applyG t h n + applyG t h (n + 2^t)) mod 8380417
+           else (zt (2^(8-t)-1 - n div (2*2^t)) * (applyG t h n - applyG t h (n - 2^t))) mod 8380417)"
+        by (simp only: gsLayer_def)
+      also have "\<dots> = (if n mod 2^(t+1) < 2^t
+           then (applyG t h n + applyG t h (n + 2^t)) mod 8380417
+           else (zt (2^(8-t)-1 - n div 2^(t+1)) * (applyG t h n - applyG t h (n - 2^t))) mod 8380417)"
+        by (simp only: key)
+      finally show ?thesis .
+    qed
+    show "[applyG (Suc t) h n = ginv_form (Suc t) h n] (mod 8380417)"
+    proof (cases "n mod 2^(t+1) < 2^t")
+      case True
+      have np: "n + 2^t < 256"
+      proof -
+        define hi where "hi = n div 2^(t+1)"
+        define cp where "cp = n mod 2^(t+1)"
+        have na: "n = 2^(t+1)*hi + cp" unfolding hi_def cp_def by (rule mult_div_mod_eq[symmetric])
+        have cpA: "cp < 2^t" using True cp_def by simp
+        have e: "(7-t)+(t+1) = 8" using t8 by simp
+        have p256: "(2^(7-t)::nat)*2^(t+1) = 256"
+        proof -
+          have "(2^(7-t)::nat)*2^(t+1) = 2^((7-t)+(t+1))" by (simp only: power_add)
+          also have "\<dots> = 2^8" by (simp only: e)
+          finally show ?thesis by simp
+        qed
+        have n2: "n < 2^(7-t) * 2^(t+1)" using n p256 by (simp add: mult.commute)
+        have hiB: "hi < 2^(7-t)" unfolding hi_def by (rule less_mult_imp_div_less[OF n2])
+        have pL2: "(2::nat)^(t+1) = 2*2^t" by simp
+        have ex: "2^(t+1)*(hi+1) = 2^(t+1)*hi + 2^(t+1)" by (simp add: algebra_simps)
+        have "n + 2^t < 2^(t+1)*(hi+1)" using na cpA pL2 ex by linarith
+        also have "\<dots> \<le> 2^(t+1)*2^(7-t)"
+        proof -
+          have "hi + 1 \<le> 2^(7-t)" using hiB by simp
+          thus ?thesis by (rule mult_le_mono2)
+        qed
+        also have "\<dots> = 256" using p256 by (simp add: mult.commute)
+        finally show ?thesis .
+      qed
+      have c1: "[applyG t h n = ginv_form t h n] (mod 8380417)" using IH n by blast
+      have c2: "[applyG t h (n + 2^t) = ginv_form t h (n + 2^t)] (mod 8380417)" using IH np by blast
+      have e1: "applyG (Suc t) h n = (applyG t h n + applyG t h (n + 2^t)) mod 8380417"
+        using bl True by simp
+      have "[applyG (Suc t) h n = applyG t h n + applyG t h (n + 2^t)] (mod 8380417)"
+        using e1 by (simp add: cong_def)
+      also have "[applyG t h n + applyG t h (n + 2^t)
+                = ginv_form t h n + ginv_form t h (n + 2^t)] (mod 8380417)"
+        by (rule cong_add[OF c1 c2])
+      also have "ginv_form t h n + ginv_form t h (n + 2^t) = ginv_form (Suc t) h n"
+        using ginv_lower[OF t8 True] by simp
+      finally show ?thesis .
+    next
+      case False
+      hence ge: "2^t \<le> n mod 2^(t+1)" by simp
+      have nm: "n - 2^t < 256" using n by simp
+      have c1: "[applyG t h n = ginv_form t h n] (mod 8380417)" using IH n by blast
+      have c2: "[applyG t h (n - 2^t) = ginv_form t h (n - 2^t)] (mod 8380417)" using IH nm by blast
+      have e1: "applyG (Suc t) h n
+          = (zt (2^(8-t)-1 - n div 2^(t+1)) * (applyG t h n - applyG t h (n - 2^t))) mod 8380417"
+        using bl False by simp
+      have "[applyG (Suc t) h n
+           = zt (2^(8-t)-1 - n div 2^(t+1)) * (applyG t h n - applyG t h (n - 2^t))] (mod 8380417)"
+        using e1 by (simp add: cong_def)
+      also have "[zt (2^(8-t)-1 - n div 2^(t+1)) * (applyG t h n - applyG t h (n - 2^t))
+                = zt (2^(8-t)-1 - n div 2^(t+1)) * (ginv_form t h n - ginv_form t h (n - 2^t))] (mod 8380417)"
+        by (rule cong_mult[OF cong_refl cong_diff[OF c1 c2]])
+      also have "[zt (2^(8-t)-1 - n div 2^(t+1)) * (ginv_form t h n - ginv_form t h (n - 2^t))
+                = ginv_form (Suc t) h n] (mod 8380417)"
+      proof -
+        have idx: "2^(8-t)-1 - n div 2^(t+1) = 2^(8-t) - Suc (n div 2^(t+1))" by simp
+        have "[ginv_form (Suc t) h n
+             = zt (2^(8-t) - Suc (n div 2^(t+1))) * (ginv_form t h n - ginv_form t h (n - 2^t))] (mod 8380417)"
+          by (rule ginv_upper[OF t8 n ge])
+        thus ?thesis by (simp only: idx) (rule cong_sym)
+      qed
+      finally show ?thesis .
+    qed
+  qed
+qed
+
+text \<open>The capstone (route A): the lifted inverse NTT computes, at output position
+  \<open>n\<close>, the FIPS-204 inverse negacyclic sub-DFT \<open>\<Sum>m. w[m] \<zeta>^(-(2 brv\<^sub>8 m + 1) n)\<close>
+  mod q (mirror of \<open>fwd_ntt_correct\<close>). Composes the word seam (\<open>inv_as_bfly\<close>) with the
+  closed-form invariant (\<open>applyG_inv\<close> + \<open>ginv_form_8\<close>).\<close>
+theorem inv_ntt_correct:
+  assumes bw: "bounded w" and n: "n < 256"
+  shows "cf (nttInvAllRef w) n
+       = (\<Sum>m<256. cf w m * zpw (- (2 * int (brv 8 m) + 1) * int n)) mod 8380417"
+proof -
+  have eqb: "cf (nttInvAllRef w) n = applyG 8 (cf w) n"
+    using inv_as_bfly[OF bw n] by (simp add: applyG_8_eq_invBfly)
+  have ai: "[applyG 8 (cf w) n = ginv_form 8 (cf w) n] (mod 8380417)"
+  proof -
+    have "\<forall>n<256. [applyG 8 (cf w) n = ginv_form 8 (cf w) n] (mod 8380417)"
+      by (rule applyG_inv) simp
+    thus ?thesis using n by blast
+  qed
+  have gf8: "ginv_form 8 (cf w) n = (\<Sum>m<256. cf w m * zpw (- (2 * int (brv 8 m) + 1) * int n))"
+    by (rule ginv_form_8[OF n])
+  have cong: "[cf (nttInvAllRef w) n
+             = (\<Sum>m<256. cf w m * zpw (- (2 * int (brv 8 m) + 1) * int n))] (mod 8380417)"
+    using ai by (simp add: eqb gf8)
+  have lt: "cf (nttInvAllRef w) n < 8380417"
+  proof -
+    have eq: "cf (nttInvAllRef w) n = invBfly (cf w) n" by (rule inv_as_bfly[OF bw n])
+    have "invBfly (cf w) n < 8380417" unfolding invBfly_def comp_def by (rule gsLayer_lt)
+    thus ?thesis using eq by simp
+  qed
+  have ge: "0 \<le> cf (nttInvAllRef w) n"
+  proof -
+    have eq: "cf (nttInvAllRef w) n = invBfly (cf w) n" by (rule inv_as_bfly[OF bw n])
+    have "0 \<le> invBfly (cf w) n" unfolding invBfly_def comp_def by (rule gsLayer_ge)
+    thus ?thesis using eq by simp
+  qed
+  have m1: "cf (nttInvAllRef w) n mod 8380417
+          = (\<Sum>m<256. cf w m * zpw (- (2 * int (brv 8 m) + 1) * int n)) mod 8380417"
+    using cong by (simp add: cong_def)
+  have m2: "cf (nttInvAllRef w) n mod 8380417 = cf (nttInvAllRef w) n"
+    using ge lt by (simp add: mod_pos_pos_trivial)
+  show ?thesis using m1 m2 by simp
+qed
+
 end
 
 text \<open>REMAINING (route A, self-contained closed form). DONE above (tool-verified): the GS schedule
