@@ -3555,24 +3555,44 @@ qed
 
 end
 
-text \<open>REMAINING (route A, self-contained closed form). DONE above (tool-verified): the GS schedule
-  fold \<open>applyG\<close>/\<open>applyG_8_eq_invBfly\<close>, and the stage-invariant FOUNDATION (the \<open>zpw\<close>
-  exponent-mod-512 machinery \<open>zpw\<close>/\<open>zpw_0\<close>/\<open>zpw_cong_exp\<close>/\<open>zr512_cong\<close>/\<open>zr_pow_mod512\<close>/
-  \<open>zpw_add\<close>/\<open>zpw_neg256\<close>/\<open>zt_zpw\<close>, the invariant \<open>ginv_form\<close>, and \<open>ginv_form_0\<close>/\<open>ginv_form_8\<close>).
-  The closed form was derived and numerically validated against \<open>applyG\<close> for all \<open>t, n\<close>:
-  \<open>ginv_form t h n = (\<Sum>m<2^t. h(2^t*(n div 2^t)+m) * zpw(-(2*brv\<^sub>8(2^t*(n div 2^t)+m)+1)*(n mod 2^t)))\<close>,
-  the inverse negacyclic sub-DFT over the low-\<open>t\<close>-bit block.
+section \<open>The full inverse bridge: montgomery invntt == FIPS inverse DFT mod q\<close>
 
-  TODO (the bulk): (1) recursion \<open>gsLayer_ginv_step\<close>: one GS layer maps \<open>ginv_form t\<close> to
-  \<open>ginv_form (Suc t)\<close> mod q. LOW leg (\<open>n mod 2^(t+1) < 2^t\<close>) is an exact contiguous block split
-  \<open>ginv_form t n + ginv_form t (n+2^t)\<close>; HIGH leg is \<open>zt(ZB-hi)*(ginv_form t n - ginv_form t(n-2^t))\<close>
-  with the n-L block sign from \<open>zpw_neg256\<close>, and the twiddle identity (validated) \<open>gz_brv\<close>:
-  \<open>brv 8 (2^(8-t)-1 - hi) \<equiv> -(2*brv8(2^(t+1)*hi+2^t)+1)*2^t (mod 512)\<close>, needs brv-additivity on
-  disjoint bits (\<open>bit_brv\<close>/\<open>bit_add_push\<close> in Bitrev) + \<open>2^(8-t) dvd brv8 m\<close> for \<open>m<2^t\<close>.
-  (2) induction \<open>applyG_inv\<close>: \<open>[applyG t h n = ginv_form t h n] (mod q)\<close>, via IH + \<open>gsLayer_cong_g\<close>
-  (proven) + (1). (3) capstone \<open>inv_ntt_correct\<close> = \<open>ginv_form_8\<close> at \<open>applyG 8 = invBfly\<close>, chained with
-  \<open>inv_as_bfly\<close>. Then compose with \<open>invntt_scale_bridge\<close>: C ==SAW== invntt ==(bridge)== nttInvAllRef
-  ==(this)== FIPS inverse. Iterate (1)-(2) in the fast scratchpad/invscratch session (~10s), not the
-  3:50 full build.\<close>
+text \<open>Compose the montgomery-vs-normal scale bridge (\<open>invntt_scale_bridge\<close>) with the
+  closed-form inverse correctness (\<open>inv_ntt_correct\<close>). This closes the inverse chain
+  the same way \<open>ntt_bridge\<close> closes the forward one: the SAW-checked montgomery
+  \<open>invntt\<close> computes, montgomery-scaled by \<open>invf/2^32 = mont/256\<close>, the FIPS-204 inverse
+  negacyclic DFT mod q.\<close>
+
+context includes cryptol_syntax begin
+declare [[coercion_enabled = false]]
+
+theorem invntt_bridge:
+  assumes bw: "bounded w" and k: "k < 256"
+  shows "(4294967296 * sint_seq (nth_seq (invntt w) k)) mod 8380417
+       = (sint_seq invf * (\<Sum>m<256. cf w m * zpw (- (2 * int (brv 8 m) + 1) * int k))) mod 8380417"
+proof -
+  have e: "cf (nttInvAllRef w) k
+         = (\<Sum>m<256. cf w m * zpw (- (2 * int (brv 8 m) + 1) * int k)) mod 8380417"
+    by (rule inv_ntt_correct[OF bw k])
+  have "(4294967296 * sint_seq (nth_seq (invntt w) k)) mod 8380417
+      = (sint_seq invf * cf (nttInvAllRef w) k) mod 8380417"
+    by (rule invntt_scale_bridge[OF bw k])
+  also have "\<dots> = (sint_seq invf
+             * ((\<Sum>m<256. cf w m * zpw (- (2 * int (brv 8 m) + 1) * int k)) mod 8380417)) mod 8380417"
+    by (simp only: e)
+  also have "\<dots> = (sint_seq invf
+             * (\<Sum>m<256. cf w m * zpw (- (2 * int (brv 8 m) + 1) * int k))) mod 8380417"
+    by (simp add: mod_mult_right_eq)
+  finally show ?thesis .
+qed
+
+end
+
+text \<open>Chain now CLOSED for the inverse NTT (route A, self-contained closed form):
+  C ==SAW(-fwrapv)== montgomery \<open>invntt\<close> ==(\<open>invntt_bridge\<close>, mod q)== FIPS-204 inverse
+  negacyclic DFT, montgomery-scaled by \<open>invf/2^32 = mont/256\<close>. Mirror of the forward
+  \<open>ntt_bridge\<close>/\<open>fwd_ntt_correct\<close>. NEXT (out of this file): wire \<open>invntt_bridge\<close> into make
+  verify / CI next to \<open>ntt_bridge\<close>, add an inverse row to the README/paper claim table,
+  and (piece 5) the inverse overflow bound + the \<open>-fwrapv\<close> seam.\<close>
 
 end
