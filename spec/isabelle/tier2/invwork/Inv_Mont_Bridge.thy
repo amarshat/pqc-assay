@@ -3143,6 +3143,263 @@ proof -
   show ?thesis using fin unfolding EH_def J_def .
 qed
 
+subsection \<open>The GS stage recursion\<close>
+
+text \<open>Split a sum over the contiguous low/high halves.\<close>
+lemma sum_block_split:
+  fixes f :: "nat \<Rightarrow> 'a::comm_monoid_add"
+  shows "(\<Sum>m<A+A. f m) = (\<Sum>m<A. f m) + (\<Sum>m<A. f (A+m))"
+proof -
+  have un: "{..<A+A} = {..<A} \<union> {A..<A+A}" by auto
+  have disj: "{..<A} \<inter> {A..<A+A} = {}" by auto
+  have "(\<Sum>m<A+A. f m) = (\<Sum>m\<in>{..<A} \<union> {A..<A+A}. f m)" by (simp only: un)
+  also have "\<dots> = (\<Sum>m<A. f m) + (\<Sum>m\<in>{A..<A+A}. f m)"
+    by (subst sum.union_disjoint) (auto simp: disj)
+  also have "(\<Sum>m\<in>{A..<A+A}. f m) = (\<Sum>m<A. f (A+m))"
+  proof -
+    have inj: "inj_on (\<lambda>m. A+m) {..<A}" by (simp add: inj_on_def)
+    have img: "(\<lambda>m. A+m) ` {..<A} = {A..<A+A}"
+    proof (intro equalityI subsetI)
+      fix x assume "x \<in> (\<lambda>m. A+m) ` {..<A}"
+      then obtain m where "m < A" "x = A+m" by auto
+      thus "x \<in> {A..<A+A}" by simp
+    next
+      fix x assume "x \<in> {A..<A+A}"
+      hence "x - A < A" "x = A + (x-A)" by auto
+      thus "x \<in> (\<lambda>m. A+m) ` {..<A}" using image_eqI[where x="x-A"] by force
+    qed
+    have "(\<Sum>m\<in>{A..<A+A}. f m) = (\<Sum>m\<in>(\<lambda>m. A+m) ` {..<A}. f m)" by (simp only: img)
+    also have "\<dots> = (\<Sum>m<A. f (A+m))" by (simp add: sum.reindex[OF inj])
+    finally show ?thesis .
+  qed
+  finally show ?thesis .
+qed
+
+text \<open>Evaluate \<open>ginv_form\<close> at a position written as \<open>2^t hi + c\<close> with \<open>c < 2^t\<close>.\<close>
+lemma ginv_form_at:
+  assumes c: "c < 2^t"
+  shows "ginv_form t h (2^t*hi + c)
+       = (\<Sum>m<2^t. h (2^t*hi+m) * zpw (- (2*int(brv 8 (2^t*hi+m))+1)*int c))"
+proof -
+  have d: "(2^t*hi+c) div 2^t = hi" using c by simp
+  have md: "(2^t*hi+c) mod 2^t = c" using c by simp
+  show ?thesis unfolding ginv_form_def by (simp only: d md)
+qed
+
+text \<open>Lower-leg recursion (exact): for the even output block one GS stage is the
+  additive butterfly leg.\<close>
+lemma ginv_lower:
+  assumes t: "t < 8" and lo: "n mod 2^(t+1) < 2^t"
+  shows "ginv_form (Suc t) h n = ginv_form t h n + ginv_form t h (n + 2^t)"
+proof -
+  define hi where "hi = n div 2^(t+1)"
+  define c  where "c = n mod 2^(t+1)"
+  have cA: "c < 2^t" using lo c_def by simp
+  have cA1: "c < 2^(Suc t)" using cA by simp
+  have na: "n = 2^(t+1)*hi + c"
+    unfolding hi_def c_def by (rule mult_div_mod_eq[symmetric])
+  have e21: "(2::nat)^(t+1)*hi = 2^t*(2*hi)" by (simp add: power_Suc algebra_simps)
+  have nL: "n = 2^(Suc t)*hi + c" using na by simp
+  have L: "ginv_form (Suc t) h n
+         = (\<Sum>m<2^(Suc t). h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int c))"
+    unfolding nL by (rule ginv_form_at[OF cA1])
+  have neq: "n = 2^t*(2*hi) + c" using na e21 by simp
+  have Rn: "ginv_form t h n
+          = (\<Sum>m<2^t. h (2^t*(2*hi)+m) * zpw (- (2*int(brv 8 (2^t*(2*hi)+m))+1)*int c))"
+    unfolding neq by (rule ginv_form_at[OF cA])
+  have nAeq: "n + 2^t = 2^t*(2*hi+1) + c" using na e21 by (simp add: algebra_simps)
+  have RnA: "ginv_form t h (n + 2^t)
+           = (\<Sum>m<2^t. h (2^t*(2*hi+1)+m) * zpw (- (2*int(brv 8 (2^t*(2*hi+1)+m))+1)*int c))"
+    unfolding nAeq by (rule ginv_form_at[OF cA])
+  have setpow: "{..<(2::nat)^(Suc t)} = {..<2^t+2^t}" by simp
+  have sp: "(\<Sum>m<2^(Suc t). h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int c))
+          = (\<Sum>m<2^t. h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int c))
+          + (\<Sum>m<2^t. h (2^(Suc t)*hi+(2^t+m)) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+(2^t+m)))+1)*int c))"
+  proof -
+    have "(\<Sum>m<2^(Suc t). h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int c))
+        = (\<Sum>m\<in>{..<2^t+2^t}. h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int c))"
+      by (simp only: setpow)
+    also have "\<dots> = (\<Sum>m<2^t. h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int c))
+          + (\<Sum>m<2^t. h (2^(Suc t)*hi+(2^t+m)) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+(2^t+m)))+1)*int c))"
+      by (rule sum_block_split)
+    finally show ?thesis .
+  qed
+  have hieq: "(2::nat)^(Suc t)*hi = 2^t*(2*hi)" by (simp add: power_Suc algebra_simps)
+  have firsteq: "(\<Sum>m<2^t. h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int c))
+               = ginv_form t h n"
+    unfolding Rn by (simp only: hieq)
+  have e: "\<And>m. (2::nat)^(Suc t)*hi+(2^t+m) = 2^t*(2*hi+1)+m" by (simp add: power_Suc algebra_simps)
+  have secondeq: "(\<Sum>m<2^t. h (2^(Suc t)*hi+(2^t+m)) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+(2^t+m)))+1)*int c))
+                = ginv_form t h (n + 2^t)"
+    unfolding RnA by (simp only: e)
+  show ?thesis using L sp firsteq secondeq by simp
+qed
+
+text \<open>Upper-leg recursion (mod q): for the odd output block one GS stage is the
+  subtractive butterfly leg with the normal twiddle.\<close>
+lemma ginv_upper:
+  assumes t: "t < 8" and n: "n < 256" and hi_lo: "2^t \<le> n mod 2^(t+1)"
+  shows "[ginv_form (Suc t) h n
+        = zt (2^(8-t) - Suc (n div 2^(t+1))) * (ginv_form t h n - ginv_form t h (n - 2^t))]
+         (mod 8380417)"
+proof -
+  define hi where "hi = n div 2^(t+1)"
+  define cp where "cp = n mod 2^(t+1)"
+  define c  where "c = cp - 2^t"
+  have cpA: "2^t \<le> cp" using hi_lo cp_def by simp
+  have cplt: "cp < 2^(t+1)" using cp_def by simp
+  have cA: "c < 2^t" using cpA cplt c_def by simp
+  have cpc: "cp = c + 2^t" using cpA c_def by simp
+  have na: "n = 2^(t+1)*hi + cp"
+    unfolding hi_def cp_def by (rule mult_div_mod_eq[symmetric])
+  have hiB: "hi < 2^(7-t)"
+  proof -
+    have e: "(t+1)+(7-t) = 8" using t by simp
+    have p256: "(2^(7-t)::nat)*2^(t+1) = 256"
+    proof -
+      have "(2^(7-t)::nat)*2^(t+1) = 2^((7-t)+(t+1))" by (simp only: power_add)
+      also have "\<dots> = 2^8" using e by (simp add: add.commute)
+      finally show ?thesis by simp
+    qed
+    have n2: "n < 2^(7-t) * 2^(t+1)" using n by (simp only: p256)
+    show ?thesis unfolding hi_def by (rule less_mult_imp_div_less[OF n2])
+  qed
+  define ZB where "ZB = 2^(8-t) - Suc hi"
+  have e21: "(2::nat)^(t+1)*hi = 2^t*(2*hi)" by (simp add: power_Suc algebra_simps)
+  have nL: "n = 2^(Suc t)*hi + cp" using na by simp
+  have cp1: "cp < 2^(Suc t)" using cplt by simp
+  have L: "ginv_form (Suc t) h n
+         = (\<Sum>m<2^(Suc t). h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int cp))"
+    unfolding nL by (rule ginv_form_at[OF cp1])
+  have nB: "n = 2^t*(2*hi+1) + c"
+  proof -
+    have "n = 2^(t+1)*hi + (c + 2^t)" using na cpc by simp
+    thus ?thesis using e21 by (simp add: algebra_simps)
+  qed
+  have Rn: "ginv_form t h n
+          = (\<Sum>m<2^t. h (2^t*(2*hi+1)+m) * zpw (- (2*int(brv 8 (2^t*(2*hi+1)+m))+1)*int c))"
+    unfolding nB by (rule ginv_form_at[OF cA])
+  have nmB: "n - 2^t = 2^t*(2*hi) + c"
+  proof -
+    have "n = 2^t*(2*hi) + (c + 2^t)" using na cpc e21 by (simp add: algebra_simps)
+    thus ?thesis by simp
+  qed
+  have Rnm: "ginv_form t h (n - 2^t)
+           = (\<Sum>m<2^t. h (2^t*(2*hi)+m) * zpw (- (2*int(brv 8 (2^t*(2*hi)+m))+1)*int c))"
+    unfolding nmB by (rule ginv_form_at[OF cA])
+  have setpow: "{..<(2::nat)^(Suc t)} = {..<2^t+2^t}" by simp
+  have sp: "ginv_form (Suc t) h n
+          = (\<Sum>m<2^t. h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int cp))
+          + (\<Sum>m<2^t. h (2^(Suc t)*hi+(2^t+m)) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+(2^t+m)))+1)*int cp))"
+  proof -
+    have "ginv_form (Suc t) h n
+        = (\<Sum>m\<in>{..<2^t+2^t}. h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int cp))"
+      using L by (simp only: setpow)
+    thus ?thesis by (simp only: sum_block_split)
+  qed
+  have firstcong: "[(\<Sum>m<2^t. h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int cp))
+       = (- zt ZB) * (\<Sum>m<2^t. h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int c))]
+       (mod 8380417)"
+  proof -
+    have perterm: "[h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int cp)
+         = (- zt ZB) * (h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int c))]
+         (mod 8380417)" if mlt: "m < 2^t" for m
+    proof -
+      define p where "p = 2^(Suc t)*hi+m"
+      have pe: "p = 2^(t+1)*hi+m" using p_def by simp
+      have tw: "[zpw (- (2*int(brv 8 p)+1)*int (2^t)) = - zt ZB] (mod 8380417)"
+        unfolding pe ZB_def by (rule gtwid_lo[OF t hiB mlt])
+      have ec: "- (2*int(brv 8 p)+1)*int cp
+              = (- (2*int(brv 8 p)+1)*int c) + (- (2*int(brv 8 p)+1)*int (2^t))"
+      proof -
+        have "int cp = int c + int (2^t)" using cpc by (simp add: of_nat_add)
+        thus ?thesis by (simp add: algebra_simps)
+      qed
+      have za: "[zpw (- (2*int(brv 8 p)+1)*int cp)
+              = zpw (- (2*int(brv 8 p)+1)*int c) * zpw (- (2*int(brv 8 p)+1)*int (2^t))] (mod 8380417)"
+        using zpw_add[of "- (2*int(brv 8 p)+1)*int c" "- (2*int(brv 8 p)+1)*int (2^t)"]
+        by (simp only: ec)
+      have zb: "[zpw (- (2*int(brv 8 p)+1)*int cp)
+              = zpw (- (2*int(brv 8 p)+1)*int c) * (- zt ZB)] (mod 8380417)"
+        using za cong_mult[OF cong_refl tw] by (rule cong_trans)
+      have "[h p * zpw (- (2*int(brv 8 p)+1)*int cp)
+           = h p * (zpw (- (2*int(brv 8 p)+1)*int c) * (- zt ZB))] (mod 8380417)"
+        by (rule cong_mult[OF cong_refl zb])
+      thus ?thesis unfolding p_def by (simp add: mult.left_commute mult.commute)
+    qed
+    have "[(\<Sum>m<2^t. h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int cp))
+         = (\<Sum>m<2^t. (- zt ZB) * (h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int c)))]
+         (mod 8380417)"
+      by (rule cong_sum) (use perterm in auto)
+    also have "(\<Sum>m<2^t. (- zt ZB) * (h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int c)))
+             = (- zt ZB) * (\<Sum>m<2^t. h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int c))"
+      by (rule sum_distrib_left[symmetric])
+    finally show ?thesis .
+  qed
+  have secondcong: "[(\<Sum>m<2^t. h (2^(Suc t)*hi+(2^t+m)) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+(2^t+m)))+1)*int cp))
+       = (zt ZB) * (\<Sum>m<2^t. h (2^(Suc t)*hi+(2^t+m)) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+(2^t+m)))+1)*int c))]
+       (mod 8380417)"
+  proof -
+    have perterm: "[h (2^(Suc t)*hi+(2^t+m)) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+(2^t+m)))+1)*int cp)
+         = (zt ZB) * (h (2^(Suc t)*hi+(2^t+m)) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+(2^t+m)))+1)*int c))]
+         (mod 8380417)" if mlt: "m < 2^t" for m
+    proof -
+      define p where "p = 2^(Suc t)*hi+(2^t+m)"
+      have pe: "p = 2^(t+1)*hi+2^t+m" using p_def by (simp add: add.assoc)
+      have tw: "[zpw (- (2*int(brv 8 p)+1)*int (2^t)) = zt ZB] (mod 8380417)"
+        unfolding pe ZB_def by (rule gtwid_hi[OF t hiB mlt])
+      have ec: "- (2*int(brv 8 p)+1)*int cp
+              = (- (2*int(brv 8 p)+1)*int c) + (- (2*int(brv 8 p)+1)*int (2^t))"
+      proof -
+        have "int cp = int c + int (2^t)" using cpc by (simp add: of_nat_add)
+        thus ?thesis by (simp add: algebra_simps)
+      qed
+      have za: "[zpw (- (2*int(brv 8 p)+1)*int cp)
+              = zpw (- (2*int(brv 8 p)+1)*int c) * zpw (- (2*int(brv 8 p)+1)*int (2^t))] (mod 8380417)"
+        using zpw_add[of "- (2*int(brv 8 p)+1)*int c" "- (2*int(brv 8 p)+1)*int (2^t)"]
+        by (simp only: ec)
+      have zb: "[zpw (- (2*int(brv 8 p)+1)*int cp)
+              = zpw (- (2*int(brv 8 p)+1)*int c) * (zt ZB)] (mod 8380417)"
+        using za cong_mult[OF cong_refl tw] by (rule cong_trans)
+      have "[h p * zpw (- (2*int(brv 8 p)+1)*int cp)
+           = h p * (zpw (- (2*int(brv 8 p)+1)*int c) * (zt ZB))] (mod 8380417)"
+        by (rule cong_mult[OF cong_refl zb])
+      thus ?thesis unfolding p_def by (simp add: mult.left_commute mult.commute)
+    qed
+    have "[(\<Sum>m<2^t. h (2^(Suc t)*hi+(2^t+m)) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+(2^t+m)))+1)*int cp))
+         = (\<Sum>m<2^t. (zt ZB) * (h (2^(Suc t)*hi+(2^t+m)) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+(2^t+m)))+1)*int c)))]
+         (mod 8380417)"
+      by (rule cong_sum) (use perterm in auto)
+    also have "(\<Sum>m<2^t. (zt ZB) * (h (2^(Suc t)*hi+(2^t+m)) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+(2^t+m)))+1)*int c)))
+             = (zt ZB) * (\<Sum>m<2^t. h (2^(Suc t)*hi+(2^t+m)) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+(2^t+m)))+1)*int c))"
+      by (rule sum_distrib_left[symmetric])
+    finally show ?thesis .
+  qed
+  have hieq: "(2::nat)^(Suc t)*hi = 2^t*(2*hi)" by (simp add: power_Suc algebra_simps)
+  have feq: "(\<Sum>m<2^t. h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int c))
+           = ginv_form t h (n - 2^t)"
+    unfolding Rnm by (simp only: hieq)
+  have e: "\<And>m. (2::nat)^(Suc t)*hi+(2^t+m) = 2^t*(2*hi+1)+m" by (simp add: power_Suc algebra_simps)
+  have seq: "(\<Sum>m<2^t. h (2^(Suc t)*hi+(2^t+m)) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+(2^t+m)))+1)*int c))
+           = ginv_form t h n"
+    unfolding Rn by (simp only: e)
+  have c_first: "[(\<Sum>m<2^t. h (2^(Suc t)*hi+m) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+m))+1)*int cp))
+       = (- zt ZB) * ginv_form t h (n - 2^t)] (mod 8380417)"
+    using firstcong feq by simp
+  have c_second: "[(\<Sum>m<2^t. h (2^(Suc t)*hi+(2^t+m)) * zpw (- (2*int(brv 8 (2^(Suc t)*hi+(2^t+m)))+1)*int cp))
+       = (zt ZB) * ginv_form t h n] (mod 8380417)"
+    using secondcong seq by simp
+  have add: "[ginv_form (Suc t) h n
+       = (- zt ZB) * ginv_form t h (n - 2^t) + (zt ZB) * ginv_form t h n] (mod 8380417)"
+    unfolding sp by (rule cong_add[OF c_first c_second])
+  have alg: "(- zt ZB) * ginv_form t h (n - 2^t) + (zt ZB) * ginv_form t h n
+           = zt ZB * (ginv_form t h n - ginv_form t h (n - 2^t))"
+    by (simp add: algebra_simps)
+  have "[ginv_form (Suc t) h n = zt ZB * (ginv_form t h n - ginv_form t h (n - 2^t))] (mod 8380417)"
+    using add by (simp only: alg)
+  thus ?thesis unfolding ZB_def hi_def .
+qed
+
 end
 
 text \<open>REMAINING (route A, self-contained closed form). DONE above (tool-verified): the GS schedule
