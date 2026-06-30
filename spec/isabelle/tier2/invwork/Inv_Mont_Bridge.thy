@@ -2596,13 +2596,146 @@ proof -
     using cong_n lhs_lt lhs_ge rhs_lt rhs_ge by (simp add: mod_pos_pos_trivial)
 qed
 
+subsection \<open>GS-network schedule as an eight-fold fold (induction skeleton)\<close>
+
+text \<open>Mirror of the forward \<open>applyN\<close>/\<open>bstep\<close> (Negacyclic_Bridge). Stage \<open>t = 0..7\<close>
+  applies stride \<open>2^t\<close> with twiddle base \<open>2^(8-t) - 1\<close>. The innermost stride is 1
+  (applied first), so the eight-fold fold \<open>applyG 8\<close> is exactly \<open>invBfly\<close>. This gives
+  the induction handle for the GS stage invariant (the route-A mirror of \<open>applyN_inv\<close>).\<close>
+definition gstep :: "nat \<Rightarrow> (nat \<Rightarrow> int) \<Rightarrow> (nat \<Rightarrow> int)" where
+  "gstep t g = gsLayer (2^t) (2^(8-t) - 1) g"
+
+fun applyG :: "nat \<Rightarrow> (nat \<Rightarrow> int) \<Rightarrow> (nat \<Rightarrow> int)" where
+  "applyG 0 g = g"
+| "applyG (Suc t) g = gstep t (applyG t g)"
+
+text \<open>The eight-fold schedule unfolds to the explicit \<open>invBfly\<close> composition.\<close>
+lemma applyG_8_eq_invBfly: "applyG 8 g = invBfly g"
+  by (simp add: invBfly_def gstep_def eval_nat_numeral comp_def)
+
+subsection \<open>GS stage invariant (closed form, route A)\<close>
+
+text \<open>The inverse-DFT exponent \<open>-(2 brv\<^sub>8 p + 1) c\<close> is naturally negative; \<open>zpw\<close> keeps the
+  exponent algebra in \<open>\<int>/512\<close> (the root \<open>zr = 1753\<close> has order 512: \<open>zr^256 = -1\<close>), so it stays
+  a nonnegative nat power and is additive mod q. Mirrors how the forward used \<open>zwrap_cong\<close>.\<close>
+definition zpw :: "int \<Rightarrow> int" where
+  "zpw e = 1753 ^ (nat (e mod 512))"
+
+lemma zpw_0 [simp]: "zpw 0 = 1"
+  by (simp add: zpw_def)
+
+lemma zpw_cong_exp: "e1 mod 512 = e2 mod 512 \<Longrightarrow> zpw e1 = zpw e2"
+  by (simp add: zpw_def)
+
+lemma zr512_cong: "[(1753::int) ^ 512 = 1] (mod 8380417)"
+proof -
+  have e2: "(512::nat) = 256 + 256" by simp
+  have eq: "(1753::int) ^ 512 = 1753 ^ 256 * 1753 ^ 256" by (simp only: e2 power_add)
+  have step: "[(1753::int) ^ 256 * 1753 ^ 256 = 1] (mod 8380417)"
+  proof -
+    have "[(1753::int) ^ 256 * 1753 ^ 256 = (- 1) * (- 1)] (mod 8380417)"
+      by (rule cong_mult [OF zwrap_cong zwrap_cong])
+    thus ?thesis by (simp only: mult_minus1_right minus_minus)
+  qed
+  show ?thesis unfolding eq by (rule step)
+qed
+
+text \<open>A nat power of the root only depends on the exponent mod its order 512.\<close>
+lemma zr_pow_mod512: "[(1753::int) ^ i = 1753 ^ (i mod 512)] (mod 8380417)"
+proof -
+  have e: "(1753::int) ^ i = (1753 ^ 512) ^ (i div 512) * 1753 ^ (i mod 512)"
+    by (metis mult_div_mod_eq power_add power_mult)
+  have c: "[(1753 ^ 512 :: int) ^ (i div 512) * 1753 ^ (i mod 512)
+         = 1 ^ (i div 512) * 1753 ^ (i mod 512)] (mod 8380417)"
+    by (rule cong_mult [OF cong_pow [OF zr512_cong] cong_refl])
+  have simp1: "(1 ^ (i div 512) :: int) * 1753 ^ (i mod 512) = 1753 ^ (i mod 512)"
+    by (simp only: power_one mult_1)
+  show ?thesis using c unfolding e simp1 .
+qed
+
+text \<open>\<open>zpw\<close> turns exponent addition into multiplication, mod q.\<close>
+lemma zpw_add: "[zpw (a + b) = zpw a * zpw b] (mod 8380417)"
+proof -
+  have ab: "zpw a * zpw b = 1753 ^ (nat (a mod 512) + nat (b mod 512))"
+    by (simp add: zpw_def power_add)
+  have idx: "(nat (a mod 512) + nat (b mod 512)) mod 512 = nat ((a + b) mod 512)"
+  proof -
+    have A: "int (nat (a mod 512)) = a mod 512" by simp
+    have B: "int (nat (b mod 512)) = b mod 512" by simp
+    have "int ((nat (a mod 512) + nat (b mod 512)) mod 512)
+        = (int (nat (a mod 512)) + int (nat (b mod 512))) mod 512" by (simp add: of_nat_mod)
+    also have "\<dots> = (a mod 512 + b mod 512) mod 512" by (simp only: A B)
+    also have "\<dots> = (a + b) mod 512" by (simp only: mod_add_left_eq mod_add_right_eq)
+    also have "\<dots> = int (nat ((a + b) mod 512))" by simp
+    finally show ?thesis by (simp only: of_nat_eq_iff)
+  qed
+  have "[(1753::int) ^ (nat (a mod 512) + nat (b mod 512))
+       = 1753 ^ ((nat (a mod 512) + nat (b mod 512)) mod 512)] (mod 8380417)"
+    by (rule zr_pow_mod512)
+  hence "[zpw a * zpw b = 1753 ^ (nat ((a + b) mod 512))] (mod 8380417)"
+    by (simp only: ab idx)
+  thus ?thesis by (simp only: zpw_def cong_sym_eq)
+qed
+
+text \<open>The half-turn: \<open>zpw (-256) = zr^256 \<equiv> -1\<close> (mod q). Carries the GS subtractive-leg sign.\<close>
+lemma zpw_neg256: "[zpw (- 256) = - 1] (mod 8380417)"
+proof -
+  have ex: "nat ((- 256::int) mod 512) = 256" by simp
+  have eq: "zpw (- 256) = 1753 ^ 256" by (simp only: zpw_def ex)
+  show ?thesis unfolding eq by (rule zwrap_cong)
+qed
+
+text \<open>The twiddle table as a \<open>zpw\<close> value: \<open>zt j \<equiv> zpw (brv\<^sub>8 j)\<close> (mod q) for \<open>j < 256\<close>.\<close>
+lemma zt_zpw: "j < 256 \<Longrightarrow> [zt j = zpw (int (brv 8 j))] (mod 8380417)"
+proof -
+  assume j: "j < 256"
+  have lt: "int (brv 8 j) < 512" using brv_lt [of 8 j] by simp
+  have ex: "nat (int (brv 8 j) mod 512) = brv 8 j"
+    using lt by (simp add: mod_pos_pos_trivial)
+  have a: "zpw (int (brv 8 j)) = 1753 ^ brv 8 j" by (simp only: zpw_def ex)
+  have b: "zt j = 1753 ^ brv 8 j mod 8380417" by (rule zt_pow [OF j])
+  show ?thesis unfolding a b by (simp only: cong_def mod_mod_trivial)
+qed
+
+text \<open>The stage invariant: after \<open>t\<close> GS layers, position \<open>n\<close> holds the inverse negacyclic
+  sub-DFT over the contiguous block of size \<open>2^t\<close> on the low \<open>t\<close> bits (block base
+  \<open>2^t \<cdot> (n div 2^t)\<close>), evaluated at \<open>c = n mod 2^t\<close>. Dual to the forward \<open>inv_form\<close>
+  (which blocks the high bits). Validated numerically against \<open>applyG\<close> for all \<open>t, n\<close>.\<close>
+definition ginv_form :: "nat \<Rightarrow> (nat \<Rightarrow> int) \<Rightarrow> nat \<Rightarrow> int" where
+  "ginv_form t h n =
+     (\<Sum>m < 2^t. h (2^t * (n div 2^t) + m)
+        * zpw (- (2 * int (brv 8 (2^t * (n div 2^t) + m)) + 1) * int (n mod 2^t)))"
+
+text \<open>Base case: zero layers is the identity (singleton block, \<open>c = 0\<close>).\<close>
+lemma ginv_form_0: "n < 256 \<Longrightarrow> ginv_form 0 h n = h n"
+  by (simp add: ginv_form_def)
+
+text \<open>Target: at \<open>t = 8\<close> the invariant is the inverse negacyclic DFT (mirror of \<open>inv_form_8\<close>).\<close>
+lemma ginv_form_8:
+  "n < 256 \<Longrightarrow> ginv_form 8 h n
+     = (\<Sum>m < 256. h m * zpw (- (2 * int (brv 8 m) + 1) * int n))"
+  by (simp add: ginv_form_def)
+
 end
 
-text \<open>REMAINING (the rest of the FIPS leg): from \<open>inv_as_bfly\<close> (nttInvAllRef == invBfly, the
-  abstract GS transform) to \<open>nttInvAllRef == FIPS-204 inverse transform mod q\<close>. Either a
-  self-contained closed-form (mirror the forward stage-invariant induction \<open>applyN_inv\<close> for the
-  GS direction) or the round-trip via \<open>Negacyclic_Inv.INNTT_NNTT\<close> + forward \<open>fwd_as_bfly\<close>.
-  Then compose with \<open>invntt_scale_bridge\<close> for the full \<open>invntt\<close> == montgomery-scaled FIPS
-  inverse, closing C ==SAW== invntt ==(this bridge)== nttInvAllRef ==(FIPS leg)== spec.\<close>
+text \<open>REMAINING (route A, self-contained closed form). DONE above (tool-verified): the GS schedule
+  fold \<open>applyG\<close>/\<open>applyG_8_eq_invBfly\<close>, and the stage-invariant FOUNDATION (the \<open>zpw\<close>
+  exponent-mod-512 machinery \<open>zpw\<close>/\<open>zpw_0\<close>/\<open>zpw_cong_exp\<close>/\<open>zr512_cong\<close>/\<open>zr_pow_mod512\<close>/
+  \<open>zpw_add\<close>/\<open>zpw_neg256\<close>/\<open>zt_zpw\<close>, the invariant \<open>ginv_form\<close>, and \<open>ginv_form_0\<close>/\<open>ginv_form_8\<close>).
+  The closed form was derived and numerically validated against \<open>applyG\<close> for all \<open>t, n\<close>:
+  \<open>ginv_form t h n = (\<Sum>m<2^t. h(2^t*(n div 2^t)+m) * zpw(-(2*brv\<^sub>8(2^t*(n div 2^t)+m)+1)*(n mod 2^t)))\<close>,
+  the inverse negacyclic sub-DFT over the low-\<open>t\<close>-bit block.
+
+  TODO (the bulk): (1) recursion \<open>gsLayer_ginv_step\<close>: one GS layer maps \<open>ginv_form t\<close> to
+  \<open>ginv_form (Suc t)\<close> mod q. LOW leg (\<open>n mod 2^(t+1) < 2^t\<close>) is an exact contiguous block split
+  \<open>ginv_form t n + ginv_form t (n+2^t)\<close>; HIGH leg is \<open>zt(ZB-hi)*(ginv_form t n - ginv_form t(n-2^t))\<close>
+  with the n-L block sign from \<open>zpw_neg256\<close>, and the twiddle identity (validated) \<open>gz_brv\<close>:
+  \<open>brv 8 (2^(8-t)-1 - hi) \<equiv> -(2*brv8(2^(t+1)*hi+2^t)+1)*2^t (mod 512)\<close>, needs brv-additivity on
+  disjoint bits (\<open>bit_brv\<close>/\<open>bit_add_push\<close> in Bitrev) + \<open>2^(8-t) dvd brv8 m\<close> for \<open>m<2^t\<close>.
+  (2) induction \<open>applyG_inv\<close>: \<open>[applyG t h n = ginv_form t h n] (mod q)\<close>, via IH + \<open>gsLayer_cong_g\<close>
+  (proven) + (1). (3) capstone \<open>inv_ntt_correct\<close> = \<open>ginv_form_8\<close> at \<open>applyG 8 = invBfly\<close>, chained with
+  \<open>inv_as_bfly\<close>. Then compose with \<open>invntt_scale_bridge\<close>: C ==SAW== invntt ==(bridge)== nttInvAllRef
+  ==(this)== FIPS inverse. Iterate (1)-(2) in the fast scratchpad/invscratch session (~10s), not the
+  3:50 full build.\<close>
 
 end
