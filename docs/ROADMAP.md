@@ -81,13 +81,20 @@ than the forward half only. Pieces, in order:
      CI grep already covers `spec/`. README claim table + `docs/ASSUMPTIONS.md` updated.
    - (Sub-step 1, `Tier2_Inv`/`Negacyclic_Inv.thy`, the AFP-locale negacyclic invertibility, was the
      route-B prerequisite; route A does not use it, so it is now optional/unused on the main chain.)
-5. **Mechanize / scope the `-fwrapv` no-UB seam + inverse overflow-freedom** (the open inverse-side
-   gap): the Gentleman-Sande low legs are unreduced so a coefficient can double each layer; the chain
-   currently assumes the C input is bounded (`|coeff| < Q`). Prove the inverse coefficient bound (the
-   analog of forward `ntt_overflow_free`) and bridge it to the C, as for the forward `-fwrapv` link.
+5. **Inverse overflow-freedom (DONE) + the `-fwrapv` no-UB seam (argued, as for the forward).** The
+   Gentleman-Sande low legs are unreduced so a coefficient doubles each layer; under the input
+   precondition `|coeff| < Q` (`bounded`, `B_0 = 8380416`) the eight layers stay within
+   `2^8·B_0 = 2145386496 < 2^31` and the final scale reduces to `< Q`. Proven as `invntt_overflow_free`
+   (`Tier2_InvWork`, exit 0; the analog of forward `ntt_overflow_free`), composing the per-layer
+   doubling bounds (`invcore_bounded`, built on `gs_node_low_bound`/`gs_node_high_bound`, which encode
+   the int32 no-overflow) with the final `montgomery_reduce(invf·.)` scale. The `|coeff| < Q` window is
+   tight (`256·Q` would overflow) but matches the reduced inputs `invntt_tomont` is fed. Remaining: the
+   `-fwrapv` ⇒ no-signed-overflow-UB bridge to the C is the SAME scoped/argued meta-step as the forward
+   (not separately mechanized).
 
 The forward+inverse chain is now the **complete-NTT** publication anchor (it closes the "no inverse /
-one argued link" gap that drew the ePrint rejections), modulo the inverse overflow-freedom in piece 5.
+one argued link" gap that drew the ePrint rejections); both directions are functional-correct AND
+overflow-free in Isabelle, with the single argued `-fwrapv` ⇒ no-UB link shared by both.
 
 ## v2 — verify a used-but-unverified implementation
 **Target chosen by survey (2026-06-11): the RustCrypto `ml-dsa` crate.** Rationale over the earlier
