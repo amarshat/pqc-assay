@@ -2910,6 +2910,239 @@ proof -
   finally show ?thesis .
 qed
 
+subsection \<open>The per-position GS twiddle congruence\<close>
+
+text \<open>brv8 of a block position (m in the low t+1 bits).\<close>
+lemma brv8_block:
+  assumes t: "t < 8" and hi: "hi < 2^(7-t)" and m: "m < 2^(t+1)"
+  shows "brv 8 (2^(t+1)*hi + m) = brv (7-t) hi + brv (t+1) m * 2^(7-t)"
+proof -
+  have ab: "(t+1)+(7-t) = 8" using t by simp
+  have "brv ((t+1)+(7-t)) (2^(t+1)*hi + m) = brv (7-t) hi + brv (t+1) m * 2^(7-t)"
+    by (rule brv_add_blocks[OF hi m])
+  thus ?thesis by (simp only: ab)
+qed
+
+text \<open>Generic: a nat with a clear bit 0 is even (proven over an opaque variable so
+  the surrounding term is not unfolded).\<close>
+lemma even_of_not_bit0: "\<not> bit (k::nat) 0 \<Longrightarrow> even k"
+proof -
+  assume "\<not> bit k 0"
+  hence "k mod 2 \<noteq> 1" by (simp add: bit_0 odd_iff_mod_2_eq_one)
+  hence "k mod 2 = 0" by auto
+  thus "even k" by (simp add: even_iff_mod_2_eq_zero)
+qed
+
+text \<open>A reversal of an m with a clear top bit is even (its bit 0 is bit t of m).\<close>
+lemma brv_even:
+  assumes m: "m < 2^t"
+  shows "even (brv (Suc t) m)"
+proof -
+  have nb: "\<not> bit m t" using bit_lt[of m t t] m by auto
+  have eq: "bit (brv (Suc t) m) 0 = bit m t"
+  proof -
+    have "bit (brv (Suc t) m) 0 = (0 < Suc t \<and> bit m (Suc t - Suc 0))" by (rule bit_brv)
+    also have "\<dots> = bit m t" by simp
+    finally show ?thesis .
+  qed
+  show ?thesis by (rule even_of_not_bit0[OF nb[folded eq]])
+qed
+
+text \<open>Setting the top bit (clear in m) reverses to adding 1.\<close>
+lemma brv_addbit:
+  "m < 2^t \<Longrightarrow> brv (Suc t) (2^t + m) = Suc (brv (Suc t) m)"
+proof (induction t arbitrary: m)
+  case 0 thus ?case by simp
+next
+  case (Suc t)
+  from Suc.prems have md: "m div 2 < 2^t" by simp
+  have d: "(2^Suc t + m) div 2 = 2^t + m div 2"
+  proof -
+    have "2^Suc t + m = m + 2^t * 2" by simp
+    thus ?thesis by simp
+  qed
+  have mo: "(2^Suc t + m) mod 2 = m mod 2"
+  proof -
+    have "2^Suc t + m = m + 2^t * 2" by simp
+    thus ?thesis by simp
+  qed
+  have "brv (Suc (Suc t)) (2^Suc t + m)
+      = brv (Suc t) ((2^Suc t + m) div 2) + ((2^Suc t + m) mod 2) * 2^Suc t" by simp
+  also have "\<dots> = brv (Suc t) (2^t + m div 2) + (m mod 2) * 2^Suc t"
+    by (simp only: d mo)
+  also have "\<dots> = Suc (brv (Suc t) (m div 2)) + (m mod 2) * 2^Suc t"
+    by (simp only: Suc.IH[OF md])
+  also have "\<dots> = Suc (brv (Suc t) (m div 2) + (m mod 2) * 2^Suc t)" by simp
+  also have "\<dots> = Suc (brv (Suc (Suc t)) m)" by simp
+  finally show ?case .
+qed
+
+text \<open>brv8 across the bit-t flip: setting bit t adds the reversed weight 2^(7-t).\<close>
+lemma brv8_flip:
+  assumes t: "t < 8" and hi: "hi < 2^(7-t)" and m: "m < 2^t"
+  shows "brv 8 (2^(t+1)*hi + 2^t + m) = brv 8 (2^(t+1)*hi + m) + 2^(7-t)"
+proof -
+  have mlt: "m < 2^(t+1)" using m by simp
+  have m2: "2^t + m < 2^(t+1)" using m by simp
+  have blo: "brv 8 (2^(t+1)*hi + m) = brv (7-t) hi + brv (t+1) m * 2^(7-t)"
+    by (rule brv8_block[OF t hi mlt])
+  have arg: "2^(t+1)*hi + 2^t + m = 2^(t+1)*hi + (2^t + m)" by simp
+  have bhi: "brv 8 (2^(t+1)*hi + (2^t+m)) = brv (7-t) hi + brv (t+1) (2^t+m) * 2^(7-t)"
+    by (rule brv8_block[OF t hi m2])
+  have ab: "brv (t+1) (2^t + m) = Suc (brv (t+1) m)"
+    using brv_addbit[OF m] by simp
+  have "brv 8 (2^(t+1)*hi + 2^t + m) = brv (7-t) hi + brv (t+1)(2^t+m) * 2^(7-t)"
+    by (simp only: arg bhi)
+  also have "\<dots> = brv (7-t) hi + Suc (brv (t+1) m) * 2^(7-t)"
+    by (simp only: ab)
+  also have "\<dots> = (brv (7-t) hi + brv (t+1) m * 2^(7-t)) + 2^(7-t)" by simp
+  also have "\<dots> = brv 8 (2^(t+1)*hi + m) + 2^(7-t)" by (simp only: blo)
+  finally show ?thesis .
+qed
+
+text \<open>The per-position GS twiddle weight at a low-half position reduces mod q to the
+  negated normal twiddle \<open>-zt(ZB-hi)\<close>. The inverse analog of the forward \<open>z_closed\<close>.\<close>
+lemma gtwid_lo:
+  assumes t: "t < 8" and hi: "hi < 2^(7-t)" and m: "m < 2^t"
+  shows "[zpw (- (2 * int (brv 8 (2^(t+1)*hi + m)) + 1) * int (2^t))
+        = - zt (2^(8-t) - Suc hi)] (mod 8380417)"
+proof -
+  have mlt: "m < 2^(t+1)" using m by simp
+  have blk: "brv 8 (2^(t+1)*hi + m) = brv (7-t) hi + brv (t+1) m * 2^(7-t)"
+    by (rule brv8_block[OF t hi mlt])
+  define EF where "EF = - (2 * int (brv 8 (2^(t+1)*hi + m)) + 1) * int (2^t)"
+  define ER where "ER = - (2 * int (brv (7-t) hi) + 1) * int (2^t)"
+  define Bm where "Bm = int (brv (t+1) m)"
+  define J  where "J  = 2^(8-t) - Suc hi"
+  have e7: "(7-t)+t = 7" using t by linarith
+  have e8: "(8-t)+t = 8" using t by linarith
+  have pe: "(2::nat)^(8-t) = 2 * 2^(7-t)"
+  proof -
+    have "8 - t = Suc (7-t)" using t by linarith
+    thus ?thesis by simp
+  qed
+  have pkn: "(2^(7-t)::nat) * 2^t = 128" by (simp add: power_add[symmetric] e7)
+  have pk: "int (2^(7-t)::nat) * int (2^t::nat) = 128"
+    using pkn by (metis of_nat_mult of_nat_numeral)
+  have p256n: "(2^(8-t)::nat) * 2^t = 256" by (simp add: power_add[symmetric] e8)
+  have evBm: "(2::int) dvd Bm" using brv_even[OF m] Bm_def by simp
+  have exp1: "int (brv 8 (2^(t+1)*hi + m)) = int (brv (7-t) hi) + Bm * int (2^(7-t))"
+  proof -
+    have "int (brv 8 (2^(t+1)*hi + m)) = int (brv (7-t) hi + brv (t+1) m * 2^(7-t))"
+      by (simp only: blk)
+    also have "\<dots> = int (brv (7-t) hi) + Bm * int (2^(7-t))" by (simp add: Bm_def)
+    finally show ?thesis .
+  qed
+  have prod: "(2::int) * (Bm * int (2^(7-t))) * int (2^t) = Bm * 256"
+    using pk by (simp add: ac_simps)
+  have E: "EF = ER - Bm * 256"
+  proof -
+    have "EF = - (2 * (int (brv (7-t) hi) + Bm * int (2^(7-t))) + 1) * int (2^t)"
+      unfolding EF_def by (simp only: exp1)
+    also have "\<dots> = ER - Bm * 256"
+      unfolding ER_def using prod by (simp add: algebra_simps)
+    finally show ?thesis .
+  qed
+  have bm0: "Bm * 256 mod 512 = 0"
+  proof -
+    obtain k where k: "Bm = 2 * k" using evBm by (rule dvdE)
+    have "Bm * 256 = 512 * k" using k by simp
+    thus ?thesis by simp
+  qed
+  have cong512: "EF mod 512 = ER mod 512"
+  proof -
+    have "EF mod 512 = (ER - Bm * 256) mod 512" by (simp add: E)
+    also have "\<dots> = (ER - (Bm * 256) mod 512) mod 512" by (simp add: mod_diff_right_eq)
+    also have "\<dots> = ER mod 512" using bm0 by simp
+    finally show ?thesis .
+  qed
+  have z1: "zpw EF = zpw ER" by (rule zpw_cong_exp[OF cong512])
+  have brlt: "brv (7-t) hi < 2^(7-t)" by (rule brv_lt)
+  have gz: "brv 8 J = 256 - (2 * brv (7-t) hi + 1) * 2^t"
+    unfolding J_def by (rule gz_brv[OF t hi])
+  have h: "2 * brv (7-t) hi + 1 \<le> 2^(8-t) - 1" using brlt pe by linarith
+  have twle: "(2 * brv (7-t) hi + 1) * 2^t \<le> 256"
+  proof -
+    have "(2 * brv (7-t) hi + 1) * 2^t \<le> (2^(8-t)-1) * 2^t" using h by (rule mult_le_mono1)
+    also have "\<dots> = 2^(8-t)*2^t - 2^t" by (simp add: diff_mult_distrib)
+    also have "\<dots> \<le> 256" using p256n by simp
+    finally show ?thesis .
+  qed
+  have gzi: "int (brv 8 J) = 256 - (2 * int (brv (7-t) hi) + 1) * int (2^t)"
+  proof -
+    have "int (brv 8 J) = int (256 - (2 * brv (7-t) hi + 1) * 2^t)" by (simp add: gz)
+    also have "\<dots> = 256 - int ((2 * brv (7-t) hi + 1) * 2^t)" using twle by (simp add: of_nat_diff)
+    also have "\<dots> = 256 - (2 * int (brv (7-t) hi) + 1) * int (2^t)"
+      by (simp add: of_nat_mult algebra_simps)
+    finally show ?thesis .
+  qed
+  have ERexp: "ER = int (brv 8 J) - 256" unfolding ER_def using gzi by (simp add: algebra_simps)
+  have jlt: "J < 256"
+  proof -
+    have "(2::nat)^(8-t) \<le> 256" using power_increasing[of "8-t" 8 "2::nat"] by simp
+    thus ?thesis unfolding J_def by linarith
+  qed
+  have zb: "[zpw (int (brv 8 J)) = zt J] (mod 8380417)"
+    using zt_zpw[OF jlt] by (simp add: cong_sym_eq)
+  have step: "[zpw (int (brv 8 J) - 256) = - zt J] (mod 8380417)"
+  proof -
+    have "[zpw (int (brv 8 J) - 256) = zpw (int (brv 8 J)) * zpw (- 256)] (mod 8380417)"
+      using zpw_add[of "int (brv 8 J)" "- 256"] by simp
+    also have "[zpw (int (brv 8 J)) * zpw (- 256) = zt J * (- 1)] (mod 8380417)"
+      by (rule cong_mult[OF zb zpw_neg256])
+    also have "zt J * (- 1) = - zt J" by simp
+    finally show ?thesis .
+  qed
+  have eqf: "zpw EF = zpw (int (brv 8 J) - 256)" using z1 ERexp by simp
+  have fin: "[zpw EF = - zt J] (mod 8380417)" using eqf step by (simp add: cong_def)
+  show ?thesis using fin unfolding EF_def J_def .
+qed
+
+text \<open>The per-position GS twiddle weight at a high-half position reduces mod q to the
+  normal twiddle \<open>zt(ZB-hi)\<close> (the bit-t flip flips the sign relative to \<open>gtwid_lo\<close>).\<close>
+lemma gtwid_hi:
+  assumes t: "t < 8" and hi: "hi < 2^(7-t)" and m: "m < 2^t"
+  shows "[zpw (- (2 * int (brv 8 (2^(t+1)*hi + 2^t + m)) + 1) * int (2^t))
+        = zt (2^(8-t) - Suc hi)] (mod 8380417)"
+proof -
+  have flip: "brv 8 (2^(t+1)*hi + 2^t + m) = brv 8 (2^(t+1)*hi + m) + 2^(7-t)"
+    by (rule brv8_flip[OF t hi m])
+  define EL where "EL = - (2 * int (brv 8 (2^(t+1)*hi + m)) + 1) * int (2^t)"
+  define EH where "EH = - (2 * int (brv 8 (2^(t+1)*hi + 2^t + m)) + 1) * int (2^t)"
+  define J  where "J  = 2^(8-t) - Suc hi"
+  have e7: "(7-t)+t = 7" using t by linarith
+  have pkn: "(2^(7-t)::nat) * 2^t = 128" by (simp add: power_add[symmetric] e7)
+  have pk: "int (2^(7-t)::nat) * int (2^t::nat) = 128" using pkn by (metis of_nat_mult of_nat_numeral)
+  have fi: "int (brv 8 (2^(t+1)*hi + 2^t + m)) = int (brv 8 (2^(t+1)*hi + m)) + int (2^(7-t))"
+  proof -
+    have "int (brv 8 (2^(t+1)*hi + 2^t + m)) = int (brv 8 (2^(t+1)*hi + m) + 2^(7-t))"
+      by (simp only: flip)
+    thus ?thesis by (simp add: of_nat_add)
+  qed
+  have EHEL: "EH = EL - 256"
+  proof -
+    have "EH = - (2 * (int (brv 8 (2^(t+1)*hi + m)) + int (2^(7-t))) + 1) * int (2^t)"
+      unfolding EH_def by (simp only: fi)
+    also have "\<dots> = EL - 2 * (int (2^(7-t)) * int (2^t))"
+      unfolding EL_def by (simp add: algebra_simps)
+    also have "\<dots> = EL - 256" using pk by simp
+    finally show ?thesis .
+  qed
+  have lo: "[zpw EL = - zt J] (mod 8380417)"
+    unfolding EL_def J_def by (rule gtwid_lo[OF t hi m])
+  have c1: "[zpw EH = zpw EL * zpw (- 256)] (mod 8380417)"
+  proof -
+    have "zpw EH = zpw (EL + (- 256))" by (simp add: EHEL)
+    thus ?thesis using zpw_add[of EL "- 256"] by (simp add: cong_def)
+  qed
+  have c2: "[zpw EL * zpw (- 256) = (- zt J) * (- 1)] (mod 8380417)"
+    by (rule cong_mult[OF lo zpw_neg256])
+  have c3: "(- zt J) * (- 1) = zt J" by simp
+  have fin: "[zpw EH = zt J] (mod 8380417)"
+    using cong_trans[OF c1 c2] c3 by simp
+  show ?thesis using fin unfolding EH_def J_def .
+qed
+
 end
 
 text \<open>REMAINING (route A, self-contained closed form). DONE above (tool-verified): the GS schedule
