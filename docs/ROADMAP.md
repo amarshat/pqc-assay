@@ -67,26 +67,27 @@ than the forward half only. Pieces, in order:
 2. **SAW C ≡ Cryptol (DONE).** `proof/saw/mldsa_ntt.saw` proves the C `invntt_tomont` ≡ Cryptol
    `invntt` (mirror of the forward proof; `make saw` exits 0).
 3. **Lift (DONE).** `cryptol-to-isabelle` regenerated; `make lift-check` green.
-4. **Isabelle `invntt_bridge` (IN PROGRESS).** montgomery `invntt` model ≡ FIPS-204 inverse
-   transform mod q, the inverse mirror of `ntt_bridge`.
-   - *Sub-step 1 (DONE):* negacyclic invertibility. `spec/isabelle/tier2/inv/Negacyclic_Inv.thy`,
-     session `Tier2_Inv` (exit 0, no holes). `INNTT = untwist ∘ AFP-INTT`, with
-     `INNTT_NNTT`/`NNTT_INNTT` proving `NNTT` is a bijection mod q (inverse = `(n^-1)·INNTT`).
-   - *Sub-step 2 foundation (DONE):* `spec/isabelle/tier2/invwork/Inv_Mont_Bridge.thy`, session
-     `Tier2_InvWork` on the forward `Tier2` heap (exit 0, no holes). `inv_butterfly_cong` (the
-     Gentleman-Sande negated-twiddle congruence), `invf_scale_cong` (the `mont^2/256` final scale),
-     and the supporting `sint_seq_uminus_small` / `mont32_cancel` helpers. Discovery: a normal-domain
-     inverse `nttInvAllRef` already exists in `Tier2_Base`, so the bridge is a true mirror of the
-     forward `Mont_Bridge` (montgomery `invntt` ≡ `nttInvAllRef` mod q + the `invf` scale).
-   - *Remaining (sub-step 2 bulk + sub-step 3):* 8 Gentleman-Sande layer unfolds, 8 per-layer
-     congruences, 8 range-preservation lemmas, the final scale, then compose with sub-step 1 and the
-     forward `ntt_bridge` into `invntt_bridge`. This mirrors the forward `Mont_Bridge` (~1500 lines);
-     multi-session.
-5. **Mechanize / scope the `-fwrapv` no-UB seam** for the inverse (the one argued link), as for forward.
+4. **Isabelle `invntt_bridge` (DONE).** montgomery `invntt` model ≡ FIPS-204 inverse transform mod q,
+   the inverse mirror of `ntt_bridge`. `spec/isabelle/tier2/invwork/Inv_Mont_Bridge.thy`, session
+   `Tier2_InvWork` (exit 0, no `sorry`/`oops`). Route A (self-contained closed form, no AFP locale):
+   - montgomery `invntt` ≡ normal `nttInvAllRef` mod q + the `invf = mont²/256` scale
+     (`Rcong_invcore` + `invntt_scale_bridge`);
+   - normal `nttInvAllRef` ≡ the FIPS-204 inverse negacyclic DFT (`inv_ntt_correct`), via the
+     Gentleman-Sande mirror of the forward closed form: `inv_as_bfly` (word seam) + `ginv_form`
+     stage invariant + `ginv_lower`/`ginv_upper` recursion + `applyG_inv` induction, with the
+     per-layer twiddle `gtwid_lo`/`gtwid_hi` reduced to the normal table via the bit-reversal
+     identity `gz_brv`;
+   - composed into `invntt_bridge`. Wired into `make verify` (`tier2-inv` target); the no-`sorry`
+     CI grep already covers `spec/`. README claim table + `docs/ASSUMPTIONS.md` updated.
+   - (Sub-step 1, `Tier2_Inv`/`Negacyclic_Inv.thy`, the AFP-locale negacyclic invertibility, was the
+     route-B prerequisite; route A does not use it, so it is now optional/unused on the main chain.)
+5. **Mechanize / scope the `-fwrapv` no-UB seam + inverse overflow-freedom** (the open inverse-side
+   gap): the Gentleman-Sande low legs are unreduced so a coefficient can double each layer; the chain
+   currently assumes the C input is bounded (`|coeff| < Q`). Prove the inverse coefficient bound (the
+   analog of forward `ntt_overflow_free`) and bridge it to the C, as for the forward `-fwrapv` link.
 
-After fork 1: wire `Tier2_InvWork` into `make verify` / CI like the forward `Tier2`, add an inverse row
-to the README claim table, and use the **complete forward+inverse chain** as the publication anchor
-(it closes the "no inverse / one argued link" gap that drew the ePrint rejections).
+The forward+inverse chain is now the **complete-NTT** publication anchor (it closes the "no inverse /
+one argued link" gap that drew the ePrint rejections), modulo the inverse overflow-freedom in piece 5.
 
 ## v2 — verify a used-but-unverified implementation
 **Target chosen by survey (2026-06-11): the RustCrypto `ml-dsa` crate.** Rationale over the earlier

@@ -25,11 +25,12 @@ in-range preconditions proven separately. The toolchain (SAW → Cryptol → Isa
 used for its 2026 `corecrypto` work (see [Background](#background-if-formal-verification-is-new-to-you));
 this project uses none of Apple's code or theories, and the Isabelle spec is written from FIPS 204.
 
-Current scope is the `reduce.c` arithmetic layer (both legs) and the forward NTT: C≡Cryptol functional
-equivalence, a machine-checked overflow-freedom / coefficient-bound result, and (in the `Tier2`
-session, gated in `make verify`) a full FIPS-204 functional-correctness theorem for the lifted
-normal-domain transform. The bridge linking that transform back to the montgomery-domain model the
-SAW C≡Cryptol leg checks is now proven (`ntt_bridge`), so C → FIPS-204 forward NTT is a single
+Current scope is the `reduce.c` arithmetic layer (both legs) and the forward and inverse NTT: C≡Cryptol
+functional equivalence, a machine-checked overflow-freedom / coefficient-bound result (forward), and
+(in the `Tier2` / `Tier2_InvWork` sessions, both gated in `make verify`) full FIPS-204 functional-
+correctness theorems for the lifted normal-domain transforms. The bridges linking those transforms back
+to the montgomery-domain models the SAW C≡Cryptol legs check are now proven (`ntt_bridge` forward,
+`invntt_bridge` inverse), so C → FIPS-204 forward NTT and C → FIPS-204 inverse NTT are each a single
 machine-checked chain mod q, modulo the scoped `-fwrapv` no-UB assumption (see the claim table below).
 Montgomery reduction is an
 implementation device the NTT uses; it is not defined in FIPS 204. None of this is the
@@ -107,10 +108,20 @@ How it is built (Isabelle, no holes):
 The route is self-contained (a direct closed-form negacyclic DFT), so it does not depend on aligning
 with the recursive Cooley-Tukey transform in the Archive of Formal Proofs.
 
-Status: `Tier2` is a first-class `make` target and part of `make verify` (`lift-check saw isabelle
-tier2`). The no-`sorry`/`oops`/`admit` gate runs over all of `spec/` (including `tier2`) on every push
-(`saw.yml`); the full Tier2 *build* runs in `verify.yml` (manual `workflow_dispatch`, like the rest of
-the Isabelle leg, because of CI cost). The inverse NTT and the `256⁻¹` normalization are not done. See
+The inverse NTT (`Tier2_InvWork`) mirrors this for the Gentleman-Sande direction: `inv_as_bfly`
+(the lifted `nttInvAllRef` is an 8-fold abstract GS transform `invBfly`), a closed-form stage invariant
+`ginv_form` with exact `ginv_lower` (additive leg) and `ginv_upper` (subtractive leg, a congruence mod
+`q`), and `applyG_inv` (induction over the 8 layers). The per-layer twiddle reduces to the normal table
+via `gtwid_lo`/`gtwid_hi` (`±zt(2^(8−t)−1−hi)`), proven from the bit-reversal identity
+`gz_brv`. At layer 8 this is `inv_ntt_correct`; composed with the montgomery-scale bridge
+(`invntt_scale_bridge`) it is `invntt_bridge`.
+
+Status: `Tier2` (forward) and `Tier2_InvWork` (inverse) are first-class `make` targets and part of
+`make verify` (`lift-check saw isabelle tier2 tier2-inv`). The no-`sorry`/`oops`/`admit` gate runs over
+all of `spec/` (including both) on every push (`saw.yml`); the full Tier2 + Tier2_InvWork *build* runs
+in `verify.yml` (manual `workflow_dispatch`, like the rest of the Isabelle leg, because of CI cost).
+The inverse NTT and its `256⁻¹` (= `mont/256`) normalization are now machine-checked (`invntt_bridge`);
+still open: inverse overflow-freedom (the C input-coefficient bound) and constant-time. See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ### Claim status (forward-NTT chain)
@@ -129,13 +140,19 @@ with justification in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md); "not claimed
 | montgomery lifted `ntt` ≡ normal `nttFwdAllRef` (mod q) | machine-checked (Isabelle `Mont_Bridge`, `mbfly0`..`mbfly7` composed) |
 | normal `nttFwdAllRef` ≡ FIPS-204 forward NTT | machine-checked (Isabelle `fwd_ntt_correct`) |
 | montgomery `ntt` ≡ FIPS-204 forward NTT (mod q), composed | machine-checked (Isabelle `ntt_bridge`) |
-| inverse NTT, `256⁻¹` normalization | not claimed |
+| C `invntt_tomont(a[256])` ≡ Cryptol montgomery `invntt` (under `-fwrapv` wrapping; functional) | machine-checked (SAW) |
+| montgomery lifted `invntt` ≡ normal `nttInvAllRef` (mod q), incl. the `mont/256` scale | machine-checked (Isabelle `Rcong_invcore` + `invntt_scale_bridge`) |
+| normal `nttInvAllRef` ≡ FIPS-204 inverse NTT (mod q) | machine-checked (Isabelle `inv_ntt_correct`) |
+| montgomery `invntt` ≡ FIPS-204 inverse NTT (mod q), composed | machine-checked (Isabelle `invntt_bridge`) |
+| inverse NTT overflow-freedom / coefficient bound | not claimed (C input-coefficient bound assumed; see `docs/ASSUMPTIONS.md`) |
 | constant-time / side channels | not claimed |
 
-With `ntt_bridge` the two machine-checked ends join: C → FIPS-204 forward NTT is one connected
+With `ntt_bridge` (forward) and `invntt_bridge` (inverse) the two machine-checked ends join in both
+directions: C → FIPS-204 forward NTT *and* C → FIPS-204 inverse NTT are each one connected
 machine-checked chain mod q, with the only non-mechanized step the `-fwrapv` ⇒ no-UB meta-argument
 (the "argued" row above). What is *not* claimed: that this is the hard or shipping code (it is the
-reference C, and the field arithmetic is the easy primitive), the inverse transform, or constant-time.
+reference C, and the field arithmetic is the easy primitive), inverse-NTT overflow-freedom (the C
+input-coefficient bound is assumed, not yet proven), or constant-time.
 
 ## Scope and limitations
 
@@ -177,14 +194,16 @@ missed. PQC-Assay applies the same public approach to third-party reference C.
           │  (3) cryptol-to-isabelle
           ▼
    Isabelle model ──(4) model ≡ FIPS spec──►  ✔ reduce.c layer
-          │        └─(4') montgomery ntt ≡ FIPS-204 forward NTT (mod q) ─► ✔ ntt_bridge
+          │        ├─(4') montgomery ntt ≡ FIPS-204 forward NTT (mod q) ─► ✔ ntt_bridge
+          │        └─(4'') montgomery invntt ≡ FIPS-204 inverse NTT (mod q) ─► ✔ invntt_bridge
           ▼
                   spec written from FIPS 204; no Apple artifacts
 ```
 
-Step (4') closes the forward-NTT chain: `ntt_bridge` proves the montgomery-domain model the SAW leg
-checks the C against equals the FIPS-204 negacyclic DFT mod q. The only non-mechanized link in the
-whole chain is `-fwrapv ⇒ no signed-overflow UB` (see the claim table above).
+Steps (4') and (4'') close the forward- and inverse-NTT chains: `ntt_bridge` / `invntt_bridge` prove
+the montgomery-domain models the SAW legs check the C against equal the FIPS-204 negacyclic DFT and its
+inverse, mod q (the inverse montgomery-scaled by `mont/256`). The only non-mechanized link in either
+chain is `-fwrapv ⇒ no signed-overflow UB` (see the claim table above).
 
 Detail in [`docs/PIPELINE.md`](docs/PIPELINE.md).
 

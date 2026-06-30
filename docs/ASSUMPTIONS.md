@@ -28,6 +28,18 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   ζ^((2·brv₈ k + 1)·j)) mod q`, with `ntt` the montgomery model the SAW C≡Cryptol leg checks. So the
   C→FIPS forward-NTT chain is closed mod q (both ends and the bridge machine-checked); the only
   non-mechanized link is the `-fwrapv` ⇒ no-signed-overflow-UB meta-step (see below).
+- **Inverse NTT: functional chain machine-checked, overflow-freedom NOT yet proven.** SAW proves
+  `invntt_tomont(a[256])` ≡ Cryptol montgomery `invntt` under two's-complement wrapping (same
+  `-fwrapv` bitcode as the forward). The Isabelle chain is closed mod q: montgomery model ≡ normal
+  `nttInvAllRef` (`Rcong_invcore` + the `invf = mont²/256` final scale, `invntt_scale_bridge`),
+  `nttInvAllRef` ≡ the FIPS-204 inverse negacyclic DFT (`inv_ntt_correct`), composed into
+  `invntt_bridge`: `bounded w ⟹ k<256 ⟹ 4294967296 · sint(invntt w ! k) ≡ sint(invf) · (∑ m<256.
+  cf w m · ζ^(−(2·brv₈ m + 1)·k)) (mod q)` (`Tier2_InvWork` session, gated in `make verify` via
+  `tier2-inv`). ★ ASSUMED, NOT PROVEN: there is **no** inverse analog of `ntt_overflow_free` yet. The
+  Gentleman-Sande low legs `a[j] + a[j+len]` are unreduced, so a coefficient can double each layer;
+  the chain assumes the C input is bounded (the `bounded` / `B_0 = 8380416` hypothesis, `|coeff| < Q`)
+  and relies on `-fwrapv` for the wrapping. Proving the inverse coefficient bound (inverse
+  overflow-freedom + its `-fwrapv` ⇒ no-UB seam, "piece 5") is the open inverse-side gap.
 - Input range: the C documents the precondition `-2^31 * Q <= a <= Q * 2^31`. The SAW proof IS
   discharged under exactly this precondition (`mont_in_range` in the model); equivalence outside it
   is NOT claimed by the proof. (Empirically the Cryptol model is a bit-exact transcription that also
@@ -42,11 +54,12 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   - *default (`nsw`)* — used for the **reduce.c** proofs, which therefore DO assert absence of
     signed-overflow UB in their documented input ranges (`montgomery_reduce` under `mont_in_range`,
     `reduce32` under `a <= 2^31-2^22-1`).
-  - *`-fwrapv`* — used for the **forward NTT** proof. The NTT does unreduced int32 add/sub (`a[j] ± t`)
-    that overflow for unbounded inputs, so we prove functional equivalence under two's-complement
-    wrapping (what the code computes; matches the mod-2^n model). Overflow-freedom is established
-    separately (Isabelle `ntt_overflow_free`, v1.5; see proof results) and bridged to the C by the
-    argument noted there — the `-fwrapv` proof itself asserts no overflow bound.
+  - *`-fwrapv`* — used for the **forward and inverse NTT** proofs. The NTT does unreduced int32 add/sub
+    (`a[j] ± t`) that overflow for unbounded inputs, so we prove functional equivalence under
+    two's-complement wrapping (what the code computes; matches the mod-2^n model). Forward
+    overflow-freedom is established separately (Isabelle `ntt_overflow_free`, v1.5; see proof results)
+    and bridged to the C by the argument noted there — the `-fwrapv` proof itself asserts no overflow
+    bound. The **inverse** overflow-freedom is not yet proven (see the inverse-NTT scope bullet above).
 - Anything not listed as proven is, explicitly, NOT proven.
 
 ## v2 (Rust / RustCrypto `ml-dsa`) assumptions
