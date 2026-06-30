@@ -2340,6 +2340,54 @@ text \<open>The scale constant \<open>invf = 0xa3fa = 41978\<close> is within th
 lemma invf_sint_bound: "- 4194304 \<le> sint_seq invf \<and> sint_seq invf \<le> 4194304"
   unfolding invf_def by eval
 
+text \<open>OVERFLOW-FREEDOM (piece 5; inverse analog of \<open>ntt_overflow_free\<close>). Given the inverse C input
+  precondition \<open>|coeff| < Q\<close> (\<open>bounded w\<close>, \<open>B_0 = 8380416\<close>), the montgomery inverse NTT is overflow-
+  free: every one of the eight Gentleman-Sande layers keeps coefficients within \<open>2^8 * B_0 =
+  2145386496 < 2^31\<close> (so every int32 add/sub \<open>a[j] + a[j+len]\<close> and difference \<open>a[j+len] - a[j]\<close>
+  stays in range, and every \<open>montgomery_reduce\<close> input \<open>zeta * (...)\<close> stays \<open>< 2^31 * Q\<close>), and the
+  final \<open>montgomery_reduce(invf * .)\<close> scale brings the output back to \<open>< Q\<close>. Unlike the forward NTT
+  (which tolerates a wide input window because each level grows the bound by only \<open>+Q\<close>), the
+  Gentleman-Sande low leg is unreduced and DOUBLES the bound per level, so this holds only for the
+  tight \<open>|coeff| < Q\<close> window: \<open>256 * (Q - 1) = 2145386496\<close> just fits int32, \<open>256 * Q\<close> would not.
+  Composed with the SAW \<open>-fwrapv\<close> C==model equivalence, the C \<open>invntt_tomont\<close> has no signed-overflow
+  UB under this input bound (and, no wrapping occurring, equals the spec) -- the same scoped
+  \<open>-fwrapv\<close> ⇒ no-UB meta-step as the forward.\<close>
+theorem invntt_overflow_free:
+  assumes bw: "bounded w"
+  shows "ntt_bounded 2145386496 (invnttCore w)"
+    and "ntt_bounded 8380416 (invntt w)"
+proof -
+  show "ntt_bounded 2145386496 (invnttCore w)" by (rule invcore_bounded[OF bw])
+  have out: "- 8380416 \<le> sint_seq (nth_seq (invntt w) k)
+           \<and> sint_seq (nth_seq (invntt w) k) \<le> 8380416" if k: "k < 256" for k
+  proof -
+    have cb: "- 2145386496 \<le> sint_seq (nth_seq (invnttCore w) k)"
+             "sint_seq (nth_seq (invnttCore w) k) \<le> 2145386496"
+      using invcore_bounded[OF bw] unfolding ntt_bounded_def by auto
+    have ivb: "- 4194304 \<le> sint_seq invf" "sint_seq invf \<le> 4194304" using invf_sint_bound by auto
+    have ok: "mont_input_ok (sint_seq invf * sint_seq (nth_seq (invnttCore w) k))"
+      by (rule mont_input_ok_of_bounds'[OF ivb(1) ivb(2) cb(1) cb(2)]) simp
+    have mb: "- 8380417 < sint_seq (nth_seq (invntt w) k)
+            \<and> sint_seq (nth_seq (invntt w) k) < 8380417"
+      using mont_butterfly_bound[OF ok] by (simp add: invntt_scale_coeff[OF k])
+    thus ?thesis by linarith
+  qed
+  show "ntt_bounded 8380416 (invntt w)"
+    unfolding ntt_bounded_def
+  proof (intro allI)
+    fix n
+    show "- 8380416 \<le> sint_seq (nth_seq (invntt w) n) \<and> sint_seq (nth_seq (invntt w) n) \<le> 8380416"
+    proof (cases "n < 256")
+      case True thus ?thesis using out by blast
+    next
+      case False hence ge: "256 \<le> n" by simp
+      have b255: "- 8380416 \<le> sint_seq (nth_seq (invntt w) 255)
+                \<and> sint_seq (nth_seq (invntt w) 255) \<le> 8380416" using out[of 255] by simp
+      show ?thesis using b255 oob255[OF ge, of "invntt w"] by simp
+    qed
+  qed
+qed
+
 text \<open>CAPSTONE: the deployed montgomery inverse NTT equals normal \<open>nttInvAllRef\<close> mod q, scaled
   by \<open>2^{-32} \<cdot> invf = mont/256\<close>. \<open>invntt\<close> is \<open>MLDSA_NTT.invntt\<close>, the model SAW proves the PQClean
   C \<open>invntt_tomont\<close> equal to under -fwrapv.\<close>
