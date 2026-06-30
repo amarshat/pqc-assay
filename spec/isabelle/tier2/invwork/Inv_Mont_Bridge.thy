@@ -2716,6 +2716,200 @@ lemma ginv_form_8:
      = (\<Sum>m < 256. h m * zpw (- (2 * int (brv 8 m) + 1) * int n))"
   by (simp add: ginv_form_def)
 
+subsection \<open>brv infrastructure for the GS twiddle\<close>
+
+text \<open>General two-block decomposition of bit reversal: low \<open>a\<close> bits and high \<open>b\<close>
+  bits reverse independently and swap ends.\<close>
+lemma brv_add_blocks:
+  assumes hi: "hi < 2^b" and lo: "lo < 2^a"
+  shows "brv (a+b) (2^a * hi + lo) = brv b hi + brv a lo * 2^b"
+proof (rule bit_eqI)
+  fix j
+  have rhs_lt: "brv b hi + brv a lo * 2^b < 2^(a+b)"
+  proof -
+    have h1: "brv b hi < 2^b" by (rule brv_lt)
+    have h2: "brv a lo \<le> 2^a - 1" using brv_lt[of a lo] by simp
+    have "brv a lo * 2^b \<le> (2^a - 1) * 2^b" using h2 by (rule mult_le_mono1)
+    hence "brv b hi + brv a lo * 2^b < 2^b + (2^a - 1) * 2^b" using h1 by linarith
+    also have "\<dots> = 2^a * 2^b" by (simp add: algebra_simps)
+    also have "\<dots> = 2^(a+b)" by (simp add: power_add)
+    finally show ?thesis .
+  qed
+  have arg_eq: "2^a * hi + lo = lo + hi * 2^a" by simp
+  show "bit (brv (a+b) (2^a * hi + lo)) j = bit (brv b hi + brv a lo * 2^b) j"
+  proof (cases "j < a + b")
+    case False
+    have L: "\<not> bit (brv (a+b) (2^a*hi+lo)) j" using False by (simp add: bit_brv)
+    have R: "\<not> bit (brv b hi + brv a lo * 2^b) j"
+      using bit_lt[OF rhs_lt] False by blast
+    show ?thesis using L R by simp
+  next
+    case True
+    \<comment> \<open>LHS bit via \<open>bit_brv\<close> then \<open>bit_add_push\<close> on the argument.\<close>
+    have L: "bit (brv (a+b) (2^a*hi+lo)) j
+           = (if a+b-Suc j < a then bit lo (a+b-Suc j) else bit hi (a+b-Suc j-a))"
+    proof -
+      have "bit (brv (a+b) (2^a*hi+lo)) j = bit (2^a*hi+lo) (a+b-Suc j)"
+        using True by (simp add: bit_brv)
+      also have "\<dots> = (if a+b-Suc j < a then bit lo (a+b-Suc j) else bit hi (a+b-Suc j-a))"
+        by (subst arg_eq) (rule bit_add_push[OF lo])
+      finally show ?thesis .
+    qed
+    \<comment> \<open>RHS bit via \<open>bit_add_push\<close> on the result.\<close>
+    have R: "bit (brv b hi + brv a lo * 2^b) j
+           = (if j < b then bit (brv b hi) j else bit (brv a lo) (j-b))"
+      by (rule bit_add_push[OF brv_lt])
+    show ?thesis
+    proof (cases "j < b")
+      case True
+      have ge: "\<not> a+b-Suc j < a" using True \<open>j<a+b\<close> by linarith
+      have L': "bit (brv (a+b) (2^a*hi+lo)) j = bit hi (a+b-Suc j-a)" using L ge by simp
+      have "a+b-Suc j-a = b - Suc j" by simp
+      hence L'': "bit (brv (a+b) (2^a*hi+lo)) j = bit hi (b - Suc j)" using L' by simp
+      have R': "bit (brv b hi + brv a lo * 2^b) j = bit hi (b - Suc j)"
+        using R True by (simp add: bit_brv)
+      show ?thesis using L'' R' by simp
+    next
+      case False
+      have bj: "b \<le> j" using False by simp
+      have lt: "a+b-Suc j < a" using bj \<open>j<a+b\<close> by linarith
+      have L': "bit (brv (a+b) (2^a*hi+lo)) j = bit lo (a+b-Suc j)" using L lt by simp
+      have R': "bit (brv b hi + brv a lo * 2^b) j = bit (brv a lo) (j-b)"
+        using R False by simp
+      have "bit (brv a lo) (j-b) = (j-b < a \<and> bit lo (a - Suc (j-b)))" by (simp add: bit_brv)
+      moreover have "j - b < a" using \<open>j<a+b\<close> bj by linarith
+      moreover have "a - Suc (j-b) = a+b-Suc j" using bj by simp
+      ultimately have R'': "bit (brv b hi + brv a lo * 2^b) j = bit lo (a+b-Suc j)"
+        using R' by simp
+      show ?thesis using L' R'' by simp
+    qed
+  qed
+qed
+
+text \<open>One reversal step on a number written as \<open>2Q + R\<close> with \<open>R < 2\<close>.\<close>
+lemma brv_Suc_split:
+  assumes R: "R = 0 \<or> R = 1"
+  shows "brv (Suc N) (2*Q + R) = brv N Q + R * 2^N"
+  using R by auto
+
+text \<open>Closing nat identity for the complement induction (\<open>r\<close> is the carried parity).\<close>
+lemma compl_arith:
+  fixes P BD r :: nat
+  assumes BD: "BD < P" and r: "r < 2"
+  shows "(P - Suc BD) + (Suc 0 - r) * P = 2*P - Suc (BD + r * P)"
+proof -
+  consider "r = 0" | "r = 1" using r by linarith
+  then show ?thesis
+  proof cases
+    case 1
+    have "(P - Suc BD) + (Suc 0 - r) * P = (P - Suc BD) + P" using 1 by simp
+    also have "\<dots> = 2*P - Suc BD" using BD by linarith
+    also have "\<dots> = 2*P - Suc (BD + r * P)" using 1 by simp
+    finally show ?thesis .
+  next
+    case 2
+    have "(P - Suc BD) + (Suc 0 - r) * P = P - Suc BD" using 2 by simp
+    also have "\<dots> = 2*P - Suc (BD + P)" using BD by linarith
+    also have "\<dots> = 2*P - Suc (BD + r * P)" using 2 by simp
+    finally show ?thesis .
+  qed
+qed
+
+text \<open>Complement under reversal: reversing the \<open>N\<close>-bit complement of \<open>a\<close> gives the
+  complement of the reversal.\<close>
+lemma brv_compl:
+  "a < 2^N \<Longrightarrow> brv N (2^N - Suc a) = 2^N - Suc (brv N a)"
+proof (induction N arbitrary: a)
+  case 0 thus ?case by simp
+next
+  case (Suc N)
+  from Suc.prems have a2: "a < 2 * 2^N" by simp
+  have ad: "a div 2 < 2^N" using a2 by simp
+  have br: "brv N (a div 2) < 2^N" by (rule brv_lt)
+  have brc: "brv N (2^N - Suc (a div 2)) = 2^N - Suc (brv N (a div 2))"
+    by (rule Suc.IH[OF ad])
+  have admod: "a = 2 * (a div 2) + a mod 2" by simp
+  have r2: "a mod 2 < 2" by simp
+  have pN: "(2::nat)^Suc N = 2 * 2^N" by simp
+  have Rcase: "(Suc 0 - a mod 2) = 0 \<or> (Suc 0 - a mod 2) = 1" using r2 by auto
+  have key: "2^Suc N - Suc a = 2 * (2^N - Suc (a div 2)) + (Suc 0 - a mod 2)"
+    using a2 ad admod r2 pN by linarith
+  have "brv (Suc N) (2^Suc N - Suc a)
+      = brv (Suc N) (2 * (2^N - Suc (a div 2)) + (Suc 0 - a mod 2))"
+    by (simp only: key)
+  also have "\<dots> = brv N (2^N - Suc (a div 2)) + (Suc 0 - a mod 2) * 2^N"
+    by (rule brv_Suc_split[OF Rcase])
+  also have "\<dots> = (2^N - Suc (brv N (a div 2))) + (Suc 0 - a mod 2) * 2^N"
+    by (simp only: brc)
+  also have "\<dots> = 2*2^N - Suc (brv N (a div 2) + a mod 2 * 2^N)"
+    by (rule compl_arith[OF br r2])
+  also have "\<dots> = 2^Suc N - Suc (brv (Suc N) a)" by simp
+  finally show ?case .
+qed
+
+text \<open>Closing nat identity for \<open>gz_brv\<close> (treat \<open>B * 2^t\<close> as one atom).\<close>
+lemma gz_arith:
+  fixes B :: nat
+  assumes B: "B < 2^(7-t)" and t: "t < 8"
+  shows "2^t + (2^(7-t) - Suc B) * 2^(t+1) = 256 - (2*B+1)*2^t"
+proof -
+  have e: "(7-t)+t = 7" using t by linarith
+  have pk: "(2::nat)^(7-t) * 2^t = 128" by (simp add: power_add[symmetric] e)
+  have tt: "(2::nat)^(t+1) = 2 * 2^t" by simp
+  have p2: "(2::nat)^(7-t) * 2^(t+1) = 256" using pk tt by (simp add: ac_simps)
+  have b1: "Suc B \<le> 2^(7-t)" using B by simp
+  have expand: "(2^(7-t) - Suc B) * 2^(t+1) = 256 - Suc B * 2^(t+1)"
+  proof -
+    have "(2^(7-t) - Suc B) * 2^(t+1) = 2^(7-t)*2^(t+1) - Suc B*2^(t+1)"
+      by (rule diff_mult_distrib)
+    also have "\<dots> = 256 - Suc B*2^(t+1)" by (simp only: p2)
+    finally show ?thesis .
+  qed
+  have le: "Suc B * 2^(t+1) \<le> 256"
+  proof -
+    have "Suc B * 2^(t+1) \<le> 2^(7-t) * 2^(t+1)" using b1 by (rule mult_le_mono1)
+    also have "\<dots> = 256" by (rule p2)
+    finally show ?thesis .
+  qed
+  have x1: "Suc B * 2^(t+1) = 2*(B*2^t) + 2*2^t" by (simp add: tt algebra_simps)
+  have x2: "(2*B+1)*2^t = 2*(B*2^t) + 2^t" by (simp add: algebra_simps)
+  have le': "2*(B*2^t) + 2*2^t \<le> 256" using le[unfolded x1] .
+  have "2^t + (2^(7-t) - Suc B) * 2^(t+1) = 2^t + (256 - Suc B * 2^(t+1))"
+    by (simp only: expand)
+  also have "\<dots> = 256 - (2*B+1)*2^t" unfolding x1 x2 using le' by linarith
+  finally show ?thesis .
+qed
+
+text \<open>The GS twiddle closed form: \<open>brv\<^sub>8(2^(8-t)-1-hi)\<close> for \<open>hi < 2^(7-t)\<close>.
+  This is the inverse analog of the forward \<open>z_closed\<close>.\<close>
+lemma gz_brv:
+  assumes t: "t < 8" and hi: "hi < 2^(7-t)"
+  shows "brv 8 (2^(8-t) - Suc hi) = 256 - (2 * brv (7-t) hi + 1) * 2^t"
+proof -
+  have s: "7 - t < 8" using t by simp
+  have a': "2^(7-t) - Suc hi < 2^(7-t)" using hi by simp
+  have split: "2^(8-t) - Suc hi = 2^(7-t) + (2^(7-t) - Suc hi)"
+  proof -
+    have e8: "8 - t = Suc (7 - t)" using t by linarith
+    have "(2::nat)^(8-t) = 2^(7-t) + 2^(7-t)" by (simp add: e8 mult_2)
+    thus ?thesis using hi by simp
+  qed
+  have pa: "brv 8 (2^(7-t) + (2^(7-t) - Suc hi))
+          = 2^(7-(7-t)) + brv (7-t) (2^(7-t) - Suc hi) * 2^(8-(7-t))"
+    by (rule brv8_pow_add[OF s a'])
+  have e1: "7 - (7 - t) = t" using t by simp
+  have e2: "8 - (7 - t) = t + 1" using t by simp
+  have bc: "brv (7-t) (2^(7-t) - Suc hi) = 2^(7-t) - Suc (brv (7-t) hi)"
+    by (rule brv_compl[OF hi])
+  have brlt: "brv (7-t) hi < 2^(7-t)" by (rule brv_lt)
+  have "brv 8 (2^(8-t) - Suc hi)
+      = 2^t + (2^(7-t) - Suc (brv (7-t) hi)) * 2^(t+1)"
+    by (simp only: split pa e1 e2 bc)
+  also have "\<dots> = 256 - (2 * brv (7-t) hi + 1) * 2^t"
+    by (rule gz_arith[OF brlt t])
+  finally show ?thesis .
+qed
+
 end
 
 text \<open>REMAINING (route A, self-contained closed form). DONE above (tool-verified): the GS schedule
