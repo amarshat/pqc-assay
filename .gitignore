@@ -44,3 +44,6 @@ implementations/**/proof/**/_*.saw
 /.kiro/
 /build/
 /skills-lock.json
+
+# Local throwaway Isabelle scratch sessions (fast-iteration heaps), never committed.
+/scratchpad/
