@@ -17,13 +17,14 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify target-identity bitcode saw isabelle tier2 lift-check mutation-test writeup clean
+.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv lift-check mutation-test writeup clean
 
 all: verify
 
 ## Full pipeline: target bytes pinned (target-identity) → lift in sync (lift-check) → C ≡ Cryptol
-## (SAW) → reduce.c model ≡ FIPS spec (Isabelle) → forward-NTT model ≡ FIPS-204 transform (Isabelle, Tier2)
-verify: target-identity lift-check saw isabelle tier2
+## (SAW) → reduce.c model ≡ FIPS spec (Isabelle) → forward-NTT model ≡ FIPS-204 transform (Isabelle,
+## Tier2) → inverse-NTT model ≡ FIPS-204 inverse transform (Isabelle, Tier2_InvWork)
+verify: target-identity lift-check saw isabelle tier2 tier2-inv
 	@echo "✔ pipeline complete — all checked steps passed"
 
 ## Integrity gate: the vendored C under proof is byte-for-byte the pinned snapshot.
@@ -59,6 +60,13 @@ isabelle:
 tier2:
 	@echo ">> Isabelle (Tier2): forward NTT ≡ FIPS-204 transform + montgomery-model bridge"
 	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -v Tier2
+
+## Tier2_InvWork Isabelle session: lifted inverse NTT ≡ FIPS-204 inverse negacyclic transform
+## (inv_ntt_correct) plus the model bridge (invntt_bridge) tying the SAW-checked montgomery invntt
+## to it, montgomery-scaled by mont/256. Child of Tier2 (reuses the forward chain + Assay heap).
+tier2-inv:
+	@echo ">> Isabelle (Tier2_InvWork): inverse NTT ≡ FIPS-204 inverse transform + montgomery-model bridge"
+	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -v Tier2_InvWork
 
 ## Build the technical writeup (placeholder — wire up your renderer of choice)
 writeup:
