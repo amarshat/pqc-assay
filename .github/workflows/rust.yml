@@ -71,6 +71,14 @@ jobs:
           .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/escape2_core.saw
           .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/barrett_bridge_evidence.saw
 
+      - name: Prove escape-2 lift spikes — endgame + wide Barrett bridge modulo 9 bvToInt homs (SAW)
+        # Reduces the wide-Barrett admit from the whole barrett_reduce function to nine named
+        # bvToInt homomorphisms (spike2_lift). Demonstration only; field_ops_bridged.saw below
+        # still carries the whole-function admit until these are de-admitted (Route X/Y).
+        run: |
+          .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/spike1_endgame.saw
+          .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/spike2_lift.saw
+
       - name: Prove Elem neg/add/sub/mul == mod q (NTT field core; wide-Barrett spec ASSUMED — see docs/ASSUMPTIONS.md)
         run: .tools/bin/saw implementations/rustcrypto-ml-dsa/proof/ntt/field_ops_bridged.saw
 

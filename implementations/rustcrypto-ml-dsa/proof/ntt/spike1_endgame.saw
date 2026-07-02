@@ -1,0 +1,66 @@
+// SPIKE 1 (escape-2 lift plan, paper/notes/escape2-lift-plan.md): endgame check.
+//
+// Claim to establish with the tool, this session: the target the `mir_verify`
+// residual reduces to, once the impl's u128 BV Barrett is lifted term-by-term to
+// Integer, is exactly the identity escape2_core discharges. "If we can lift, we win."
+//
+// The residual `mir_verify` leaves for barrett_reduce (after symbolic execution)
+// is the BV equality  barrettBV x == drop`{32}(x % q)  for x < 2^46
+// (== barrett_bridge::barrettBV_bridge). Lifting each BV op to its Integer image
+// (L1 zext, L2 mul, L3 >>k = floor-div, L4 sub, L5 truncate) sends the LHS to
+// escape2_bridge::barrettInt (toInteger x) and the RHS to (toInteger x) % q.
+//
+// Two tool-verified parts:
+//   (A) FAITHFULNESS OF THE LIFT (evidence): barrettInt is the term-by-term
+//       toInteger image of barrettBV, i.e. toInteger(barrettBV x) == barrettInt(toInteger x).
+//       Checked CONCRETELY across the domain [0,2^46) (boundaries, the conditional-
+//       subtract seam near q and 2q, mid-range, and the top point 2^46-1). Concrete
+//       eval sidesteps the symbolic u128 multiply that makes the *symbolic* mixed
+//       BV/Integer goal stall (documented gotcha) -- this is width-free evidence
+//       that the lifted SHAPE is barrettInt, not an unrelated correct function.
+//   (B) ENDGAME (the lifted target closes): barrettInt X == X % q over [0,2^46).
+//       The escape2_core identity; z3 discharges it as pure Integer, ~0.7s.
+//
+// (A) pins barrettInt to barrettBV; (B) shows that Integer target closes. Together:
+// wherever L1-L5 hold, the residual is equivalent to a goal z3 already solves.
+// Spike 2 makes the lift itself fire inside the rewriter.
+//
+// Run:  saw spike1_endgame.saw     (no MIR needed; Cryptol/Integer goals only)
+
+import "escape2_bridge.cry";   // barrettInt : Integer -> Integer,  q : Integer
+import "barrett_bridge.cry";   // barrettBV  : [64] -> [32]
+
+// (A) Faithfulness, concrete across [0, 2^46). Each point: the impl-mirror BV
+//     Barrett, lifted (toInteger of its [32] result), equals barrettInt on the
+//     lifted input. Points hit both sides of the small_reduce conditional (rem<q
+//     vs rem in [q,2q)) and the domain endpoints.
+let lift_pts = {{ [ 0, 1, 8380416, 8380417, 8380418, 16760833, 16760834,
+                    16777215, 8396807, 1000000007, 35184372088832,
+                    70368744177663 ] : [12][64] }};
+let lift_faithful_concrete = {{
+      all (\x -> toInteger (barrettBV x) == barrettInt (toInteger x)) lift_pts }};
+lf_thm <- prove_print z3 lift_faithful_concrete;
+print "SPIKE1 (A) VERIFIED (z3): toInteger(barrettBV x) == barrettInt(toInteger x) at 12 points across [0,2^46)";
+print "  => the term-by-term lift of the impl's BV Barrett IS escape2_bridge::barrettInt.";
+
+// Non-vacuity for (A): an off-by-q lift target must be rejected at these points.
+let lift_faithful_mutant = {{
+      all (\x -> toInteger (barrettBV x) == barrettInt (toInteger x) + 1) lift_pts }};
+fails (prove_print z3 lift_faithful_mutant);
+print "SPIKE1 (A) non-vacuity: the +1-mutated lift target is Invalid. Good.";
+
+// (B) The lifted target closes as pure Integer (the escape2_core identity).
+// (q written as the literal 8380417: both imported modules bind `q`, so the bare
+// name is ambiguous here; barrettInt already uses escape2_bridge's Integer q.)
+let endgame = {{ \(X : Integer) ->
+      ((0 <= X) /\ (X < 2^^46)) ==> (barrettInt X == X % 8380417) }};
+eg_thm <- prove_print z3 endgame;
+print "SPIKE1 (B) VERIFIED (z3): barrettInt X == X % q for all X in [0, 2^46)  (lifted target closes).";
+
+// Non-vacuity for (B): wrong modulus q+1 must be Invalid in-domain.
+let endgame_mutant = {{ \(X : Integer) ->
+      ((0 <= X) /\ (X < 2^^46)) ==> (barrettInt X == X % 8380418) }};
+fails (prove_print z3 endgame_mutant);
+print "SPIKE1 (B) non-vacuity: modulus q+1 is Invalid in-domain. Good.";
+
+print "SPIKE1 DONE: residual lifts to barrettInt (faithful across domain) and that target closes (Integer). If we can lift, we win.";

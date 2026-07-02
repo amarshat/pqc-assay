@@ -116,11 +116,25 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   - EARNED (z3): `proof/ntt/barrett_bridge_evidence.saw` proves the **exact bit-vector mirror** of
     the impl arithmetic (`barrett_bridge.cry::barrettBV`) equals `x % q` for `x < 2^24` — i.e. the
     model used to reason about the impl is correct at tractable width.
-  - ADMITTED (the irreducible gap): the BV↔bounded-Integer lift at width ~66+ (product `< 2^69`).
+  - ADMITTED (the gap): the BV↔bounded-Integer lift at width ~66+ (product `< 2^69`).
     SAW has no native tactic for it; hand-built bridge lemmas themselves cliff at W=64, and the
     direct `mir_verify` residual (`impl == barrettBV`) bit-blasts the wide multiply + `>>46` —
     z3 ran **3h15m without converging** (measured 2026-06-17). This is saw-script discussion #3306,
     confirmed by SAW maintainer RyanGlScott: SMT tools "fundamentally struggle with" Barrett.
+  - REDUCED (2026-07-02, `proof/ntt/spike2_lift.saw`, saw exit 0): the admitted gap above is
+    demonstrated equivalent to **nine standard bvToInt homomorphisms**, not the whole function.
+    `spike2_lift.saw` proves `barrettBV x == x mod q for x < 2^46` with the *only* admitted content
+    being `toInteger` pushed through zext, `*`, `>>k`, `-`, truncate (each in unconditional
+    `mod 2^n` form), plus `smallReduce`, `urem`-by-q, and the `==`/`<` reflections. The lifted
+    Integer core is EARNED (cvc5; z3 stalls on the nested `mod 2^128`); the bridge then closes by
+    specializing that core onto the goal (`goal_insert_and_specialize`) and modus ponens (z3). Each
+    homomorphism is witnessed true in-file (z3 at small width; quickcheck-500 at full width for the
+    nonlinear multiply/urem/smallReduce, which cliff for eager SMT — hence admitted). Companion
+    `proof/ntt/spike1_endgame.saw` (saw exit 0) confirms the residual's lifted target is exactly the
+    escape2_core identity. This is a demonstration of the reduced trust base; it is NOT yet wired
+    into `field_ops_bridged.saw`, which still carries the whole-function admit above. De-admitting
+    the nine (Route X: a SAWCore `bvToInt`-lifting tactic / Prelude lemmas; Route Y: Isabelle
+    `Word_Lib` `unat`/`uint` lemmas) removes the assumption entirely.
   Soundness: the spec is true (math proved as Integer identity; BV model validated at width); only
   the width-lifting connecting the two is assumed. Same q = 8380417 (Dilithium) Barrett constants as
   the verified scalar `reduce` layer; the narrow `x < 2^28` BV form of this same goal also proves
