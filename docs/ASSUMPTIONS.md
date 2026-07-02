@@ -35,14 +35,21 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   `nttInvAllRef` ≡ the FIPS-204 inverse negacyclic DFT (`inv_ntt_correct`), composed into
   `invntt_bridge`: `bounded w ⟹ k<256 ⟹ 4294967296 · sint(invntt w ! k) ≡ sint(invf) · (∑ m<256.
   cf w m · ζ^(−(2·brv₈ m + 1)·k)) (mod q)` (`Tier2_InvWork` session, gated in `make verify` via
-  `tier2-inv`). Overflow-freedom is now proven too (`invntt_overflow_free`): given the input
-  precondition `|coeff| < Q` (`bounded w`, `B_0 = 8380416`), the eight Gentleman-Sande layers keep
-  coefficients within `2^8·B_0 = 2145386496 < 2^31` (so every unreduced int32 add `a[j]+a[j+len]` and
-  difference `a[j+len]−a[j]`, and every `montgomery_reduce` input, stays in range), and the final
-  scale reduces the output to `< Q`. ★ PRECONDITION (tight, unlike the forward): this holds only for
-  `|coeff| < Q`, because the Gentleman-Sande low leg is unreduced and DOUBLES the bound per level —
-  `256·(Q−1) = 2145386496` just fits int32, `256·Q` would not. That window matches the reduced
-  coefficients `invntt_tomont` is fed in ML-DSA (cf. the forward call-site reachability note). Still
+  `tier2-inv`). Overflow-freedom is now proven too (`invntt_overflow_free`) under the input predicate
+  `bounded w`. ★ CORRECTED PRECONDITION (2026-07-01, verified vs source): `bounded w` means every
+  coefficient's UNSIGNED 32-bit value is `< Q`, i.e. coefficients in `[0, Q)`, NON-NEGATIVE
+  (`spec/isabelle/tier2/work/CT_Routing.thy:20`: `uint_seq (w i) < 8380417`). This is NOT the symmetric
+  signed `|coeff| < Q`; an earlier version of this ledger wrongly equated the two. `B_0 = 8380416` is the
+  DERIVED output bound, not the input predicate. Under `bounded w`, the eight Gentleman-Sande layers keep
+  coefficients within `2^8*B_0 = 2145386496 < 2^31` (so every unreduced int32 add `a[j]+a[j+len]` and
+  difference `a[j+len]-a[j]`, and every `montgomery_reduce` input, stays in range), and the final scale
+  reduces the output to `< Q`. The window is tight (the Gentleman-Sande low leg is unreduced and doubles
+  the bound per level: `256*(Q-1) = 2145386496` just fits int32, `256*Q` would not). ★ SCOPE LIMITATION:
+  because the domain is `[0, Q)` non-negative, this result does NOT cover the SIGNED centered coefficients
+  `invntt_tomont` actually receives at the reference call site (`montgomery_reduce`/`reduce32` outputs are
+  centered and can be negative). Closing that gap needs a re-proof under a genuine signed `|coeff| < Q`
+  hypothesis (the montgomery bridge is built on non-negativity, so this is real work) or an honest
+  statement of the reduced scope. Open. Still
   argued (not mechanized), as for the forward: `-fwrapv` ⇒ no-signed-overflow-UB in the C.
 - Input range: the C documents the precondition `-2^31 * Q <= a <= Q * 2^31`. The SAW proof IS
   discharged under exactly this precondition (`mont_in_range` in the model); equivalence outside it
