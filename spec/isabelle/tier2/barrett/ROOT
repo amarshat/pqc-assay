@@ -1,0 +1,7 @@
+session Barrett = "Cryptol" +
+  options [document = false]
+  sessions
+    Word_Lib
+  theories
+    Barrett_Core
+    Barrett_Lift
