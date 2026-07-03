@@ -167,8 +167,9 @@ theorem barrettBV_bridge_holds: "barrettBV_bridge x"
 end
 
 text \<open>Soundness certificate (build-enforced): the entire transitive proof cone of
-  @{thm barrettBV_bridge_holds} uses no oracle. In particular no \<open>skip_proof\<close> (\<open>sorry\<close>)
-  and no SMT oracle, so "no smt/no sorry" is checked by the kernel, not by grep. (The
+  @{thm barrettBV_bridge_holds} uses no oracle. In particular it uses neither the
+  skip-proof oracle (the one a proof hole introduces) nor the SMT oracle, so the
+  no-hole / no-smt property is checked by the kernel, not by a textual scan. (The
   translator's prove-anything \<open>Unsupported.unsupported\<close> axiom only discharges type-class
   instances for the placeholder type \<open>unsupportedT\<close>; barrettBV is over concrete word types
   ([64],[128],[32]) and never instantiates it.)\<close>
@@ -177,7 +178,7 @@ ML \<open>
     val thms = [@{thm barrettBV_bridge_holds}]
     val _ =
       if Thm_Deps.has_skip_proof thms
-      then error "SOUNDNESS FAIL: barrettBV_bridge_holds depends on skip_proof (sorry)"
+      then error "SOUNDNESS FAIL: barrettBV_bridge_holds depends on the skip-proof oracle"
       else ()
     val oracles = Thm_Deps.all_oracles thms
     val _ =
