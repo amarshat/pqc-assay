@@ -13,6 +13,7 @@
   <img src="https://img.shields.io/badge/Isabelle-2025--2-9cf.svg" alt="Isabelle2025-2">
   <img src="https://img.shields.io/badge/SAW-1.5.1-orange.svg" alt="SAW 1.5.1">
   <img src="https://img.shields.io/badge/proofs-no%20sorry%20%7C%20no%20smt-success.svg" alt="no sorry, no smt">
+  <a href="https://doi.org/10.5281/zenodo.21178811"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.21178811.svg" alt="DOI"></a>
 </p>
 
 Machine-checking post-quantum reference C against its specification, using the
