@@ -72,7 +72,9 @@ tier2-inv:
 ## proven in Isabelle Word_Lib (barrettBV_bridge_holds). Mechanizes the escape-2 wide-Barrett
 ## admit end to end (replaces the nine bvToInt homomorphisms admitted in the SAW spike).
 barrett:
-	@echo ">> Isabelle (Barrett): lifted BV Barrett model ≡ x mod q (Route Y, no admit)"
+	@echo ">> barrett lift-check: Barrett_Lift.thy == cryptol-to-isabelle(barrett_bridge.cry)"
+	./scripts/lift_check_barrett.sh
+	@echo ">> Isabelle (Barrett): lifted BV Barrett model ≡ x mod q (Route Y, no smt/oracle)"
 	$(ISABELLE) build -d spec/isabelle/tier2/barrett -v Barrett
 
 ## Build the technical writeup (placeholder — wire up your renderer of choice)

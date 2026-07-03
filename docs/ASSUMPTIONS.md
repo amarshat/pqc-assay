@@ -136,27 +136,44 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
     the nine (Route X: a SAWCore `bvToInt`-lifting tactic / Prelude lemmas; Route Y: Isabelle
     `Word_Lib` `unat`/`uint` lemmas) removes the assumption entirely.
   - MECHANIZED (2026-07-03, Route Y, Isabelle `Word_Lib`, `make barrett` / session `Barrett` exit 0):
-    the nine bvToInt homomorphisms are no longer admitted anywhere in the lift. Theorem
-    `spec/isabelle/tier2/barrett/Barrett_Bridge.thy::barrettBV_bridge_holds` proves `barrettBV_bridge x`,
-    i.e. for `x < 2^46` the cryptol-to-isabelle lift of the impl mirror `barrettBV x` equals
-    `drop`{96} ((zext x) % q)` (`x mod q` truncated to 32 bits), with **no sorry/oops/admit and no smt**.
-    The proof pushes `uint` through each word op onto the integer core: `ucast`/zext via `uint_up_ucast`,
-    the two multiplies via `uint_word_ariths` (no overflow, product `< 2^69 < 2^128`), `>> 46` via
-    `uint_shiftr_eq`, the subtract via `uint_sub_lem` (no underflow, `quot*q \<le> x`), truncate via
-    `unsigned_ucast_eq`/`unsigned_take_bit_eq` (remainder `< 2q < 2^32`), `urem` via `uint_mod_distrib`,
-    and the `==`/`<`/`\<le>` reflections via `word_uint_eq_iff`/`word_less_def`/`word_le_def`. It closes on
-    the exported `Barrett_Core` facts `barrett_core` (the escape2_core integer identity, proven earlier
-    without smt) and `barrett_core_bounds` (`quot*q \<le> x` and `x - quot*q < 8429562 < 2q`). Wired into
-    `make verify` (target `barrett`) and CI (`verify.yml` runs `make verify`).
-    Scope note: this mechanizes the width-lifting math as a standalone Isabelle theorem over the same
-    `barrettBV` model SAW uses. It is NOT a mechanical substitution into `field_ops_bridged.saw`, which
-    still literally carries the whole-function `mir_unsafe_assume_spec`. The gap that remains in the SAW
-    leg is the model-to-SAW plumbing (assume-spec discharge), not the Barrett math.
-  Soundness: the spec is true — the Integer identity is proven, the BV model is validated at width, and
-  as of 2026-07-03 the BV↔Integer width-lift itself is mechanized in Isabelle (Route Y, above); the only
-  residue is wiring that mechanized lift back into the SAW assume-spec. Same q = 8380417 (Dilithium)
-  Barrett constants as the verified scalar `reduce` layer; the narrow `x < 2^28` BV form of this same
-  goal also proves directly in SAW (4.2s).
+    the nine bvToInt homomorphisms are de-admitted **as a word-model identity**. Theorem
+    `spec/isabelle/tier2/barrett/Barrett_Bridge.thy::barrettBV_bridge_holds` proves `barrettBV_bridge x`:
+    for `x < 2^46`, `barrettBV x` (the lifted BV Barrett model) equals `drop`{96} ((zext x) % q)`
+    (`x mod q` truncated to 32 bits), with **no sorry/oops/admit and no smt**. The proof pushes `uint`
+    through each word op onto the integer core: `ucast`/zext via `uint_up_ucast`, the two multiplies via
+    `uint_word_ariths` (no overflow, product `< 2^69 < 2^128`), `>> 46` via `uint_shiftr_eq`, the subtract
+    via `uint_sub_lem` (no underflow, `quot*q \<le> x`), truncate via `unsigned_ucast_eq`/`unsigned_take_bit_eq`
+    (remainder `< 2q < 2^32`), `urem` via `uint_mod_distrib`, and the `==`/`<`/`\<le>` reflections via
+    `word_uint_eq_iff`/`word_less_def`/`word_le_def`. It closes on the exported `Barrett_Core` facts
+    `barrett_core` (the escape2_core integer identity) and `barrett_core_bounds`. Kernel-checked soundness:
+    an `ML` block in `Barrett_Bridge.thy` runs `Thm_Deps.has_skip_proof`/`Thm_Deps.all_oracles` on the
+    theorem and fails the build if the transitive cone uses ANY oracle, so "no smt / no sorry" is checked
+    by the Isabelle kernel, not by grep. The lifted model is tool-gated: `scripts/lift_check_barrett.sh`
+    (in `make barrett`) requires `Barrett_Lift.thy` to be byte-identical to
+    `cryptol-to-isabelle(barrett_bridge.cry)` modulo the theory-name rename, so `barrettBV` here is the
+    lift of the same `.cry` SAW reasons about, not a hand-transcription. Wired into `make verify` and CI.
+    HONEST SCOPE (what this does NOT do): Route Y closes only the arrow `barrettBV == x mod q`. It does
+    **not** remove the admit in `field_ops_bridged.saw`, which still `mir_unsafe_assume_spec`s
+    `barrett_reduce == x mod q` wholesale. The link that stays open and un-mechanized is the structural
+    equivalence `MIR barrett_reduce == barrettBV` at full width (~66+ bits) — the one bare SMT stalls on
+    (z3 3h15m, saw-script #3306). Route Y does not touch that link. Closing the pipeline admit would need
+    `MIR == barrettBV` proven (still SMT-hard), then chained with Route Y. So the mechanized Isabelle
+    lemma and the assumed SAW obligation do not yet meet in one `make` target; `barrettBV` faithfulness to
+    the MIR is by inspection (`barrett_bridge.cry`) plus width-`<2^24` SAW evidence, not a full-width proof.
+    Not claimed: "first/novel verification of Barrett" (libcrux/hax verify ML-DSA `barrett_reduce` on
+    deployed Rust; CryptoLine/Jazzline verify Kyber/Dilithium Barrett+NTT via algebra + range-SMT), nor
+    "SMT fundamentally cannot verify Barrett, our lift can" (combining algebra with range reasoning to
+    avoid bit-blasting is the standard move in this subfield). The defensible contribution is the specific
+    combination: a reproducible, kernel-checked, deliberately-honest audit of an *unmodified third-party*
+    RustCrypto ML-DSA impl via MIR-level SAW + an Isabelle math proof, explicit about the single remaining
+    admit and why eager SMT stalls on it.
+  Soundness: the escape-2 spec is true — the Integer identity is proven, the BV model is validated at
+  width `<2^24`, and (2026-07-03) the BV↔Integer width-lift `barrettBV == x mod q` is mechanized in
+  Isabelle with no smt/oracle (Route Y). What remains assumed in the deployed-code chain is
+  `MIR barrett_reduce == barrettBV` at full width (the SMT-hard structural step), so the end-to-end
+  obligation for `barrett_reduce` is still an admit, now backed by a proven `barrettBV == x mod q` rather
+  than resting on it alone. Same q = 8380417 (Dilithium) Barrett constants as the verified scalar `reduce`
+  layer; the narrow `x < 2^28` BV form of this same goal also proves directly in SAW (4.2s).
 - **NTT layer proofs treat the field ops as uninterpreted routing symbols (2026-06-18).**
   `proof/ntt/layer_ntt_fwd.saw` / `layer_ntt_inv.saw` prove all 8 forward (`ntt_layer`) and 8 inverse
   (`ntt_inverse_layer`) layers equal to the FIPS 204 Alg 41/42 butterfly bodies. To make the goal

@@ -1,20 +1,28 @@
 enable_experimental;
 // module_lattice Elem<BaseField> field arithmetic == arithmetic mod q,
-// WITH the escape-2 admit-bridge that lands barrett_reduce == x mod q at the
-// full product domain x < 2^46 (the step bare SMT cannot reach -- saw-script
-// #3306; see HANDOFF.md). This is the Path-1 build from the path fork.
+// WITH the escape-2 admit: this file ASSUMES barrett_reduce(x) == x mod q at the
+// full product domain x < 2^46 via mir_unsafe_assume_spec (br_ov, below). This is
+// the Path-1 build from the path fork.
 //
-// Trust decomposition (auditable; recorded in docs/ASSUMPTIONS.md):
-//   EARNED (z3, this session):
-//     - escape2_core.saw : barrettInt X == X % q for all X in [0,2^46)  (Integer)
-//     - barrett_bridge_evidence.saw : barrettBV x == x % q for x < 2^24  (BV, model is correct)
-//     - the structural step below : impl barrett_reduce == barrettBV (BV == BV)
-//   ADMITTED (full-width BV<->Integer bridge, ECDSA assume_rule precedent):
-//     - bridge_rule : drop(x % q) == barrettBV x   for x < 2^46
-//   Justification for the admit: barrettBV mirrors the impl arithmetic exactly,
-//   its == x%q is proved at width <2^24 and as an unbounded Integer identity
-//   (escape-2 core). The only un-mechanized link is BV<->bounded-Integer at
-//   width ~66+, which SAW lacks a native tactic for (bridge lemmas cliff at W=64).
+// Trust decomposition (auditable; recorded in docs/ASSUMPTIONS.md). Be precise about
+// what THIS file does vs what is mechanized elsewhere:
+//   WHAT THIS FILE DOES:
+//     - ASSUME (mir_unsafe_assume_spec, br_ov): impl barrett_reduce == x mod q for x < 2^46.
+//       This is the whole-function admit. Nothing in this file proves it.
+//   MECHANIZED ELSEWHERE (supporting evidence, NOT wired into br_ov):
+//     - escape2_core.saw (z3): barrettInt X == X % q for all X in [0,2^46)  (Integer identity)
+//     - barrett_bridge_evidence.saw (z3): barrettBV x == x % q for x < 2^24  (BV model, small width)
+//     - Route Y, Isabelle `Barrett` session (no smt, no oracle -- kernel-checked):
+//         barrettBV x == x mod q for x < 2^46, over the tool-lifted barrettBV
+//         (Barrett_Lift.thy == cryptol-to-isabelle(barrett_bridge.cry), gated by
+//          scripts/lift_check_barrett.sh). This de-admits the earlier "nine bvToInt
+//          homomorphisms" spike (spike2_lift.saw), but is a statement about barrettBV.
+//   STILL UN-MECHANIZED (the reason br_ov stays an assume):
+//     - the structural equivalence  MIR barrett_reduce == barrettBV  at full width (~66+ bits):
+//       bare SMT stalls on it (z3 ran 3h15m without converging; saw-script #3306). Route Y does
+//       NOT address this link. Closing the admit would need MIR==barrettBV proven, then chained
+//       with Route Y's barrettBV==x mod q. barrettBV mirrors the impl arithmetic by inspection
+//       (barrett_bridge.cry) and matches it at width < 2^24 (barrett_bridge_evidence.saw).
 //
 //   neg(a)   = (q - a) mod q
 //   add(a,b) = (a + b) mod q
