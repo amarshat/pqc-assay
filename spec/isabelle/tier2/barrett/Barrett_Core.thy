@@ -8,6 +8,45 @@ text \<open>The Barrett integer identity (escape2_core analog), proved without s
   facts: M*q = S - 49145 (so M*q < S, and S - M*q < q), which bounds the Barrett
   approximation error to one q.\<close>
 
+text \<open>Barrett approximation bounds (the intermediate facts inside \<open>barrett_core\<close>,
+  exported for the word-level bridge): the floor-quotient \<open>Q\<close> under-approximates so
+  \<open>Q*q \<le> X\<close> (subtraction never underflows) and the remainder \<open>X - Q*q < 8429562 < 2q\<close>
+  (fits in 32 bits). Same derivation as \<open>barrett_core\<close>; M*q = S - 49145 caps the error.\<close>
+lemma barrett_core_bounds:
+  fixes X :: int
+  assumes x0: "0 \<le> X" and xhi: "X < 70368744177664"
+  shows "((X * 8396807) div 70368744177664) * 8380417 \<le> X
+       \<and> X < ((X * 8396807) div 70368744177664) * 8380417 + 8429562"
+proof -
+  define Q where "Q = (X * 8396807) div 70368744177664"
+  have dm: "Q * 70368744177664 + (X * 8396807) mod 70368744177664 = X * 8396807"
+    unfolding Q_def by simp
+  have mlo: "0 \<le> (X * 8396807) mod 70368744177664" using x0 by simp
+  have mhi: "(X * 8396807) mod 70368744177664 < 70368744177664" by simp
+  have QSle: "Q * 70368744177664 \<le> X * 8396807" using dm mlo by linarith
+  have QSgt: "X * 8396807 < Q * 70368744177664 + 70368744177664" using dm mhi by linarith
+  have MQ: "(8396807::int) * 8380417 = 70368744128519" by simp
+  have l1: "Q * 70368744177664 * 8380417 \<le> X * 8396807 * 8380417"
+    using mult_right_mono[OF QSle, of 8380417] by simp
+  have l2: "X * 8396807 * 8380417 \<le> X * 70368744177664"
+    using x0 by (simp add: mult.assoc MQ mult_left_mono)
+  have l3: "(Q * 8380417) * 70368744177664 \<le> X * 70368744177664"
+    using l1 l2 by (simp add: mult.assoc mult.left_commute mult.commute)
+  have Rge: "Q * 8380417 \<le> X"
+    using l3 mult_right_le_imp_le[of "Q * 8380417" 70368744177664 X] by simp
+  have u1: "X * 8396807 * 8380417 < (Q * 70368744177664 + 70368744177664) * 8380417"
+    using mult_strict_right_mono[OF QSgt, of 8380417] by simp
+  have u2: "X * 70368744177664 - X * 49145 < (Q * 8380417) * 70368744177664 + 8380417 * 70368744177664"
+    using u1 by (simp add: mult.assoc MQ algebra_simps)
+  have u3: "X * 49145 < 70368744177664 * 49145"
+    using xhi x0 by simp
+  have u4: "X * 70368744177664 < (Q * 8380417 + 8429562) * 70368744177664"
+    using u2 u3 by (simp add: algebra_simps)
+  have Rlt: "X < Q * 8380417 + 8429562"
+    using u4 mult_right_less_imp_less[of X 70368744177664 "Q * 8380417 + 8429562"] by simp
+  from Rge Rlt show ?thesis unfolding Q_def by simp
+qed
+
 lemma barrett_core:
   fixes X :: int
   assumes x0: "0 \<le> X" and xhi: "X < 70368744177664"

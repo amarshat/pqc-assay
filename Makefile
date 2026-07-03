@@ -17,14 +17,14 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv lift-check mutation-test writeup clean
+.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett lift-check mutation-test writeup clean
 
 all: verify
 
 ## Full pipeline: target bytes pinned (target-identity) → lift in sync (lift-check) → C ≡ Cryptol
 ## (SAW) → reduce.c model ≡ FIPS spec (Isabelle) → forward-NTT model ≡ FIPS-204 transform (Isabelle,
 ## Tier2) → inverse-NTT model ≡ FIPS-204 inverse transform (Isabelle, Tier2_InvWork)
-verify: target-identity lift-check saw isabelle tier2 tier2-inv
+verify: target-identity lift-check saw isabelle tier2 tier2-inv barrett
 	@echo "✔ pipeline complete — all checked steps passed"
 
 ## Integrity gate: the vendored C under proof is byte-for-byte the pinned snapshot.
@@ -67,6 +67,13 @@ tier2:
 tier2-inv:
 	@echo ">> Isabelle (Tier2_InvWork): inverse NTT ≡ FIPS-204 inverse transform + montgomery-model bridge"
 	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -v Tier2_InvWork
+
+## Barrett Route Y session: the lifted BV Barrett model (barrettBV) == x mod q for x < 2^46,
+## proven in Isabelle Word_Lib (barrettBV_bridge_holds). Mechanizes the escape-2 wide-Barrett
+## admit end to end (replaces the nine bvToInt homomorphisms admitted in the SAW spike).
+barrett:
+	@echo ">> Isabelle (Barrett): lifted BV Barrett model ≡ x mod q (Route Y, no admit)"
+	$(ISABELLE) build -d spec/isabelle/tier2/barrett -v Barrett
 
 ## Build the technical writeup (placeholder — wire up your renderer of choice)
 writeup:

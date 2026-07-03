@@ -5,3 +5,4 @@ session Barrett = "Cryptol" +
   theories
     Barrett_Core
     Barrett_Lift
+    Barrett_Bridge
