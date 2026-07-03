@@ -155,9 +155,12 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
     HONEST SCOPE (what this does NOT do): Route Y closes only the arrow `barrettBV == x mod q`. It does
     **not** remove the admit in `field_ops_bridged.saw`, which still `mir_unsafe_assume_spec`s
     `barrett_reduce == x mod q` wholesale. The link that stays open and un-mechanized is the structural
-    equivalence `MIR barrett_reduce == barrettBV` at full width (~66+ bits) — the one bare SMT stalls on
-    (z3 3h15m, saw-script #3306). Route Y does not touch that link. Closing the pipeline admit would need
-    `MIR == barrettBV` proven (still SMT-hard), then chained with Route Y. So the mechanized Isabelle
+    equivalence `MIR barrett_reduce == barrettBV` at full width (~66+ bits) — the one bare SMT/SAT stalls
+    on (z3 3h15m on `== x mod q`, saw-script #3306; reconfirmed 2026-07-03, abc default SAT-sweep on
+    `== barrettBV` and z3 on `== brefMod` (urem-free carry-fold ref) both stall at 360s; no
+    multiplier-strong solver like bitwuzla in the pinned bundle). The wide 128-bit multiply in the miter
+    is the wall. Route Y does not touch that link. Closing the pipeline admit would need
+    `MIR == barrettBV` proven (still SAT-hard), then chained with Route Y. So the mechanized Isabelle
     lemma and the assumed SAW obligation do not yet meet in one `make` target; `barrettBV` faithfulness to
     the MIR is by inspection (`barrett_bridge.cry`) plus width-`<2^24` SAW evidence, not a full-width proof.
     Not claimed: "first/novel verification of Barrett" (libcrux/hax verify ML-DSA `barrett_reduce` on

@@ -19,10 +19,13 @@ enable_experimental;
 //          homomorphisms" spike (spike2_lift.saw), but is a statement about barrettBV.
 //   STILL UN-MECHANIZED (the reason br_ov stays an assume):
 //     - the structural equivalence  MIR barrett_reduce == barrettBV  at full width (~66+ bits):
-//       bare SMT stalls on it (z3 ran 3h15m without converging; saw-script #3306). Route Y does
-//       NOT address this link. Closing the admit would need MIR==barrettBV proven, then chained
-//       with Route Y's barrettBV==x mod q. barrettBV mirrors the impl arithmetic by inspection
-//       (barrett_bridge.cry) and matches it at width < 2^24 (barrett_bridge_evidence.saw).
+//       the miter's wide 128-bit multiply is the wall. bare SMT/SAT stalls: z3 on == x mod q ran
+//       3h15m without converging (saw-script #3306); reconfirmed 2026-07-03, abc (default SAT
+//       sweep) on == barrettBV and z3 on == brefMod (a urem-free carry-fold reference) BOTH stall
+//       at 360s. No multiplier-strong solver (bitwuzla/boolector) in the pinned bundle. Route Y
+//       does NOT address this link. Closing the admit would need MIR==barrettBV proven, then
+//       chained with Route Y's barrettBV==x mod q. barrettBV mirrors the impl arithmetic by
+//       inspection (barrett_bridge.cry) and matches it at width < 2^24 (barrett_bridge_evidence.saw).
 //
 //   neg(a)   = (q - a) mod q
 //   add(a,b) = (a + b) mod q
