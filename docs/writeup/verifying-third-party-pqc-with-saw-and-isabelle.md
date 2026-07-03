@@ -65,8 +65,9 @@ do one conditional subtract. The obligation is `barrett_reduce(x) == x mod q` fo
 
 That obligation does not go through as a bit-vector proof. The `u128` multiply by `M` puts a full
 128-bit multiplier in the SAT/SMT problem, and multiplier reasoning is where these solvers fall over.
-A direct `mir_verify` of `barrett_reduce == x mod q` with z3 ran 3h15m without converging (saw-script
-discussion #3306; the SAW maintainer confirmed SMT tools "fundamentally struggle with" Barrett).
+A direct `mir_verify` of `barrett_reduce == x mod q` with z3 ran 3h15m without converging. A SAW
+maintainer put it plainly on saw-script discussion #3306: "proving the implementation of Barrett
+reduction is one of those things that SMT-based tools like SAW fundamentally struggle with."
 Checking the equivalence against a bit-exact model instead of against `x mod q`, and against a
 `urem`-free carry-fold reference, does not help: abc's default SAT sweep on `barrett_reduce ==
 barrettBV` and z3 on `barrett_reduce == brefMod` both stalled at 360s. The pinned toolchain has no
@@ -117,23 +118,27 @@ bit-vector equivalence holding at width `< 2^24`, which SAW does prove. So the a
 a proven model identity instead of resting on that identity being taken on trust, but the field
 multiply's reduction is not verified end to end against the Rust.
 
-Being precise here matters, because the gap is the one recent critiques go after. "Verification
-theatre" (ePrint 2026/192) and the analysis of the hax pipeline at symbolic.software make the same
-point: a translation from source to a proof object is only as good as the guarantee that the proof
-object is the source. Here the two crossings, MIR to Cryptol and Cryptol to Isabelle, are handled
-differently and stated separately. The Cryptol-to-Isabelle crossing is gated by the lift-check. The
-MIR-to-Cryptol crossing is the open admit, named as such, with small-width evidence in place of a
-full-width proof.
+Being precise here matters, because the gap is what recent critiques go after. The verification-facade
+analysis of the hax pipeline (Kobeissi, ePrint 2026/670, and the symbolic.software post of 2026-04-07)
+argues that a source-to-proof-object translation is only as good as the guarantee that the proof object
+faithfully represents the source. The companion "Verification Theatre" paper (Kobeissi, ePrint 2026/192)
+makes the related point that a verified system has a boundary between machine-checked code and code
+trusted without proof, and that blurring it produces false assurance. Both apply here. The two
+crossings, MIR to Cryptol and Cryptol to Isabelle, are handled differently and stated separately: the
+Cryptol-to-Isabelle crossing is gated by the lift-check, and the MIR-to-Cryptol crossing is the open
+admit, named as such, with small-width evidence in place of a full-width proof.
 
 ### Positioning
 
 Barrett reduction has been verified before, and the split used here is not new. libcrux (Cryspen, via
-hax and F\*) verifies ML-DSA and ML-KEM field arithmetic, `barrett_reduce` included, on deployed Rust.
-CryptoLine and its Jazzline extension verify Kyber and Dilithium NTT arithmetic, Barrett and
-Montgomery, by combining algebraic reasoning with range-restricted SMT precisely to avoid bit-blasting
-the multiply. So the contribution is not a first proof of Barrett, and it is not that SMT cannot do
-the arithmetic while this method can; sidestepping the multiply with algebra plus range reasoning is
-the standard move in this subfield.
+hax and F\*) verifies ML-DSA and ML-KEM field arithmetic, `barrett_reduce` included, on the shipped
+Rust. CryptoLine verifies Kyber (ML-KEM) and Dilithium (ML-DSA) NTT arithmetic, Barrett and Montgomery
+reduction included, by discharging the nonlinear multiplies algebraically (as systems of polynomial
+equations) and the range and overflow conditions with SMT, which keeps the multiply out of the
+bit-blaster (Chiu et al., TCHES). The separate Jazzline work (CCS 2025) composes CryptoLine proofs into
+Jasmin and EasyCrypt developments, shown on the X-Wing KEM. So the contribution is not a first proof of
+Barrett, and it is not that SMT cannot do the arithmetic while this method can; sidestepping the
+multiply with algebra plus range reasoning is the standard move in this subfield.
 
 What is specific here is the combination and the honesty about its seam: a reproducible, kernel-checked
 audit of an unmodified third-party crate (RustCrypto `ml-dsa`, not written for verification) that
