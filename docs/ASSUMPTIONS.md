@@ -103,14 +103,27 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   case), checked exactly by Z3 over all u32. **Parameter-set scope:** 2*gamma2 = 190464 is the
   ML-DSA-44 value; ML-DSA-65/87 use 2*gamma2 = 523776, a distinct monomorphization not in this MIR
   and not claimed (q and 2^d are parameter-set-independent).
-- **Assumed wide-Barrett spec for the NTT field layer (escape-2 bridge, 2026-06-17).** The NTT
+- **Wide-Barrett spec for the NTT field layer (escape-2): CLOSED 2026-07-04.** The NTT
   butterflies multiply two field elements (`a,b < q < 2^23`) giving a product `< 2^46`, reduced by
   `module_lattice`/`ml_dsa`'s `barrett_reduce` (u64→u128 multiply by `8396807 = floor(2^46/q)`,
   `>> 46`, one conditional subtract). `proof/ntt/field_ops_bridged.saw` proves the `Elem` field core
-  (`neg/add/sub/mul == arithmetic mod q`, shared with ml-kem) by chaining `mul` on an **assumed**
-  spec for `barrett_reduce`: `barrett_reduce(x) == x mod q for all x < 2^46`, via
-  `mir_unsafe_assume_spec`. This is part of the trust base. Its content is decomposed and the math is
-  **mechanized in SAW this session** (not blind):
+  (`neg/add/sub/mul == arithmetic mod q`, shared with ml-kem) by chaining `mul` on a spec for
+  `barrett_reduce`: `barrett_reduce(x) == x mod q for all x < 2^46`, supplied via
+  `mir_unsafe_assume_spec` for speed. That spec is **no longer an admit**: it is proven directly on
+  the deployed MIR (see CLOSED bullet). The `mir_unsafe_assume_spec` stays in `field_ops_bridged.saw`
+  only so the fast field-op proofs don't each pay the ~23 min bitwuzla cost.
+  - **CLOSED (2026-07-04, SAW + bitwuzla, `proof/ntt/barrett_reduce_bitwuzla.saw`):**
+    `barrett_reduce(x) == x mod q for all x < 2^46` is a real `mir_verify` on the deployed RustCrypto
+    MIR, discharged by SAW's What4 **bitwuzla** backend (`w4_unint_bitwuzla`), pinned bitwuzla 0.9.1.
+    Tool-confirmed this session: mir_verify exit 0 in 1402s; the core BV goal (`escape2_barrett_bv.smt2`)
+    is `unsat` in 551s; non-vacuity holds (a `+1` spec is rejected in 596s, and the `Q+1` mutant flips
+    to `sat` instantly). This is the goal every eager bit-blaster stalls on (z3 3h15m without
+    converging, saw-script #3306; z3/cvc5/yices/abc all time out past `2^34`); bitwuzla's CEGAR
+    multiplier abstraction crosses it. Trust: bitwuzla is a trusted SMT oracle, the **same trust class**
+    as the z3/yices used throughout this SAW development, so this is not a new kind of assumption. For
+    an **oracle-free** proof of the same math, Route Y (below) stands as the complementary alternative.
+    Cost means it runs out of band, not in the fast CI leg. bitwuzla is pinned in `scripts/setup.sh`.
+    The bullets below record how the obligation was decomposed and narrowed before this direct closure.
   - EARNED (z3): `proof/ntt/escape2_core.saw` proves the Barrett identity `barrettInt X == X % q`
     over all `X ∈ [0, 2^46)` as an **unbounded-Integer** goal (the form that dodges bit-blasting).
   - EARNED (z3): `proof/ntt/barrett_bridge_evidence.saw` proves the **exact bit-vector mirror** of
@@ -152,31 +165,27 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
     (in `make barrett`) requires `Barrett_Lift.thy` to be byte-identical to
     `cryptol-to-isabelle(barrett_bridge.cry)` modulo the theory-name rename, so `barrettBV` here is the
     lift of the same `.cry` SAW reasons about, not a hand-transcription. Wired into `make verify` and CI.
-    HONEST SCOPE (what this does NOT do): Route Y closes only the arrow `barrettBV == x mod q`. It does
-    **not** remove the admit in `field_ops_bridged.saw`, which still `mir_unsafe_assume_spec`s
-    `barrett_reduce == x mod q` wholesale. The link that stays open and un-mechanized is the structural
-    equivalence `MIR barrett_reduce == barrettBV` at full width (~66+ bits) — the one bare SMT/SAT stalls
-    on (z3 3h15m on `== x mod q`, saw-script #3306; reconfirmed 2026-07-03, abc default SAT-sweep on
-    `== barrettBV` and z3 on `== brefMod` (urem-free carry-fold ref) both stall at 360s; no
-    multiplier-strong solver like bitwuzla in the pinned bundle). The wide 128-bit multiply in the miter
-    is the wall. Route Y does not touch that link. Closing the pipeline admit would need
-    `MIR == barrettBV` proven (still SAT-hard), then chained with Route Y. So the mechanized Isabelle
-    lemma and the assumed SAW obligation do not yet meet in one `make` target; `barrettBV` faithfulness to
-    the MIR is by inspection (`barrett_bridge.cry`) plus width-`<2^24` SAW evidence, not a full-width proof.
-    Not claimed: "first/novel verification of Barrett" (libcrux/hax verify ML-DSA `barrett_reduce` on
-    deployed Rust; CryptoLine/Jazzline verify Kyber/Dilithium Barrett+NTT via algebra + range-SMT), nor
-    "SMT fundamentally cannot verify Barrett, our lift can" (combining algebra with range reasoning to
-    avoid bit-blasting is the standard move in this subfield). The defensible contribution is the specific
-    combination: a reproducible, kernel-checked, deliberately-honest audit of an *unmodified third-party*
-    RustCrypto ML-DSA impl via MIR-level SAW + an Isabelle math proof, explicit about the single remaining
-    admit and why eager SMT stalls on it.
-  Soundness: the escape-2 spec is true — the Integer identity is proven, the BV model is validated at
-  width `<2^24`, and (2026-07-03) the BV↔Integer width-lift `barrettBV == x mod q` is mechanized in
-  Isabelle with no smt/oracle (Route Y). What remains assumed in the deployed-code chain is
-  `MIR barrett_reduce == barrettBV` at full width (the SMT-hard structural step), so the end-to-end
-  obligation for `barrett_reduce` is still an admit, now backed by a proven `barrettBV == x mod q` rather
-  than resting on it alone. Same q = 8380417 (Dilithium) Barrett constants as the verified scalar `reduce`
-  layer; the narrow `x < 2^28` BV form of this same goal also proves directly in SAW (4.2s).
+    ROLE AFTER THE 2026-07-04 CLOSURE: Route Y proves the arrow `barrettBV == x mod q` with **no oracle**
+    (kernel-checked). It is no longer the only route past the admit: the CLOSED bullet above proves the
+    deployed `barrett_reduce == x mod q` directly on the MIR via bitwuzla. The two are complementary on a
+    trust spectrum: bitwuzla discharges the deployed goal directly but trusts the solver; Route Y proves
+    the word-model identity with no trusted solver, for higher assurance. The earlier belief that closing
+    the admit required proving the SAT-hard `MIR == barrettBV` miter turned out to be unnecessary,
+    bitwuzla proves `MIR == x mod q` directly. Not claimed: "first/novel verification of Barrett"
+    (libcrux/hax verify ML-DSA `barrett_reduce` on deployed Rust; CryptoLine/Jazzline verify
+    Kyber/Dilithium Barrett+NTT via algebra + range-SMT), nor "SMT fundamentally cannot verify Barrett"
+    (the boundary is precisely eager bit-blasting vs abstraction-refinement, now measured: z3/cvc5/yices/abc
+    stall, bitwuzla crosses it). The defensible contribution is the specific combination: a reproducible,
+    deliberately-honest audit of an *unmodified third-party* RustCrypto ML-DSA impl via MIR-level SAW, with
+    the one hard obligation both discharged by a multiplier-strong solver and given an oracle-free Isabelle
+    proof, and the eager-vs-abstraction boundary characterized with numbers.
+  Soundness: the escape-2 spec `barrett_reduce == x mod q` (x < 2^46) is now a proven `mir_verify` on the
+  deployed MIR (SAW + bitwuzla, non-vacuity checked), same solver-trust class as the rest of the SAW leg,
+  with an oracle-free Isabelle proof of the same identity as the complementary high-assurance route. The
+  `mir_unsafe_assume_spec` in `field_ops_bridged.saw` is kept only for speed and is discharged by
+  `barrett_reduce_bitwuzla.saw`. Same q = 8380417 (Dilithium) Barrett constants as the verified scalar
+  `reduce` layer; the narrow `x < 2^28` BV form also proves directly in SAW (4.2s), and the full `x < 2^46`
+  form now proves via bitwuzla (~23 min).
 - **NTT layer proofs treat the field ops as uninterpreted routing symbols (2026-06-18).**
   `proof/ntt/layer_ntt_fwd.saw` / `layer_ntt_inv.saw` prove all 8 forward (`ntt_layer`) and 8 inverse
   (`ntt_inverse_layer`) layers equal to the FIPS 204 Alg 41/42 butterfly bodies. To make the goal

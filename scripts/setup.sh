@@ -27,6 +27,13 @@ ISABELLE_VERSION="2025-2"                        # Isabelle2025-2 (Jan 2026)
 ISA_ASSET="Isabelle${ISABELLE_VERSION}_macos.tar.gz"
 ISA_URL="https://isabelle.in.tum.de/dist/${ISA_ASSET}"
 
+# Bitwuzla: the abstraction-refinement SMT solver that discharges wide-domain Barrett reduction
+# where eager bit-blasters (z3/cvc5/yices/abc, all bundled with SAW) stall. SAW calls it via the
+# w4_unint_bitwuzla backend. Not in the SAW tarball, so pinned separately.
+BITWUZLA_VERSION="0.9.1"
+BITWUZLA_ASSET="Bitwuzla-macOS-arm64-static.zip"
+BITWUZLA_URL="https://github.com/bitwuzla/bitwuzla/releases/download/${BITWUZLA_VERSION}/${BITWUZLA_ASSET}"
+
 # clang: we deliberately use the system Apple clang (recorded in ASSUMPTIONS.md), NOT a vendored one.
 EXPECTED_CLANG="Apple clang version 17.0.0 (clang-1700.0.13.5)"
 
@@ -68,6 +75,23 @@ xattr -dr com.apple.quarantine "$SAW_HOME" 2>/dev/null || true
 if command -v codesign >/dev/null; then
   find "$SAW_HOME/bin" -type f -exec sh -c 'file "$1" | grep -q Mach-O' _ {} \; \
     -exec codesign --force --sign - {} \; 2>/dev/null || true
+fi
+
+# --- Bitwuzla (pinned separately; not in the SAW tarball) -------------------
+BITWUZLA_HOME="$TOOLS_DIR/bitwuzla-${BITWUZLA_VERSION}"
+if [[ ! -x "$BITWUZLA_HOME/bin/bitwuzla" ]]; then
+  fetch "$BITWUZLA_URL" "$DL_DIR/$BITWUZLA_ASSET"
+  echo ">> extracting bitwuzla ${BITWUZLA_VERSION}"
+  rm -rf "$BITWUZLA_HOME" && mkdir -p "$BITWUZLA_HOME"
+  unzip -o -q "$DL_DIR/$BITWUZLA_ASSET" -d "$BITWUZLA_HOME"
+  # the zip nests a Bitwuzla-*-static/bin/bitwuzla; flatten to $BITWUZLA_HOME/bin/bitwuzla
+  found="$(find "$BITWUZLA_HOME" -type f -name bitwuzla | head -1)"
+  mkdir -p "$BITWUZLA_HOME/bin"; [[ "$found" != "$BITWUZLA_HOME/bin/bitwuzla" ]] && cp "$found" "$BITWUZLA_HOME/bin/bitwuzla"
+fi
+link "$BITWUZLA_HOME/bin/bitwuzla" "bitwuzla"
+xattr -dr com.apple.quarantine "$BITWUZLA_HOME" 2>/dev/null || true
+if command -v codesign >/dev/null; then
+  codesign --force --sign - "$BITWUZLA_HOME/bin/bitwuzla" 2>/dev/null || true
 fi
 
 # --- Isabelle ---------------------------------------------------------------

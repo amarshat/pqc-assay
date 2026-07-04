@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett lift-check mutation-test writeup clean
+.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test writeup clean
 
 all: verify
 
@@ -76,6 +76,15 @@ barrett:
 	./scripts/lift_check_barrett.sh
 	@echo ">> Isabelle (Barrett): lifted BV Barrett model ≡ x mod q (Route Y, no smt/oracle)"
 	$(ISABELLE) build -d spec/isabelle/tier2/barrett -v Barrett
+
+## Out-of-band (~33 min): prove the deployed barrett_reduce == x mod q for x < 2^46 directly on the
+## RustCrypto MIR, via SAW's bitwuzla backend. This closes the escape-2 obligation that
+## field_ops_bridged.saw assumes for speed. Not in `verify` (too slow for the fast pipeline); needs
+## bitwuzla on PATH (pinned 0.9.1 by scripts/setup.sh). Route Y (`make barrett`) is the oracle-free twin.
+barrett-solver:
+	@echo ">> SAW + bitwuzla: barrett_reduce == x mod q for x < 2^46 (escape-2 admit, closed)"
+	@echo ">> (needs the RustCrypto MIR harness: implementations/rustcrypto-ml-dsa/build/mldsa_harness.linked-mir.json)"
+	cd implementations/rustcrypto-ml-dsa/proof/ntt && $(SAW) barrett_reduce_bitwuzla.saw
 
 ## Build the technical writeup (placeholder — wire up your renderer of choice)
 writeup:

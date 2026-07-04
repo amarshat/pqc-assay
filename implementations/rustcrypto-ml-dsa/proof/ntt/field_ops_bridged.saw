@@ -1,31 +1,26 @@
 enable_experimental;
-// module_lattice Elem<BaseField> field arithmetic == arithmetic mod q,
-// WITH the escape-2 admit: this file ASSUMES barrett_reduce(x) == x mod q at the
-// full product domain x < 2^46 via mir_unsafe_assume_spec (br_ov, below). This is
-// the Path-1 build from the path fork.
+// module_lattice Elem<BaseField> field arithmetic == arithmetic mod q.
+// This file ASSUMES barrett_reduce(x) == x mod q for x < 2^46 via mir_unsafe_assume_spec (br_ov,
+// below) so the mul-chain proof runs fast. That assumed spec is no longer an admit: it is PROVEN
+// directly on the deployed MIR in barrett_reduce_bitwuzla.saw (a real mir_verify via SAW's
+// w4_unint_bitwuzla backend, with a non-vacuity guard). br_ov stays an assume here only for speed
+// (the bitwuzla proof takes ~23 min; keeping it inline would make every field-op proof pay that).
 //
-// Trust decomposition (auditable; recorded in docs/ASSUMPTIONS.md). Be precise about
-// what THIS file does vs what is mechanized elsewhere:
-//   WHAT THIS FILE DOES:
-//     - ASSUME (mir_unsafe_assume_spec, br_ov): impl barrett_reduce == x mod q for x < 2^46.
-//       This is the whole-function admit. Nothing in this file proves it.
-//   MECHANIZED ELSEWHERE (supporting evidence, NOT wired into br_ov):
-//     - escape2_core.saw (z3): barrettInt X == X % q for all X in [0,2^46)  (Integer identity)
-//     - barrett_bridge_evidence.saw (z3): barrettBV x == x % q for x < 2^24  (BV model, small width)
-//     - Route Y, Isabelle `Barrett` session (no smt, no oracle -- kernel-checked):
-//         barrettBV x == x mod q for x < 2^46, over the tool-lifted barrettBV
-//         (Barrett_Lift.thy == cryptol-to-isabelle(barrett_bridge.cry), gated by
-//          scripts/lift_check_barrett.sh). This de-admits the earlier "nine bvToInt
-//          homomorphisms" spike (spike2_lift.saw), but is a statement about barrettBV.
-//   STILL UN-MECHANIZED (the reason br_ov stays an assume):
-//     - the structural equivalence  MIR barrett_reduce == barrettBV  at full width (~66+ bits):
-//       the miter's wide 128-bit multiply is the wall. bare SMT/SAT stalls: z3 on == x mod q ran
-//       3h15m without converging (saw-script #3306); reconfirmed 2026-07-03, abc (default SAT
-//       sweep) on == barrettBV and z3 on == brefMod (a urem-free carry-fold reference) BOTH stall
-//       at 360s. No multiplier-strong solver (bitwuzla/boolector) in the pinned bundle. Route Y
-//       does NOT address this link. Closing the admit would need MIR==barrettBV proven, then
-//       chained with Route Y's barrettBV==x mod q. barrettBV mirrors the impl arithmetic by
-//       inspection (barrett_bridge.cry) and matches it at width < 2^24 (barrett_bridge_evidence.saw).
+// Trust decomposition (auditable; recorded in docs/ASSUMPTIONS.md):
+//   PROVEN (the former escape-2 admit, now closed):
+//     - barrett_reduce_bitwuzla.saw: barrett_reduce(x) == x mod q for all x < 2^46, mir_verify via
+//       bitwuzla 0.9.1 (What4 backend). Wide-domain Barrett stalls every eager bit-blaster bundled
+//       with SAW (z3/cvc5/yices/abc; z3 ran 3h15m without converging, saw-script #3306) but falls to
+//       bitwuzla's CEGAR multiplier abstraction (mir_verify ~23 min; core BV goal 551s; non-vacuity
+//       rejects a +1 spec). bitwuzla is a trusted SMT oracle, same trust class as the z3/yices here.
+//   ALSO MECHANIZED (oracle-free alternative for higher assurance):
+//     - Route Y, Isabelle `Barrett` session (no smt, no oracle -- kernel-checked): barrettBV x ==
+//       x mod q for x < 2^46, over the tool-lifted barrettBV (Barrett_Lift.thy ==
+//       cryptol-to-isabelle(barrett_bridge.cry), gated by scripts/lift_check_barrett.sh). Complements
+//       the bitwuzla proof: bitwuzla proves the deployed MIR directly but trusts the solver; Route Y
+//       proves the word-model identity with no oracle.
+//   SUPPORTING EVIDENCE: escape2_core.saw (z3, Integer identity); barrett_bridge_evidence.saw (z3,
+//     barrettBV == x % q at x < 2^24).
 //
 //   neg(a)   = (q - a) mod q
 //   add(a,b) = (a + b) mod q

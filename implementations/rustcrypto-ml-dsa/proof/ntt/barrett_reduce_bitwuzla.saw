@@ -1,0 +1,39 @@
+// barrett_reduce(x) == x mod q for all u64 x < 2^46, PROVEN via SAW's What4 Bitwuzla backend.
+//
+// This is a real mir_verify of the deployed RustCrypto module_lattice barrett_reduce, and it
+// discharges the escape-2 obligation that field_ops_bridged.saw assumes (for speed) via
+// mir_unsafe_assume_spec. Wide-domain Barrett reduction stalls every eager bit-blaster bundled
+// with SAW (z3, cvc5, yices, abc) at x < 2^46 (the tractability-boundary study; docs/ASSUMPTIONS.md).
+// It falls to bitwuzla's CEGAR multiplier abstraction.
+//
+// Trust: bitwuzla is a trusted SMT oracle, the same trust class as the z3/yices used elsewhere in
+// this SAW development. For an ORACLE-FREE, kernel-checked proof of the same identity see Route Y in
+// spec/isabelle/tier2/barrett (barrettBV_bridge_holds, no sorry/oracle). The two are complementary:
+// this file proves the deployed MIR directly (trusting bitwuzla); Route Y proves the word-model
+// identity with no oracle.
+//
+// Cost (Apple M4): mir_verify ~23 min, non-vacuity ~10 min. Too slow for the fast CI leg; run out of
+// band (make barrett-solver). Needs bitwuzla on PATH: pinned 0.9.1 in .tools/bin via scripts/setup.sh.
+enable_experimental;
+m <- mir_load_module "../../build/mldsa_harness.linked-mir.json";
+
+let barrett_spec = do {
+    x <- mir_fresh_var "x" mir_u64;
+    mir_precond {{ x < (1 << 46) }};
+    mir_execute_func [mir_term x];
+    mir_return (mir_term {{ drop`{32} (x % 8380417) : [32] }});
+};
+barrett_ov <- mir_verify m "ml_dsa::algebra::{impl#6}::barrett_reduce" [] false
+    barrett_spec (w4_unint_bitwuzla []);
+print "PROVEN: barrett_reduce(x) == x mod q for all x < 2^46 (SAW + bitwuzla; escape-2 admit closed)";
+
+// Non-vacuity: a wrong spec (result + 1) must be REJECTED (bitwuzla returns a counterexample).
+let barrett_spec_bad = do {
+    x <- mir_fresh_var "x" mir_u64;
+    mir_precond {{ x < (1 << 46) }};
+    mir_execute_func [mir_term x];
+    mir_return (mir_term {{ (drop`{32} (x % 8380417) : [32]) + 1 }});
+};
+fails (mir_verify m "ml_dsa::algebra::{impl#6}::barrett_reduce" [] false
+    barrett_spec_bad (w4_unint_bitwuzla []));
+print "NON-VACUITY: wrong barrett spec (+1) correctly REJECTED";
