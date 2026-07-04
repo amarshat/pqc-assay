@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assay-logo.png" alt="PQC-Assay — C = spec" width="260">
+  <img src="assay-logo.png" alt="PQC-Assay, C = spec" width="260">
 </p>
 
 <h1 align="center">PQC-Assay</h1>
@@ -12,7 +12,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
   <img src="https://img.shields.io/badge/Isabelle-2025--2-9cf.svg" alt="Isabelle2025-2">
   <img src="https://img.shields.io/badge/SAW-1.5.1-orange.svg" alt="SAW 1.5.1">
-  <img src="https://img.shields.io/badge/proofs-no%20sorry%20%7C%20no%20smt-success.svg" alt="no sorry, no smt">
+  <img src="https://img.shields.io/badge/Isabelle%20proofs-no%20sorry%20%7C%20no%20smt-success.svg" alt="Isabelle proofs: no sorry, no smt">
   <a href="https://doi.org/10.5281/zenodo.21178811"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.21178811.svg" alt="DOI"></a>
 </p>
 
@@ -37,28 +37,33 @@ Montgomery reduction is an
 implementation device the NTT uses; it is not defined in FIPS 204. None of this is the
 optimized/assembly code that ships in production (see [Roadmap](docs/ROADMAP.md)).
 
+A **second target**, the unmodified RustCrypto `ml-dsa` Rust crate (reached through `mir-json`, the
+`rust` CI badge), adds a MIR-level study of the field arithmetic and its tractability boundary. Its one
+hard obligation, wide-domain Barrett reduction, is machine-checked via bitwuzla, with an oracle-free
+Isabelle proof alongside. See [Second target: RustCrypto `ml-dsa`](#second-target-rustcrypto-ml-dsa-rust-via-mir).
+
 ## What's proven
 
 `make verify` checks both legs (exit 0):
 
-- **SAW (C ≡ Cryptol)** — bit-for-bit:
+- **SAW (C ≡ Cryptol)**, bit-for-bit:
   - The `reduce.c` layer: `montgomery_reduce` (`−2³¹·Q ≤ a ≤ Q·2³¹`), `reduce32` (`a ≤ 2³¹−2²²−1`),
-    `caddq`, `freeze` — these also assert no signed-overflow UB in range.
+    `caddq`, `freeze`, these also assert no signed-overflow UB in range.
   - The forward NTT `ntt(a[256])`, under two's-complement wrapping (`-fwrapv`). This is functional
     equivalence for all inputs; overflow-freedom is proven separately in Isabelle (below).
 
   A mutation test confirms the reduce proof is non-vacuous, and CI diffs the lifted Isabelle model
   against the Cryptol model SAW checks.
-- **Isabelle (model ≡ spec)** — the whole `reduce.c` layer, no `sorry`/`oops`:
+- **Isabelle (model ≡ spec)**, the whole `reduce.c` layer, no `sorry`/`oops`:
   - `montgomery_reduce` meets `is_montgomery_reduction` (`2³²·r ≡ a (mod Q)`, `−Q < r < Q`) on
     `−2³¹·Q ≤ a < 2³¹·Q`.
   - `caddq` (residue-preserving, maps `[−Q,Q)` into `[0,Q)`); `reduce32` (residue-preserving, output
     in the true window `[−6283009, 6283008]`) on `a ≤ 2³¹−2²²−1`; `freeze = caddq∘reduce32` (output
     in `[0,Q)`), proven compositionally.
-- **Isabelle (forward-NTT overflow-freedom)** — `ntt_overflow_free`, no `sorry`/`oops`: for inputs
+- **Isabelle (forward-NTT overflow-freedom)**, `ntt_overflow_free`, no `sorry`/`oops`: for inputs
   with every coefficient in `±(2³¹−2²⁷)`, the model NTT keeps every coefficient `< 2³¹` through all
   8 levels, so **no `int32` add/sub overflows** and every `montgomery_reduce` input stays in range.
-  This is the coefficient-bound composition the `-fwrapv` proof sidesteps — proven by induction over
+  This is the coefficient-bound composition the `-fwrapv` proof sidesteps, proven by induction over
   the 8 levels (one per-level lemma iterated, montgomery output bound `|t| < Q`), not by SAW
   unrolling. The C-side claim (the reference NTT has no signed-overflow UB) follows by composing this
   with the `-fwrapv` C≡model equivalence; that last bridge is an argued meta-step, not separately
@@ -68,7 +73,7 @@ Chained with the SAW leg, this gives C ≡ spec for the full `reduce.c` arithmet
 computes a correct residue mod Q within its proven output window), plus a machine-checked
 coefficient-bound / overflow-freedom result for the forward NTT.
 
-While doing this we found two off-by-one errors in PQClean's reduce.c doc comments — `montgomery_reduce`
+While doing this we found two off-by-one errors in PQClean's reduce.c doc comments, `montgomery_reduce`
 (strict bound fails at one unreachable endpoint; OF-1) and `reduce32` (documented `−6283008` low end is
 reachably `−6283009` under its own one-sided precondition; OF-2). Both are doc/contract issues, not
 miscomputations. See `docs/ASSUMPTIONS.md`.
@@ -86,7 +91,7 @@ theorem fwd_ntt_correct:
 ```
 
 The lifted forward NTT, at each output position `k`, computes the FIPS-204 negacyclic DFT coefficient
-at the bit-reversed index `brv₈ k` — i.e. ML-DSA's natural-input → bit-reversed-output convention.
+at the bit-reversed index `brv₈ k`, i.e. ML-DSA's natural-input → bit-reversed-output convention.
 The statement is about the lifted **normal-domain** model `nttFwdAllRef` (a lift of a normal-domain
 Cryptol NTT, machine-checked equal to its original recursive twiddle table, not a hand-written model).
 The SAW C≡Cryptol leg checks the C against the **montgomery-domain** model; connecting that model to
@@ -96,13 +101,13 @@ where `ntt` is the montgomery model SAW checks the C against. So the two ends jo
 
 How it is built (Isabelle, no holes):
 
-- **`fwd_as_bfly`** — the lifted forward NTT equals an 8-fold abstract Cooley-Tukey butterfly transform
+- **`fwd_as_bfly`**, the lifted forward NTT equals an 8-fold abstract Cooley-Tukey butterfly transform
   on the integer-coefficient view (`cf (nttFwdAllRef w) n = fwdBfly (cf w) n`), decoupling the
   finished word-level seam from the combinatorial argument.
-- **`inv_form`** — a closed-form stage invariant (the sub-DFT held after each layer), with exact
+- **`inv_form`**, a closed-form stage invariant (the sub-DFT held after each layer), with exact
   `inv_form_lower` (additive butterfly leg) and `inv_form_upper` (subtractive leg, a congruence mod
   `q` using `ζ²⁵⁶ ≡ −1`).
-- **`applyN_inv`** — induction over the 8 layers, discharging each step with the recursion lemmas and
+- **`applyN_inv`**, induction over the 8 layers, discharging each step with the recursion lemmas and
   the per-layer twiddle closed form `z_closed` (`zetabrv[i] = ζ^(brv₈ i) mod q`). At layer 8 this is
   `fwd_ntt_correct`.
 
@@ -122,8 +127,8 @@ Status: `Tier2` (forward) and `Tier2_InvWork` (inverse) are first-class `make` t
 all of `spec/` (including both) on every push (`saw.yml`); the full Tier2 + Tier2_InvWork *build* runs
 in `verify.yml` (manual `workflow_dispatch`, like the rest of the Isabelle leg, because of CI cost).
 The inverse NTT and its `256⁻¹` (= `mont/256`) normalization are now machine-checked (`invntt_bridge`),
-and inverse overflow-freedom too (`invntt_overflow_free`, under the `|coeff| < Q` input window — tight,
-because the Gentleman-Sande low leg doubles the bound per level). Still open: constant-time, and
+and inverse overflow-freedom too (`invntt_overflow_free`, under the `|coeff| < Q` input window; it is
+tight because the Gentleman-Sande low leg doubles the bound per level). Still open: constant-time, and
 scoping the `-fwrapv` ⇒ no-UB seam (the same argued meta-step the forward already relies on). See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
@@ -155,19 +160,48 @@ directions: C → FIPS-204 forward NTT *and* C → FIPS-204 inverse NTT are each
 machine-checked chain mod q, with the only non-mechanized step the `-fwrapv` ⇒ no-UB meta-argument
 (the "argued" row above). Both directions are also overflow-free (`ntt_overflow_free` /
 `invntt_overflow_free`); the inverse needs the tight `|coeff| < Q` input window (a precondition, not a
-gap — `256·(Q−1)` just fits int32). What is *not* claimed: that this is the hard or shipping code (it
+gap: `256·(Q−1)` just fits int32). What is *not* claimed: that this is the hard or shipping code (it
 is the reference C, and the field arithmetic is the easy primitive), or constant-time.
+
+## Second target: RustCrypto `ml-dsa` (Rust, via MIR)
+
+Alongside the PQClean C, the pipeline is pointed at the [RustCrypto `ml-dsa`](https://crates.io/crates/ml-dsa)
+crate (pinned 0.1.1), an unmodified third-party Rust ML-DSA, reached through `mir-json` + `crucible-mir`
+(the `rust` CI badge). This leg is both a portability check for the approach and a **tractability-boundary
+study** of the field arithmetic. The `Elem` field ops (`neg/add/sub/mul == arithmetic mod q`) are verified
+in SAW over the MIR; the eight NTT layers are verified against the FIPS 204 Algorithm 41/42 bodies with the
+field ops as uninterpreted routing symbols.
+
+The one hard step is wide-domain **Barrett reduction**: `barrett_reduce(x) == x mod q` for products
+`x < 2^46`. This is the goal every eager bit-blaster bundled with SAW stalls on (z3 ran 3h15m without
+converging, saw-script #3306; z3/cvc5/yices/abc all time out past `2^34`). It is now **closed two ways**:
+
+- **SAW + bitwuzla** (`implementations/rustcrypto-ml-dsa/proof/ntt/barrett_reduce_bitwuzla.saw`,
+  `make barrett-solver`): a real `mir_verify` of the deployed `barrett_reduce` against `x mod q`,
+  discharged by bitwuzla's abstraction-refinement in ~23 min (the core bit-vector goal in 551 s), with a
+  non-vacuity guard. bitwuzla is a trusted SMT oracle, the same trust class as the z3/yices used
+  throughout the SAW leg.
+- **Isabelle, oracle-free** (Route Y, `spec/isabelle/tier2/barrett`, `make barrett`): the same identity on
+  the tool-lifted model, `barrettBV x == x mod q`, with no `smt` and a kernel-checked no-oracle
+  certificate, for assurance that does not rest on trusting a solver.
+
+So the tractability boundary is measured and crossed, not left as a wall: eager bit-blasting stalls,
+abstraction-refinement (bitwuzla) crosses it, and the same identity in unbounded-integer arithmetic
+discharges in 0.04 s. The `barrett-solver` proof runs out of band (too slow for the fast CI leg). Full
+trust decomposition in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md).
 
 ## Scope and limitations
 
-The proof is correct and honestly scoped, but it targets the easy function. Concretely:
+The proofs are honestly scoped. They cover the `reduce.c` arithmetic, the forward and inverse NTT (both
+against FIPS 204), and, on the RustCrypto Rust, the field layer including wide Barrett. The honest limits:
 
-- `montgomery_reduce` is the least bug-prone thing in the stack — branch-free, two multiplies and a
-  shift, unchanged in pq-crystals for years. ML-DSA's real correctness risk is reduction-bound
-  composition across the NTT/InvNTT (e.g. ePrint [2026/1032](https://eprint.iacr.org/2026/1032), an
-  optimized-path overflow that passed test vectors; and the missing-reduction bug Apple's SAW work
-  caught in ML-DSA InvNTT). A single-primitive proof cannot reach that. The forward NTT with
-  coefficient-bound tracking is the next step.
+- `montgomery_reduce` is the least bug-prone thing in the stack (branch-free, two multiplies and a shift,
+  unchanged in pq-crystals for years). ML-DSA's real correctness risk is reduction-bound composition
+  across the NTT/InvNTT (e.g. ePrint [2026/1032](https://eprint.iacr.org/2026/1032), an optimized-path
+  overflow that passed test vectors; and the missing-reduction bug Apple's SAW work caught in ML-DSA
+  InvNTT). The forward and inverse NTT proofs here, with their machine-checked coefficient-bound results,
+  target exactly that class for the reference C. The harder target is the shipping optimized code, where
+  those bugs actually occurred.
 - The verified range (`|a| ≤ 2³¹·Q ≈ 2⁵⁴`) is about 256× wider than anything ML-DSA feeds the
   function (call sites produce `≲ Q² ≈ 2⁴⁶`), which is why OF-1's endpoint never occurs in practice.
 - `montgomery_reduce` is identical across ML-DSA-44/65/87, so the "-44" pin is cosmetic and the
