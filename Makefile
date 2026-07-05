@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs writeup clean
+.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs qseal-ref writeup clean
 
 all: verify
 
@@ -92,6 +92,12 @@ barrett-solver:
 qseal-tbs:
 	@echo ">> cryptol + z3: Q-SEAL TBS-V1 transcript is bijective and injective (no transcript malleability)"
 	./qseal/verify_tbs.sh
+
+## SAW: the C reference TBS-V1 (de)serializer (qseal/ref/) equals the Cryptol model, so it places
+## every field at its FIPS-spec offset. Needs clang + saw on PATH (.tools/bin).
+qseal-ref:
+	@echo ">> SAW: C reference TBS-V1 (de)serializer == Cryptol model (bijective); fields at spec offsets"
+	./qseal/verify_ref.sh
 
 ## Build the technical writeup (placeholder — wire up your renderer of choice)
 writeup:

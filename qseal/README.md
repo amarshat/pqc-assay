@@ -25,11 +25,22 @@ A fixed-length, no-optional-fields transcript removes that class of bug by const
 here is the machine-checked statement of it. A mutation check (a deliberately wrong field offset) is
 rejected with a counterexample, so the proofs are not vacuous.
 
+**C reference (de)serializer matches the model.** `ref/tbs_v1.c` is a reference implementation written
+to be verifiable (fixed offsets, constant-size copies, no slicing). SAW proves, on its LLVM bitcode:
+
+- `qseal_tbs_serialize` equals the Cryptol `serialize` (every field lands at its FIPS-spec offset).
+- `qseal_tbs_parse` equals the Cryptol `parse` on well-formed input (returns 1, fills the struct).
+
+Composed with the model bijectivity above, the C pair round-trips. This is the first rung toward a
+verifiable Q-SEAL applet: real code checked against the transcript spec, not a test suite.
+
 ## Reproduce
 
-    ./verify_tbs.sh        # cryptol + z3; exits non-zero unless all three properties are Q.E.D.
+    ./verify_tbs.sh        # cryptol + z3: the model is bijective/injective (3 properties Q.E.D.)
+    ./verify_ref.sh        # clang + SAW: the C reference (de)serializer == the Cryptol model
 
-Needs `cryptol` on PATH (or in `../.tools/bin`, the pinned toolchain). Runs in well under a second.
+Both exit non-zero on failure. `verify_tbs.sh` needs `cryptol`; `verify_ref.sh` needs `clang` + `saw`
+(or the pinned `../.tools/bin`). Also wired as `make qseal-tbs` and `make qseal-ref`.
 
 ## Not yet done (section 16 remainder)
 
