@@ -113,9 +113,11 @@ qseal-hybrid:
 	@echo ">> SAW: hybrid accept requires BOTH signatures over the same transcript; downgrade variant caught"
 	./qseal/verify_hybrid.sh
 
-## Build the technical writeup (placeholder — wire up your renderer of choice)
+## The writeups: the NTT/SAW/Isabelle technical piece, and the Q-SEAL eSIM-attestation post
+## (docs/writeup/verified-esim-attestation.{md,html}; the .html is self-contained for GitHub Pages).
 writeup:
-	@echo "See docs/writeup/verifying-third-party-pqc-with-saw-and-isabelle.md"
+	@echo "docs/writeup/verifying-third-party-pqc-with-saw-and-isabelle.md  (NTT primitive, technical)"
+	@echo "docs/writeup/verified-esim-attestation.md  (Q-SEAL eSIM post; .html is the servable page)"
 
 clean:
 	rm -rf build output heaps browser_info *.saw-cache saw-out

@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc 3.10" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Verifying an eSIM attestation, from the ML-DSA arithmetic up</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      white-space: pre-wrap;
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: 1.5em;}
+    div.column{flex: auto;}
+    @media screen {
+    div.columns{gap: min(4vw, 1.5em);}
+    div.column{overflow-x: auto;}
+    }
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body{max-width:44rem;margin:3rem auto;padding:0 1.2rem;
+         font:17px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;color:#1a1a1a}
+    h1{font-size:1.7rem;line-height:1.25;margin:0 0 1.5rem}
+    h2{font-size:1.25rem;margin:2.2rem 0 .6rem;border-bottom:1px solid #eee;padding-bottom:.2rem}
+    a{color:#0b5cad}
+    code{font:14px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:#f4f4f4;padding:.1em .35em;border-radius:3px}
+    pre{background:#f4f4f4;padding:.9rem 1rem;border-radius:6px;overflow-x:auto}
+    pre code{background:none;padding:0}
+    table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:15px}
+    th,td{border:1px solid #e2e2e2;padding:.5rem .6rem;text-align:left;vertical-align:top}
+    th{background:#fafafa}
+    blockquote{color:#555;border-left:3px solid #ddd;margin:0;padding-left:1rem}
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Verifying an eSIM attestation, from the ML-DSA
+arithmetic up</h1>
+</header>
+<h1
+id="verifying-an-esim-attestation-from-the-ml-dsa-arithmetic-up">Verifying
+an eSIM attestation, from the ML-DSA arithmetic up</h1>
+<p>Post-quantum signatures are going into secure elements before the
+implementations have settled. A one-character change in a deployed
+ML-DSA crate’s hint decoder, <code>&lt;</code> to <code>&lt;=</code>,
+made it accept non-canonical signatures. It passed the test vectors and
+became CVE-2026-24850. That is the gap between “tested” and “correct on
+all inputs”, and it is why we check the code against the spec instead of
+trusting the vectors.</p>
+<p>We are building Q-SEAL, an eSIM attestation layer: a key inside the
+secure element signs a challenge-bound statement, and the suite is
+hybrid, ECDSA P-256 and ML-DSA-44, both required. The point of this post
+is that more of the path is checked than just the signature primitive.
+Everything below is in the <a
+href="https://github.com/amarshat/pqc-assay">repository</a> and
+reproduces from a <code>make</code> target.</p>
+<h2 id="what-is-proved">What is proved</h2>
+<p>The ML-DSA reference C (PQClean, unmodified) computes the FIPS 204
+forward and inverse NTT. The proof runs from the C through SAW to a
+Cryptol model, then cryptol-to-isabelle lifts that model into Isabelle,
+and Isabelle shows the lifted model equals the FIPS 204 transform. No
+<code>sorry</code>, <code>oops</code>, or admit in the transform
+theorems. It is the toolchain Apple used on corecrypto, pointed at the
+reference C that everyone else derives their understanding from rather
+than at our own code.</p>
+<p>On top of that, four Q-SEAL protocol properties, each verifying in
+about a second:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Property</th>
+<th>Command</th>
+<th>Time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The 231-byte transcript serializer is a bijection</td>
+<td><code>make qseal-tbs</code></td>
+<td>0.4 s</td>
+</tr>
+<tr>
+<td>The C (de)serializer matches that model, field for field</td>
+<td><code>make qseal-ref</code></td>
+<td>1.9 s</td>
+</tr>
+<tr>
+<td>The assertion binds the verifier’s challenge, and the applet fills
+its own identity fields</td>
+<td><code>make qseal-assert</code></td>
+<td>0.7 s</td>
+</tr>
+<tr>
+<td>Acceptance requires both signatures over the same bytes</td>
+<td><code>make qseal-hybrid</code></td>
+<td>0.9 s</td>
+</tr>
+</tbody>
+</table>
+<p>Two of these are worth a sentence. The transcript is fixed-length
+with no optional fields, and the proof is that its serializer is
+injective: two different transcripts can never produce the same bytes.
+That is an analogous property, one layer up from where CVE-2026-24850
+lived. For the hybrid check, the two signature verifiers are left
+uninterpreted, and the accept logic is proved equal to “both verify,
+over the same transcript”. A variant that accepts on either signature
+fails the same proof, so the hybrid cannot quietly degrade to
+classical-only. That last one, verbatim from
+<code>make qseal-hybrid</code>:</p>
+<pre><code>Proof succeeded! qseal_hybrid_accept
+VERIFIED: qseal_hybrid_accept == vE(pk_c,tbs,sig_c) AND vM(pk_pq,tbs,sig_pq) -- both required, same transcript
+MUTATION CAUGHT: the downgrade variant (accept on either signature) is REJECTED by the both-required spec</code></pre>
+<h2 id="what-i-am-not-claiming">What I am not claiming</h2>
+<p>The inverse NTT equivalence is proved under a non-negative input
+window, coefficients in <code>[0, Q)</code>, which does not cover the
+signed, centered coefficients the reference actually feeds it. Extending
+that is open. The hybrid proof abstracts the verifiers, so it is about
+the acceptance logic, not whether ECDSA or ML-DSA verification is itself
+correct; and “the applet fills its own identity” is a data-flow property
+that assumes the runtime hands the applet an identity the host cannot
+set. The Rust crate’s hint decoder, where the CVE lived, is outside the
+verified set because of a tool limit on how it slices memory; that path
+is covered by tests, not a proof, and the repo says so. One step in the
+ML-DSA chain, that the <code>-fwrapv</code> build has no signed-overflow
+undefined behavior, is argued from a machine-checked bound rather than
+mechanized as one theorem.</p>
+<p>Everything above reproduces from a <code>make</code> target. The
+transcript proofs are kept honest by their injectivity and binding
+properties; the hybrid proof carries an injected downgrade variant that
+it rejects. The primitive chain has 341 Isabelle lemmas (most are
+supporting lemmas), 12 SAW proofs on the C, and 37 on the Rust.</p>
+<h2 id="try-it">Try it</h2>
+<pre><code>git clone https://github.com/amarshat/pqc-assay
+cd pqc-assay
+make qseal-tbs qseal-ref qseal-assert qseal-hybrid   # the protocol layer, a few seconds</code></pre>
+<p>The ML-DSA primitive chain (<code>make verify</code>) needs the
+pinned SAW + Isabelle toolchain; see the repo’s setup script.</p>
+</body>
+</html>
