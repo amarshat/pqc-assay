@@ -1,0 +1,17 @@
+[package]
+name = "qseal-demo"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Runnable Q-SEAL hybrid eSIM attestation demo: real ECDSA P-256 + ML-DSA-44 over the verified TBS-V1 transcript."
+
+[dependencies]
+# ML-DSA-44 from the RustCrypto crate this project also formally verifies (implementations/rustcrypto-ml-dsa).
+ml-dsa = "0.1.1"
+# Classical half of the hybrid.
+p256 = { version = "0.13", features = ["ecdsa"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+
+[[bin]]
+name = "qseal-demo"
+path = "src/main.rs"

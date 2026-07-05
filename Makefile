@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs qseal-ref qseal-assert qseal-hybrid writeup clean
+.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-demo writeup clean
 
 all: verify
 
@@ -112,6 +112,12 @@ qseal-assert:
 qseal-hybrid:
 	@echo ">> SAW: hybrid accept requires BOTH signatures over the same transcript; downgrade variant caught"
 	./qseal/verify_hybrid.sh
+
+## Runnable demo: real ECDSA P-256 + ML-DSA-44 over the verified TBS-V1 transcript. Needs cargo, no
+## proof toolchain. Valid accepts; tampered and downgrade attestations reject.
+qseal-demo:
+	@echo ">> Q-SEAL hybrid attestation demo (valid accepts; tampered + downgrade reject)"
+	cd qseal/demo && cargo run --quiet
 
 ## The writeups: the NTT/SAW/Isabelle technical piece, and the Q-SEAL eSIM-attestation post
 ## (docs/writeup/verified-esim-attestation.{md,html}; the .html is self-contained for GitHub Pages).
