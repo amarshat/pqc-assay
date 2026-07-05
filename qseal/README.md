@@ -34,13 +34,29 @@ to be verifiable (fixed offsets, constant-size copies, no slicing). SAW proves, 
 Composed with the model bijectivity above, the C pair round-trips. This is the first rung toward a
 verifiable Q-SEAL applet: real code checked against the transcript spec, not a test suite.
 
+**CREATE_ASSERTION binds the validated challenge (property 2 of section 16).** The applet builds TBS-V1
+internally from the host's request fields plus its own identity fields, then serializes (section 11.2:
+"the handset MUST NOT supply an already-encoded transcript"). `model/QSEAL_Assertion.cry` models this as
+`create r a = serialize (build r a)` and proves:
+
+- `binds_challenge`: what the verifier parses back for verifier_id, nonce, request_id, suite_id,
+  policy_id, assertion_type, expiry, and the object digests is exactly the request. The applet cannot
+  emit a transcript that differs on these.
+- `applet_controls_identity`: the issuer_id, ak_id, and version come from the applet, not the request,
+  so a malicious host cannot forge the claimed issuer, attestation key, or protocol version.
+
+`ref/assertion.c` is the C reference, and `proof/assertion.saw` proves `qseal_create_assertion` equals
+the Cryptol `create`. A mutation (mis-wiring verifier_id from the applet's issuer_id) is rejected with a
+counterexample. So the code-level statement of "the signed transcript binds the request" holds.
+
 ## Reproduce
 
     ./verify_tbs.sh        # cryptol + z3: the model is bijective/injective (3 properties Q.E.D.)
     ./verify_ref.sh        # clang + SAW: the C reference (de)serializer == the Cryptol model
+    ./verify_assertion.sh  # cryptol + SAW: CREATE_ASSERTION binds the validated challenge
 
-Both exit non-zero on failure. `verify_tbs.sh` needs `cryptol`; `verify_ref.sh` needs `clang` + `saw`
-(or the pinned `../.tools/bin`). Also wired as `make qseal-tbs` and `make qseal-ref`.
+All exit non-zero on failure. `verify_tbs.sh` needs `cryptol`; the others need `clang` + `saw` (or the
+pinned `../.tools/bin`). Also wired as `make qseal-tbs`, `make qseal-ref`, `make qseal-assert`.
 
 ## Not yet done (section 16 remainder)
 

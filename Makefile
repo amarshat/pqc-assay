@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs qseal-ref writeup clean
+.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs qseal-ref qseal-assert writeup clean
 
 all: verify
 
@@ -98,6 +98,13 @@ qseal-tbs:
 qseal-ref:
 	@echo ">> SAW: C reference TBS-V1 (de)serializer == Cryptol model (bijective); fields at spec offsets"
 	./qseal/verify_ref.sh
+
+## Q-SEAL CREATE_ASSERTION (section 16 property 2): the applet builds TBS-V1 from the validated
+## request, so the signed transcript binds the challenge and the host cannot spoof applet identity.
+## cryptol binding properties + SAW C == model.
+qseal-assert:
+	@echo ">> cryptol + SAW: CREATE_ASSERTION binds the validated challenge (no host-spoofed transcript)"
+	./qseal/verify_assertion.sh
 
 ## Build the technical writeup (placeholder — wire up your renderer of choice)
 writeup:

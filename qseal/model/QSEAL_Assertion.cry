@@ -1,0 +1,85 @@
+// Q-SEAL CREATE_ASSERTION: the applet builds TBS-V1 internally from the validated request, so the
+// signed transcript binds the challenge and the host cannot spoof the applet-identity fields. This is
+// section 16 property 2 ("the applet cannot sign a transcript whose verifier_id, nonce, request_id,
+// suite_id, or policy_id differs from the validated request"). The verified C is qseal/ref/assertion.c,
+// proved equal to `create` here by qseal/proof/assertion.saw. `serialize`/`parse` come from QSEAL_TBS
+// and are already proven bijective, so parse(create r a) reads back the fields as the verifier sees them.
+
+module QSEAL_Assertion where
+
+import QSEAL_TBS
+
+// The challenge/request fields the host supplies (everything the applet does NOT control).
+type Request =
+  { suite_id                : [2][8]
+  , assertion_type          : [1][8]
+  , assertion_origin        : [1][8]
+  , verifier_id             : [16][8]
+  , request_id              : [16][8]
+  , nonce                   : [32][8]
+  , policy_id               : [4][8]
+  , expires_at              : [8][8]
+  , subject_ref             : [32][8]
+  , object_hash_algorithm   : [1][8]
+  , object_length           : [8][8]
+  , object_digest           : [32][8]
+  , associated_claim_digest : [32][8]
+  }
+
+// The fields the applet controls (never from the host): protocol version, issuer + attestation-key
+// identity, and the applet's own clock stamp.
+type AppletId =
+  { version    : [1][8]
+  , issuer_id  : [16][8]
+  , ak_id      : [16][8]
+  , issued_at  : [8][8]
+  }
+
+// Build the transcript: challenge fields from the request, identity/clock fields from the applet.
+build : Request -> AppletId -> TBS
+build r a =
+  { version                 = a.version
+  , suite_id                = r.suite_id
+  , assertion_type          = r.assertion_type
+  , assertion_origin        = r.assertion_origin
+  , issuer_id               = a.issuer_id
+  , verifier_id             = r.verifier_id
+  , ak_id                   = a.ak_id
+  , request_id              = r.request_id
+  , nonce                   = r.nonce
+  , policy_id               = r.policy_id
+  , issued_at               = a.issued_at
+  , expires_at              = r.expires_at
+  , subject_ref             = r.subject_ref
+  , object_hash_algorithm   = r.object_hash_algorithm
+  , object_length           = r.object_length
+  , object_digest           = r.object_digest
+  , associated_claim_digest = r.associated_claim_digest
+  }
+
+// The bytes the applet signs.
+create : Request -> AppletId -> [231][8]
+create r a = serialize (build r a)
+
+// Property 2a: the signed transcript binds the validated challenge. What the verifier parses back for
+// verifier_id / nonce / request_id / suite_id / policy_id / assertion_type / expiry / object digest is
+// exactly what was in the request. The applet cannot emit a transcript that differs on these.
+property binds_challenge r a =
+      (t.verifier_id == r.verifier_id)
+   /\ (t.nonce == r.nonce)
+   /\ (t.request_id == r.request_id)
+   /\ (t.suite_id == r.suite_id)
+   /\ (t.policy_id == r.policy_id)
+   /\ (t.assertion_type == r.assertion_type)
+   /\ (t.expires_at == r.expires_at)
+   /\ (t.object_digest == r.object_digest)
+   /\ (t.associated_claim_digest == r.associated_claim_digest)
+  where t = parse (create r a)
+
+// Property 2b: the applet-identity fields come from the applet, not the request. A malicious host
+// cannot make the transcript claim a different issuer, attestation key, or protocol version.
+property applet_controls_identity r a =
+      (t.issuer_id == a.issuer_id)
+   /\ (t.ak_id == a.ak_id)
+   /\ (t.version == a.version)
+  where t = parse (create r a)

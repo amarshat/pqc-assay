@@ -36,6 +36,7 @@ implementations/**/proof/**/_*.saw
 proof/**/_*.log
 proof/**/_*.saw
 qseal/model/_*.cry
+qseal/build/
 
 # Blog drafts / generated images (kept local; public repo, private framing)
 **/BLOG_*.md
