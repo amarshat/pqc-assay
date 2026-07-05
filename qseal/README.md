@@ -49,14 +49,26 @@ internally from the host's request fields plus its own identity fields, then ser
 the Cryptol `create`. A mutation (mis-wiring verifier_id from the applet's issuer_id) is rejected with a
 counterexample. So the code-level statement of "the signed transcript binds the request" holds.
 
+**Hybrid acceptance requires both signatures, no downgrade (property 3 of section 16).** HYB-1 pairs
+ECDSA P-256 with ML-DSA-44 and the verifier must require both; accepting on either alone is a silent
+downgrade to classical-only, i.e. quantum-vulnerable. With the two signature verifiers kept
+*uninterpreted* (`model/QSEAL_Verify.cry` `vE`, `vM`), SAW proves `ref/hybrid.c`'s `qseal_hybrid_accept`
+equals `vE(pk_c, tbs, sig_c) AND vM(pk_pq, tbs, sig_pq)` over the *same* transcript, so acceptance
+requires both signatures over identical bytes for *any* real verifiers. Then a downgrade variant
+(`qseal_hybrid_accept_downgrade`, accept-on-either) is shown to *fail* that spec, so the proof catches
+the downgrade. Scope: verifiers are abstract, so this is a statement about the acceptance *structure*
+(both required, same bytes), not about ECDSA/ML-DSA correctness.
+
 ## Reproduce
 
     ./verify_tbs.sh        # cryptol + z3: the model is bijective/injective (3 properties Q.E.D.)
     ./verify_ref.sh        # clang + SAW: the C reference (de)serializer == the Cryptol model
     ./verify_assertion.sh  # cryptol + SAW: CREATE_ASSERTION binds the validated challenge
+    ./verify_hybrid.sh     # SAW: hybrid accept requires BOTH signatures; downgrade variant caught
 
 All exit non-zero on failure. `verify_tbs.sh` needs `cryptol`; the others need `clang` + `saw` (or the
-pinned `../.tools/bin`). Also wired as `make qseal-tbs`, `make qseal-ref`, `make qseal-assert`.
+pinned `../.tools/bin`). Also wired as `make qseal-tbs`, `make qseal-ref`, `make qseal-assert`,
+`make qseal-hybrid`.
 
 ## Not yet done (section 16 remainder)
 

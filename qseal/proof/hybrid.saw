@@ -1,0 +1,57 @@
+// SAW: Q-SEAL HYB-1 hybrid acceptance (section 16 property 3). With the ECDSA and ML-DSA verifiers
+// kept UNINTERPRETED (vE, vM), the C qseal_hybrid_accept is proved equal to (vE ... /\ vM ...) over the
+// SAME transcript, so acceptance requires BOTH signatures over identical bytes for ANY real verifiers.
+// The downgrade variant (accept on either signature) is then shown to FAIL that spec, so the proof
+// catches the silent classical-only downgrade. Exits 0 only if the good proof discharges and the
+// mutant is rejected.
+enable_experimental;
+
+m <- llvm_load_module "../build/hybrid.bc";
+import "../model/QSEAL_Verify.cry";
+
+let arr n = llvm_array n (llvm_int 8);
+let ro nm n = do {
+    x <- llvm_fresh_var nm (arr n);
+    p <- llvm_alloc_readonly (arr n);
+    llvm_points_to p (llvm_term x);
+    return (x, p);
+};
+
+// Uninterpreted verifier overrides: return 1 iff the abstract verifier holds.
+let vE_spec = do {
+    (pk, ppk)   <- ro "pk_c" 64;
+    (tbs, ptbs) <- ro "tbs" 231;
+    (sig, psig) <- ro "sig_c" 64;
+    llvm_execute_func [ppk, ptbs, psig];
+    llvm_return (llvm_term {{ if vE pk tbs sig then (1 : [32]) else 0 }});
+};
+vE_ov <- llvm_unsafe_assume_spec m "qseal_verify_ecdsa" vE_spec;
+
+let vM_spec = do {
+    (pk, ppk)   <- ro "pk_pq" 1312;
+    (tbs, ptbs) <- ro "tbs" 231;
+    (sig, psig) <- ro "sig_pq" 2420;
+    llvm_execute_func [ppk, ptbs, psig];
+    llvm_return (llvm_term {{ if vM pk tbs sig then (1 : [32]) else 0 }});
+};
+vM_ov <- llvm_unsafe_assume_spec m "qseal_verify_mldsa" vM_spec;
+
+// The both-required spec: accept iff vE(pk_c, tbs, sig_c) AND vM(pk_pq, tbs, sig_pq), same tbs.
+let accept_spec = do {
+    (tbs, ptbs) <- ro "tbs" 231;
+    (pkc, ppkc) <- ro "pk_c" 64;
+    (sc,  psc)  <- ro "sig_c" 64;
+    (pkq, ppkq) <- ro "pk_pq" 1312;
+    (sq,  psq)  <- ro "sig_pq" 2420;
+    llvm_execute_func [ptbs, ppkc, psc, ppkq, psq];
+    llvm_return (llvm_term {{ if (vE pkc tbs sc /\ vM pkq tbs sq) then (1 : [32]) else 0 }});
+};
+
+accept_ov <- llvm_verify m "qseal_hybrid_accept" [vE_ov, vM_ov] true accept_spec
+                         (w4_unint_z3 ["vE", "vM"]);
+print "VERIFIED: qseal_hybrid_accept == vE(pk_c,tbs,sig_c) AND vM(pk_pq,tbs,sig_pq) -- both required, same transcript";
+
+// The downgrade variant must NOT satisfy the both-required spec. `fails` succeeds iff the verify fails.
+fails (llvm_verify m "qseal_hybrid_accept_downgrade" [vE_ov, vM_ov] true accept_spec
+                   (w4_unint_z3 ["vE", "vM"]));
+print "MUTATION CAUGHT: the downgrade variant (accept on either signature) is REJECTED by the both-required spec";

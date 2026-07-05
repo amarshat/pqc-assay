@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs qseal-ref qseal-assert writeup clean
+.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs qseal-ref qseal-assert qseal-hybrid writeup clean
 
 all: verify
 
@@ -105,6 +105,13 @@ qseal-ref:
 qseal-assert:
 	@echo ">> cryptol + SAW: CREATE_ASSERTION binds the validated challenge (no host-spoofed transcript)"
 	./qseal/verify_assertion.sh
+
+## Q-SEAL HYB-1 hybrid acceptance (section 16 property 3): with the ECDSA/ML-DSA verifiers
+## uninterpreted, SAW proves acceptance requires BOTH signatures over the same transcript, and the
+## downgrade variant (accept on either) is caught. This is the "hybrid is not decorative" property.
+qseal-hybrid:
+	@echo ">> SAW: hybrid accept requires BOTH signatures over the same transcript; downgrade variant caught"
+	./qseal/verify_hybrid.sh
 
 ## Build the technical writeup (placeholder — wire up your renderer of choice)
 writeup:

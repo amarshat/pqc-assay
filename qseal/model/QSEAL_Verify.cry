@@ -1,0 +1,27 @@
+// Q-SEAL HYB-1 hybrid acceptance (section 4, section 16 property 3): a verifier accepts only when
+// BOTH the classical (ECDSA P-256) and post-quantum (ML-DSA-44) signatures verify, over the SAME
+// transcript bytes. Accept-on-either is a silent downgrade to classical-only, i.e. quantum-vulnerable
+// ("that would turn hybrid security into decorative garnish").
+//
+// vE / vM are abstract signature verification. In the SAW proof they are kept UNINTERPRETED
+// (w4_unint), so the result is about the acceptance STRUCTURE (both required, same bytes) and holds for
+// the real ECDSA/ML-DSA verifiers whatever they compute. The placeholder bodies below are never used
+// under w4_unint.
+
+module QSEAL_Verify where
+
+type Tbs      = [231][8]
+type EcdsaPk  = [64][8]
+type EcdsaSig = [64][8]
+type MldsaPk  = [1312][8]   // ML-DSA-44 public key
+type MldsaSig = [2420][8]   // ML-DSA-44 signature
+
+vE : EcdsaPk -> Tbs -> EcdsaSig -> Bit
+vE pk tbs sig = False
+
+vM : MldsaPk -> Tbs -> MldsaSig -> Bit
+vM pk tbs sig = False
+
+// The HYB-1 rule: both signatures verify, over the same transcript tbs.
+hybrid_accept : Tbs -> EcdsaPk -> EcdsaSig -> MldsaPk -> MldsaSig -> Bit
+hybrid_accept tbs pkc sc pkq sq = vE pkc tbs sc /\ vM pkq tbs sq
