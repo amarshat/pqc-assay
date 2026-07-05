@@ -140,8 +140,9 @@ Status: `Tier2` (forward) and `Tier2_InvWork` (inverse) are first-class `make` t
 all of `spec/` (including both) on every push (`saw.yml`); the full Tier2 + Tier2_InvWork *build* runs
 in `verify.yml` (manual `workflow_dispatch`, like the rest of the Isabelle leg, because of CI cost).
 The inverse NTT and its `256⁻¹` (= `mont/256`) normalization are now machine-checked (`invntt_bridge`),
-and inverse overflow-freedom too (`invntt_overflow_free`, under the `|coeff| < Q` input window; it is
-tight because the Gentleman-Sande low leg doubles the bound per level). Still open: constant-time, and
+and inverse overflow-freedom too (`invntt_overflow_free`, under a non-negative `[0,Q)` input window,
+not the symmetric `|coeff| < Q`; it is tight because the Gentleman-Sande low leg doubles the bound per
+level, and it does not cover the signed centered coefficients the reference feeds `invntt_tomont`). Still open: constant-time, and
 scoping the `-fwrapv` ⇒ no-UB seam (the same argued meta-step the forward already relies on). See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
@@ -165,15 +166,15 @@ with justification in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md); "not claimed
 | montgomery lifted `invntt` ≡ normal `nttInvAllRef` (mod q), incl. the `mont/256` scale | machine-checked (Isabelle `Rcong_invcore` + `invntt_scale_bridge`) |
 | normal `nttInvAllRef` ≡ FIPS-204 inverse NTT (mod q) | machine-checked (Isabelle `inv_ntt_correct`) |
 | montgomery `invntt` ≡ FIPS-204 inverse NTT (mod q), composed | machine-checked (Isabelle `invntt_bridge`) |
-| inverse NTT overflow-freedom / coefficient bound (under `\|coeff\| < Q` input) | machine-checked (Isabelle `invntt_overflow_free`) |
+| inverse NTT overflow-freedom / coefficient bound (under non-negative `[0,Q)` input, not `\|coeff\| < Q`) | machine-checked (Isabelle `invntt_overflow_free`) |
 | constant-time / side channels | not claimed |
 
 With `ntt_bridge` (forward) and `invntt_bridge` (inverse) the two machine-checked ends join in both
 directions: C → FIPS-204 forward NTT *and* C → FIPS-204 inverse NTT are each one connected
 machine-checked chain mod q, with the only non-mechanized step the `-fwrapv` ⇒ no-UB meta-argument
 (the "argued" row above). Both directions are also overflow-free (`ntt_overflow_free` /
-`invntt_overflow_free`); the inverse needs the tight `|coeff| < Q` input window (a precondition, not a
-gap: `256·(Q−1)` just fits int32). What is *not* claimed: that this is the hard or shipping code (it
+`invntt_overflow_free`); the inverse needs a tight non-negative `[0,Q)` input window (`256·(Q−1)` just
+fits int32), which does not cover the signed centered inputs at the reference call site (open). What is *not* claimed: that this is the hard or shipping code (it
 is the reference C, and the field arithmetic is the easy primitive), or constant-time.
 
 ## Second target: RustCrypto `ml-dsa` (Rust, via MIR)
