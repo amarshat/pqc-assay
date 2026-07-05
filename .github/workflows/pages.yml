@@ -7,6 +7,7 @@ name: Deploy docs to Pages
 on:
   push:
     branches: [main]
+    paths: ['docs/**']   # only redeploy when the published content changes
   workflow_dispatch:
 
 permissions:
