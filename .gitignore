@@ -24,9 +24,8 @@ saw-out/
 # Local toolchain
 /.tools/
 
-# Paper kept local until publication (sources, build artifacts, submission notes).
-# The public artifact is the proofs/code, not the paper draft.
-/paper/
+# paper/ is a PRIVATE submodule (drafts, notes, strategy) -> github.com/amarshat/foolscap
+# (access-controlled). Managed via .gitmodules, not gitignored.
 implementations/**/target/
 implementations/rustcrypto-ml-dsa/build/
 *.linked-mir.json
