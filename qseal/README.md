@@ -1,0 +1,42 @@
+# Q-SEAL protocol verification
+
+Q-SEAL is a hybrid, quantum-safe secure-element attestation layer: a non-exportable key inside an eUICC
+or secure element signs a canonical, challenge-bound statement, giving hardware-rooted proof of
+possession. Its mandatory suite HYB-1 pairs ECDSA P-256 with ML-DSA-44 and requires both signatures.
+Full spec: [`../docs/qseal/QSEAL-v0.1.md`](../docs/qseal/QSEAL-v0.1.md).
+
+The rest of PQC-Assay verifies the ML-DSA-44 *primitive* Q-SEAL relies on (see the repo README). This
+directory verifies Q-SEAL *protocol* properties, starting with the ones that do not depend on the
+signature primitive at all. The target list is section 16 of the spec.
+
+## Verified so far
+
+**TBS-V1 transcript is a bijection (property 1 of section 16).** The signed transcript is fixed-length
+(231 bytes) with no optional fields or variable encodings. `model/QSEAL_TBS.cry` models the layout and
+proves, with `cryptol` and z3:
+
+- `roundtrip_parse_serialize`: `parse (serialize t) == t` for every transcript `t`.
+- `roundtrip_serialize_parse`: every well-formed byte string equals `serialize (parse b)`.
+- `serialize_injective`: distinct transcripts never serialize to the same bytes.
+
+Injectivity is the property the hint decoder in CVE-2026-24850 lacked: there, a non-fixed,
+validation-dependent decode admitted non-canonical inputs (repeated hint indices), which is malleability.
+A fixed-length, no-optional-fields transcript removes that class of bug by construction, and the proof
+here is the machine-checked statement of it. A mutation check (a deliberately wrong field offset) is
+rejected with a counterexample, so the proofs are not vacuous.
+
+## Reproduce
+
+    ./verify_tbs.sh        # cryptol + z3; exits non-zero unless all three properties are Q.E.D.
+
+Needs `cryptol` on PATH (or in `../.tools/bin`, the pinned toolchain). Runs in well under a second.
+
+## Not yet done (section 16 remainder)
+
+Properties 2-7 (transcript binding to the validated request, hybrid acceptance over identical bytes,
+challenge single-use, `PROFILE_ACTION_OBSERVED` reachability, evidence reassembly fail-closed, malformed
+input rejected before signing) are protocol-logic and state-machine properties, not fixed-format
+identities. They need a protocol model, and some are a better fit for a protocol prover (Tamarin,
+ProVerif) than for the SAW/Cryptol/Isabelle pipeline. Verifying a shipped Rust (de)serializer directly is
+known to hit a crucible-mir limitation on slice access, which is why the transcript work is done at the
+model level here.

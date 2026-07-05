@@ -1,0 +1,97 @@
+// Q-SEAL TBS-V1 canonical transcript: Cryptol model + bijectivity/injectivity proofs.
+//
+// This is the first Q-SEAL protocol-correctness property machine-checked (see qseal/README.md):
+// the fixed-length, no-optional-fields transcript serializer is a bijection on its byte encoding,
+// hence injective. A different transcript can never serialize to the same bytes, so there is no
+// transcript-level malleability. This is the structural opposite of the hint-decoder malleability
+// in CVE-2026-24850, where a non-fixed, validation-dependent decode admitted non-canonical inputs.
+//
+// The layout is TBS-V1 from the Q-SEAL v0.1 spec (docs/qseal/QSEAL-v0.1.md, section 7). Total 231
+// bytes. `magic` = "QSEAL" is a fixed 5-byte prefix, not part of the variable record.
+//
+// Verified with cryptol :prove (z3). No property here uses arithmetic; they are structural
+// bit-vector concat/slice identities, so the goals discharge quickly.
+
+module QSEAL_TBS where
+
+magic : [5][8]
+magic = "QSEAL"
+
+// The variable fields of TBS-V1 (everything after the fixed magic prefix), each a byte array of
+// its spec-defined length.
+type TBS =
+  { version                 : [1][8]
+  , suite_id                : [2][8]
+  , assertion_type          : [1][8]
+  , assertion_origin        : [1][8]
+  , issuer_id               : [16][8]
+  , verifier_id             : [16][8]
+  , ak_id                   : [16][8]
+  , request_id              : [16][8]
+  , nonce                   : [32][8]
+  , policy_id               : [4][8]
+  , issued_at               : [8][8]
+  , expires_at              : [8][8]
+  , subject_ref             : [32][8]
+  , object_hash_algorithm   : [1][8]
+  , object_length           : [8][8]
+  , object_digest           : [32][8]
+  , associated_claim_digest : [32][8]
+  }
+
+// serialize: fixed concatenation, magic first. Result is exactly 231 bytes.
+serialize : TBS -> [231][8]
+serialize t =
+    magic
+  # t.version
+  # t.suite_id
+  # t.assertion_type
+  # t.assertion_origin
+  # t.issuer_id
+  # t.verifier_id
+  # t.ak_id
+  # t.request_id
+  # t.nonce
+  # t.policy_id
+  # t.issued_at
+  # t.expires_at
+  # t.subject_ref
+  # t.object_hash_algorithm
+  # t.object_length
+  # t.object_digest
+  # t.associated_claim_digest
+
+// parse: slice each field at its fixed offset. Offsets are cumulative byte positions after magic.
+parse : [231][8] -> TBS
+parse b =
+  { version                 = take`{1}  (drop`{5}   b)
+  , suite_id                = take`{2}  (drop`{6}   b)
+  , assertion_type          = take`{1}  (drop`{8}   b)
+  , assertion_origin        = take`{1}  (drop`{9}   b)
+  , issuer_id               = take`{16} (drop`{10}  b)
+  , verifier_id             = take`{16} (drop`{26}  b)
+  , ak_id                   = take`{16} (drop`{42}  b)
+  , request_id              = take`{16} (drop`{58}  b)
+  , nonce                   = take`{32} (drop`{74}  b)
+  , policy_id               = take`{4}  (drop`{106} b)
+  , issued_at               = take`{8}  (drop`{110} b)
+  , expires_at              = take`{8}  (drop`{118} b)
+  , subject_ref             = take`{32} (drop`{126} b)
+  , object_hash_algorithm   = take`{1}  (drop`{158} b)
+  , object_length           = take`{8}  (drop`{159} b)
+  , object_digest           = take`{32} (drop`{167} b)
+  , associated_claim_digest = take`{32} (drop`{199} b)
+  }
+
+// well_formed: the byte string carries the Q-SEAL magic prefix.
+well_formed : [231][8] -> Bit
+well_formed b = take`{5} b == magic
+
+// (1) Round-trip on records: parsing a serialized transcript recovers it exactly.
+property roundtrip_parse_serialize t = parse (serialize t) == t
+
+// (2) Round-trip on bytes: any well-formed byte string is exactly what serializing its parse gives.
+property roundtrip_serialize_parse b = well_formed b ==> (serialize (parse b) == b)
+
+// (3) Injectivity: distinct transcripts never collide on the wire. No transcript-level malleability.
+property serialize_injective t1 t2 = (serialize t1 == serialize t2) ==> (t1 == t2)

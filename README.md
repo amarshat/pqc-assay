@@ -42,6 +42,19 @@ A **second target**, the unmodified RustCrypto `ml-dsa` Rust crate (reached thro
 hard obligation, wide-domain Barrett reduction, is machine-checked via bitwuzla, with an oracle-free
 Isabelle proof alongside. See [Second target: RustCrypto `ml-dsa`](#second-target-rustcrypto-ml-dsa-rust-via-mir).
 
+### Why this exists, and Q-SEAL
+
+Why verify these implementations at all: [`WHY.md`](WHY.md). The short version is that deployed ML-DSA
+is the trust base for hardware-rooted, quantum-safe proof of possession (secure-element and eSIM
+attestation, credential binding), and a real one-character regression in a deployed ML-DSA crate's hint
+decoder (CVE-2026-24850) shows the primitives need checking, not just testing.
+
+The applied setting is **Q-SEAL** ([`docs/qseal/QSEAL-v0.1.md`](docs/qseal/QSEAL-v0.1.md)), a hybrid
+quantum-safe secure-element attestation layer whose mandatory suite pairs ECDSA P-256 with ML-DSA-44.
+Protocol-level verification of Q-SEAL lives in [`qseal/`](qseal/); the first property, that the
+fixed-length TBS-V1 transcript is a bijection (no transcript-level malleability), is machine-checked
+(`make qseal-tbs`).
+
 ## What's proven
 
 `make verify` checks both legs (exit 0):

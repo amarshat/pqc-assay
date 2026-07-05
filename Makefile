@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test writeup clean
+.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs writeup clean
 
 all: verify
 
@@ -85,6 +85,13 @@ barrett-solver:
 	@echo ">> SAW + bitwuzla: barrett_reduce == x mod q for x < 2^46 (escape-2 admit, closed)"
 	@echo ">> (needs the RustCrypto MIR harness: implementations/rustcrypto-ml-dsa/build/mldsa_harness.linked-mir.json)"
 	cd implementations/rustcrypto-ml-dsa/proof/ntt && $(SAW) barrett_reduce_bitwuzla.saw
+
+## Q-SEAL protocol property (independent of the ML-DSA primitive). Fast (<1s). Property 1 of
+## Q-SEAL v0.1 section 16: the fixed-length TBS-V1 transcript serializer is bijective and injective,
+## i.e. no transcript-level malleability. Model + proof in qseal/.
+qseal-tbs:
+	@echo ">> cryptol + z3: Q-SEAL TBS-V1 transcript is bijective and injective (no transcript malleability)"
+	./qseal/verify_tbs.sh
 
 ## Build the technical writeup (placeholder — wire up your renderer of choice)
 writeup:

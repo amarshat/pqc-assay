@@ -34,6 +34,9 @@ implementations/rustcrypto-ml-dsa/build/
 # Scratch proof logs / experimental saw runs (underscore-prefixed)
 implementations/**/proof/**/_*.log
 implementations/**/proof/**/_*.saw
+proof/**/_*.log
+proof/**/_*.saw
+qseal/model/_*.cry
 
 # Blog drafts / generated images (kept local; public repo, private framing)
 **/BLOG_*.md
