@@ -60,9 +60,14 @@ C, and 37 on the Rust.
 
 ## Try it
 
-    git clone https://github.com/amarshat/pqc-assay
-    cd pqc-assay
-    make qseal-tbs qseal-ref qseal-assert qseal-hybrid   # the protocol layer, a few seconds
+The runnable demo needs only Rust, no proof toolchain. It signs the verified transcript with real ECDSA
+P-256 and ML-DSA-44 and shows a valid attestation accept, a tampered one reject, and a downgrade (valid
+classical signature, no valid post-quantum one) reject:
 
-The ML-DSA primitive chain (`make verify`) needs the pinned SAW + Isabelle toolchain; see the repo's
-setup script.
+    git clone https://github.com/amarshat/pqc-assay
+    cd pqc-assay/qseal/demo
+    cargo run
+
+The proofs reproduce from make targets (`make qseal-tbs qseal-ref qseal-assert qseal-hybrid`, a few
+seconds each, need cryptol and SAW). The ML-DSA primitive chain (`make verify`) needs the pinned
+SAW + Isabelle toolchain; see the repo's setup script.

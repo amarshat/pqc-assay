@@ -293,10 +293,17 @@ properties; the hybrid proof carries an injected downgrade variant that
 it rejects. The primitive chain has 341 Isabelle lemmas (most are
 supporting lemmas), 12 SAW proofs on the C, and 37 on the Rust.</p>
 <h2 id="try-it">Try it</h2>
+<p>The runnable demo needs only Rust, no proof toolchain. It signs the
+verified transcript with real ECDSA P-256 and ML-DSA-44 and shows a
+valid attestation accept, a tampered one reject, and a downgrade (valid
+classical signature, no valid post-quantum one) reject:</p>
 <pre><code>git clone https://github.com/amarshat/pqc-assay
-cd pqc-assay
-make qseal-tbs qseal-ref qseal-assert qseal-hybrid   # the protocol layer, a few seconds</code></pre>
-<p>The ML-DSA primitive chain (<code>make verify</code>) needs the
-pinned SAW + Isabelle toolchain; see the repo’s setup script.</p>
+cd pqc-assay/qseal/demo
+cargo run</code></pre>
+<p>The proofs reproduce from make targets
+(<code>make qseal-tbs qseal-ref qseal-assert qseal-hybrid</code>, a few
+seconds each, need cryptol and SAW). The ML-DSA primitive chain
+(<code>make verify</code>) needs the pinned SAW + Isabelle toolchain;
+see the repo’s setup script.</p>
 </body>
 </html>
