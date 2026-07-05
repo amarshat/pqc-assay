@@ -4,6 +4,8 @@
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc 3.10" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="author" content="Amar Akshat" />
+  <meta name="description" content="Machine-checked verification of a post-quantum (ML-DSA, FIPS 204) eSIM attestation, from the arithmetic up through the hybrid-signature protocol. Reproducible proofs and a runnable demo." />
   <title>Verifying an eSIM attestation, from the ML-DSA arithmetic up</title>
   <style>
     /* Default styles provided by pandoc.
@@ -178,7 +180,7 @@
   <style>
     body{max-width:44rem;margin:3rem auto;padding:0 1.2rem;
          font:17px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;color:#1a1a1a}
-    h1{font-size:1.7rem;line-height:1.25;margin:0 0 1.5rem}
+    h1{font-size:1.7rem;line-height:1.25;margin:0 0 .4rem}
     h2{font-size:1.25rem;margin:2.2rem 0 .6rem;border-bottom:1px solid #eee;padding-bottom:.2rem}
     a{color:#0b5cad}
     code{font:14px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:#f4f4f4;padding:.1em .35em;border-radius:3px}
@@ -188,16 +190,20 @@
     th,td{border:1px solid #e2e2e2;padding:.5rem .6rem;text-align:left;vertical-align:top}
     th{background:#fafafa}
     blockquote{color:#555;border-left:3px solid #ddd;margin:0;padding-left:1rem}
+    em{color:#555}
   </style>
 </head>
 <body>
 <header id="title-block-header">
 <h1 class="title">Verifying an eSIM attestation, from the ML-DSA
 arithmetic up</h1>
+<p class="author">Amar Akshat</p>
 </header>
 <h1
 id="verifying-an-esim-attestation-from-the-ml-dsa-arithmetic-up">Verifying
 an eSIM attestation, from the ML-DSA arithmetic up</h1>
+<p><em>Amar Akshat · <a
+href="https://github.com/amarshat">github.com/amarshat</a></em></p>
 <p>Post-quantum signatures are going into secure elements before the
 implementations have settled. A one-character change in a deployed
 ML-DSA crate’s hint decoder, <code>&lt;</code> to <code>&lt;=</code>,

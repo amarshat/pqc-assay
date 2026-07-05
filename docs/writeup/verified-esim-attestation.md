@@ -1,5 +1,7 @@
 # Verifying an eSIM attestation, from the ML-DSA arithmetic up
 
+*Amar Akshat &middot; [github.com/amarshat](https://github.com/amarshat)*
+
 Post-quantum signatures are going into secure elements before the implementations have settled. A
 one-character change in a deployed ML-DSA crate's hint decoder, `<` to `<=`, made it accept non-canonical
 signatures. It passed the test vectors and became CVE-2026-24850. That is the gap between "tested" and
