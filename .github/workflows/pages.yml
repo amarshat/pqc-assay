@@ -17,7 +17,9 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # Let an in-flight deploy finish rather than cancelling it. Cancelling a deploy mid-flight can leave
+  # the Pages deployment stuck and make the next run fail with "Deployment failed, try again later".
+  cancel-in-progress: false
 
 jobs:
   deploy:
