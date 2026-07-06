@@ -34,6 +34,12 @@ BITWUZLA_VERSION="0.9.1"
 BITWUZLA_ASSET="Bitwuzla-macOS-arm64-static.zip"
 BITWUZLA_URL="https://github.com/bitwuzla/bitwuzla/releases/download/${BITWUZLA_VERSION}/${BITWUZLA_ASSET}"
 
+# ProVerif: symbolic protocol verifier for the Q-SEAL reachability property (section 16 property 5).
+# Built from source (CLI only), because the opam package pulls a GTK2 GUI dependency we do not need.
+# Needs an OCaml toolchain; skip with SKIP_PROVERIF=1 (the SAW/Cryptol/Isabelle legs do not need it).
+PROVERIF_VERSION="2.05"
+PROVERIF_URL="https://bblanche.gitlabpages.inria.fr/proverif/proverif${PROVERIF_VERSION}.tar.gz"
+
 # clang: we deliberately use the system Apple clang (recorded in ASSUMPTIONS.md), NOT a vendored one.
 EXPECTED_CLANG="Apple clang version 17.0.0 (clang-1700.0.13.5)"
 
@@ -92,6 +98,28 @@ link "$BITWUZLA_HOME/bin/bitwuzla" "bitwuzla"
 xattr -dr com.apple.quarantine "$BITWUZLA_HOME" 2>/dev/null || true
 if command -v codesign >/dev/null; then
   codesign --force --sign - "$BITWUZLA_HOME/bin/bitwuzla" 2>/dev/null || true
+fi
+
+# --- ProVerif (Q-SEAL reachability leg; optional, needs OCaml) ---------------
+# Set SKIP_PROVERIF=1 to skip. Otherwise build from source IF an OCaml toolchain is on PATH; the opam
+# package's GTK2 GUI dependency is not needed, so we build the CLI directly.
+if [[ -z "${SKIP_PROVERIF:-}" ]]; then
+  PROVERIF_HOME="$TOOLS_DIR/proverif-${PROVERIF_VERSION}"
+  if [[ ! -x "$BIN_DIR/proverif" ]]; then
+    if command -v ocamlfind >/dev/null 2>&1; then
+      fetch "$PROVERIF_URL" "$DL_DIR/proverif${PROVERIF_VERSION}.tar.gz"
+      echo ">> building proverif ${PROVERIF_VERSION} from source (CLI only, no GTK)"
+      rm -rf "$PROVERIF_HOME" && mkdir -p "$PROVERIF_HOME"
+      tar -xzf "$DL_DIR/proverif${PROVERIF_VERSION}.tar.gz" -C "$PROVERIF_HOME" --strip-components=1
+      ( cd "$PROVERIF_HOME" && ./build )
+      link "$PROVERIF_HOME/proverif" "proverif"
+    else
+      echo ">> SKIP: proverif needs an OCaml toolchain (ocamlfind not found). Install opam + ocaml"
+      echo "         4.14.1 then re-run, or set SKIP_PROVERIF=1. See qseal/proof/proverif/README.md."
+    fi
+  fi
+else
+  echo ">> SKIP_PROVERIF set — skipping proverif (Q-SEAL reachability leg)"
 fi
 
 # --- Isabelle ---------------------------------------------------------------

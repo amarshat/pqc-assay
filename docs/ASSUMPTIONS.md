@@ -339,6 +339,11 @@ Pinned and installed by `scripts/setup.sh` into `.tools/` (gitignored). Platform
 - Isabelle: **Isabelle2025-2** (Jan 2026), asset `Isabelle2025-2_macos.tar.gz` (universal bundle,
   upstream lists macOS 26 / Apple Silicon support).
 - clang: **Apple clang 17.0.0 (clang-1700.0.13.5)**, system `/usr/bin/clang` (NOT vendored — see below).
+- ProVerif: **2.05**, built from source (CLI only) by `scripts/setup.sh` when an OCaml toolchain is
+  present; used solely for the Q-SEAL reachability property (section 16 property 5). Optional leg
+  (`SKIP_PROVERIF=1`), not in the per-push SAW CI. Needs opam + OCaml 4.14.1 (see
+  `qseal/proof/proverif/README.md`); the opam package's GTK2 GUI dependency is skipped by building the
+  CLI directly.
 - z3: 4.15.4 present on system, but the SAW "with-solvers" bundle ships its own solver set; the
   pipeline prefers the bundled solvers for reproducibility.
 
@@ -355,6 +360,22 @@ Pinned and installed by `scripts/setup.sh` into `.tools/` (gitignored). Platform
   (17.0.0). Apple's clang can emit a bitcode/IR version that differs from mainline; if SAW's LLVM
   parser rejects it, the documented fallback is a pinned mainline `clang`. Part of the trust base
   (see "Compiler correctness").
+
+## Q-SEAL property 5 (ProVerif reachability) modeling assumptions
+- **Symbolic (Dolev-Yao) model, not code-level.** Property 5 (`PROFILE_ACTION_OBSERVED` unreachable via a
+  host-exposed APDU path) is checked in ProVerif over an abstract model of the applet's command surface
+  (`qseal/proof/proverif/property5.pv`). There is no C == model link for this property, unlike the SAW
+  properties 1-4/6/7. The proof is about the acceptance/dispatch structure, with cryptography idealized
+  (a free `sign` constructor, perfect symbolic keys).
+- **Channel-privacy mapping is an assumption.** "Host-exposed" is modeled as a public (attacker) channel
+  and the trusted internal eUICC event callback as a private channel. This assumes the real secure-element
+  access-control boundary (spec section 12) maps onto that privacy: that the host cannot reach the
+  internal-callback channel, and that the only host-reachable signing entry is the modeled `hostCreate`.
+- **Abstracted applet.** The model reduces the applet to the assertion-type dispatch; it does not model
+  full CREATE_ASSERTION field validation, READ_EVIDENCE, sessions, or APDU framing. The guard proved
+  necessary (host path must refuse type `0x04`) is the authorization check property 7's field gate does
+  not make; closing that at the code level would require adding the `0x04` rejection to the verified C
+  `qseal_validate_request` and is not yet done.
 
 ## Open findings (handle per CONTRIBUTING.md → Responsible disclosure)
 - **DISCLOSED 2026-06-09:** OF-1 and OF-2 were filed together (deliberate, human-routed) as a single

@@ -1,0 +1,49 @@
+(* Q-SEAL section 16 property 5: PROFILE_ACTION_OBSERVED (assertion type 0x04) cannot be reached
+   through a host-exposed APDU path. Spec 8.4: that assertion type is produced ONLY from a trusted
+   internal eUICC event callback after a profile state transition, and "MUST NOT be callable directly by
+   a handset application."
+
+   This is a reachability property over the command surface, not a fixed-format identity, so it is
+   modelled and checked in ProVerif (symbolic / Dolev-Yao) rather than in the SAW/Cryptol pipeline. The
+   host APDU channel is attacker-controlled; the internal callback is a private channel the attacker
+   cannot use. The correspondence proved is: any signing of an OBSERVED assertion is preceded by the
+   internal callback firing. property5_mutant.pv drops the host-path guard and ProVerif falsifies the
+   same query (an attacker obtains an OBSERVED assertion through the host path). *)
+
+free host: channel.                  (* host-exposed APDU path: attacker-controlled *)
+free internalCb: channel [private].  (* trusted internal event callback: not attacker-reachable *)
+
+type key.
+fun sign(bitstring, key): bitstring.
+
+free sk: key [private].              (* applet signing key *)
+
+const OBSERVED: bitstring.           (* assertion type PROFILE_ACTION_OBSERVED (0x04) *)
+
+event Signed(bitstring).             (* an assertion of the given type was signed *)
+event InternalFired().               (* the trusted internal callback ran *)
+
+(* Host-callable CREATE_ASSERTION: the handset supplies the assertion type and request. The applet must
+   NOT sign an OBSERVED assertion on this path (spec 8.4). *)
+let hostCreate =
+  in(host, (t: bitstring, req: bitstring));
+  if t <> OBSERVED then
+  (
+    event Signed(t);
+    out(host, sign((t, req), sk))
+  ).
+
+(* Trusted internal callback: fires only after a real profile state transition, then signs the OBSERVED
+   assertion. Reached over a private channel, so the attacker cannot invoke it. *)
+let internalObserved =
+  in(internalCb, req: bitstring);
+  event InternalFired();
+  event Signed(OBSERVED);
+  out(host, sign((OBSERVED, req), sk)).
+
+(* Any OBSERVED signing is preceded by the trusted internal callback. If the host path could produce one,
+   this correspondence fails. *)
+query event(Signed(OBSERVED)) ==> event(InternalFired()).
+
+process
+  ( (!hostCreate) | (!internalObserved) )

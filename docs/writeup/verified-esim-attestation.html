@@ -227,12 +227,13 @@ and Isabelle shows the lifted model equals the FIPS 204 transform. No
 theorems. It is the toolchain Apple used on corecrypto, pointed at the
 reference C that everyone else derives their understanding from rather
 than at our own code.</p>
-<p>On top of that, six of the seven protocol properties in the spec’s
-verification-targets list. Each is a Cryptol model of a spec rule, a C
+<p>On top of that, all seven protocol properties in the spec’s
+verification-targets list. Six are a Cryptol model of a spec rule, a C
 reference written to be verifiable, and a SAW proof that the C equals
-the model. Each also carries an injected mutant that the proof rejects,
-a sensitivity check that the proof depends on the clause it is meant to
-check. Each runs in a second or two:</p>
+the model, each carrying an injected mutant the proof rejects (a
+sensitivity check that the proof depends on the clause it checks). The
+seventh is a reachability property and is checked in ProVerif instead.
+Each runs in a second or two:</p>
 <table>
 <colgroup>
 <col style="width: 33%" />
@@ -288,6 +289,12 @@ closed</td>
 <td><code>make qseal-evidence</code></td>
 <td>2.0 s</td>
 </tr>
+<tr>
+<td>An observed-action assertion is unreachable through a host APDU path
+(ProVerif)</td>
+<td><code>make qseal-reachability</code></td>
+<td>0.1 s</td>
+</tr>
 </tbody>
 </table>
 <p>A few are worth a sentence. The transcript is fixed-length with no
@@ -303,7 +310,13 @@ is rejected, and a verifier that drops the consume step is shown to
 accept the same request twice. The evidence proof is a round-trip:
 splitting a blob into response fragments and reassembling recovers
 exactly the original bytes, while a dropped fragment fails closed rather
-than being silently zero-filled. The hybrid one, verbatim from
+than being silently zero-filled. The last one is different in kind: the
+observed-action assertion type is meant to come only from a trusted
+internal callback, never a handset command, so it is a reachability
+question. In ProVerif, with the host APDU channel attacker-controlled
+and the internal callback private, an observed-type signing provably
+happens only after the internal callback; drop the host-path guard and
+ProVerif finds the attack. The hybrid one, verbatim from
 <code>make qseal-hybrid</code>:</p>
 <pre><code>Proof succeeded! qseal_hybrid_accept
 VERIFIED: qseal_hybrid_accept == vE(pk_c,tbs,sig_c) AND vM(pk_pq,tbs,sig_pq) -- both required, same transcript
@@ -326,15 +339,21 @@ check-and-consume race under concurrency is assumed away, not verified.
 The validation proof rejects out-of-enumeration field <em>values</em>;
 it does not cover length parsing of the incoming APDU (that is upstream
 of the typed request it starts from), cross-field constraints, or
-authorization, so a profile-observed assertion type under a
-host-asserted origin still passes it (which path can reach which type is
-the one property still open). The evidence proof is the byte-level
-reassembly identity, not the APDU transport state machine and not the
-evidence content (that the reassembled transcript and signatures are the
-ones the applet signed is the binding and hybrid properties, not
-re-checked there). The mutants above are hand-injected, not bugs found
-in the wild, so catching them shows sensitivity to one clause, not
-adequacy. To measure adequacy I ran a systematic pass
+authorization, so the field gate still passes a profile-observed
+assertion type under a host-asserted origin. The reachability property
+(5) forbids that observed type on the host path, but it does so in a
+separate ProVerif model, not in the verified C, so the two are not
+linked yet. That reachability result is a symbolic (Dolev-Yao) model of
+the command surface, with cryptography idealized and no C == model link:
+it assumes the host channel is what the attacker controls and the
+internal callback is private, and it abstracts the applet to the
+assertion-type dispatch. The evidence proof is the byte-level reassembly
+identity, not the APDU transport state machine and not the evidence
+content (that the reassembled transcript and signatures are the ones the
+applet signed is the binding and hybrid properties, not re-checked
+there). The mutants above are hand-injected, not bugs found in the wild,
+so catching them shows sensitivity to one clause, not adequacy. To
+measure adequacy I ran a systematic pass
 (<code>make qseal-mutants</code>): apply the CVE’s operator class
 (<code>&lt;</code> vs <code>&lt;=</code>, <code>==</code> vs
 <code>!=</code>, <code>&amp;&amp;</code> vs <code>||</code>, and so on)

@@ -135,6 +135,13 @@ qseal-evidence:
 	@echo ">> cryptol + SAW: evidence-fragment reassembly round-trips or fails closed; no-completeness bug caught"
 	./qseal/verify_evidence.sh
 
+## Q-SEAL reachability (section 16 property 5): PROFILE_ACTION_OBSERVED (type 0x04) cannot be reached
+## through a host-exposed APDU path. Checked in ProVerif (symbolic model), since this is reachability
+## over the command surface, not a fixed-format identity. Needs proverif (opam switch or .tools/bin).
+qseal-reachability:
+	@echo ">> ProVerif: OBSERVED assertion reachable only via the internal callback; host-path mutant refuted"
+	./qseal/verify_reachability.sh
+
 ## Mutation-adequacy report for the Q-SEAL C references: apply relational/logical operator mutations
 ## one at a time and rerun the matching SAW proof, measuring how many mutants the proofs kill. Slower
 ## (~1 min, rebuilds + reruns SAW per mutant); a report, not a gate, so it is not in the saw.yml push

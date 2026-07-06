@@ -21,10 +21,11 @@ and Isabelle shows the lifted model equals the FIPS 204 transform. No `sorry`, `
 transform theorems. It is the toolchain Apple used on corecrypto, pointed at the reference C that
 everyone else derives their understanding from rather than at our own code.
 
-On top of that, six of the seven protocol properties in the spec's verification-targets list. Each is a
-Cryptol model of a spec rule, a C reference written to be verifiable, and a SAW proof that the C equals
-the model. Each also carries an injected mutant that the proof rejects, a sensitivity check that the
-proof depends on the clause it is meant to check. Each runs in a second or two:
+On top of that, all seven protocol properties in the spec's verification-targets list. Six are a Cryptol
+model of a spec rule, a C reference written to be verifiable, and a SAW proof that the C equals the
+model, each carrying an injected mutant the proof rejects (a sensitivity check that the proof depends on
+the clause it checks). The seventh is a reachability property and is checked in ProVerif instead. Each
+runs in a second or two:
 
 | Property | Command | Time |
 |---|---|---|
@@ -35,6 +36,7 @@ proof depends on the clause it is meant to check. Each runs in a second or two:
 | A consumed request_id is not accepted twice, in the sequential case | `make qseal-nonce` | 1.6 s |
 | Field values outside the spec enumerations are rejected before signing | `make qseal-validate` | 1.0 s |
 | Fragmented evidence reassembles to the exact bytes or fails closed | `make qseal-evidence` | 2.0 s |
+| An observed-action assertion is unreachable through a host APDU path (ProVerif) | `make qseal-reachability` | 0.1 s |
 
 A few are worth a sentence. The transcript is fixed-length with no optional fields, and the proof is
 that its serializer is injective: two different transcripts can never produce the same bytes. That is an
@@ -45,7 +47,11 @@ quietly degrade to classical-only. The single-use proof is the first stateful on
 request_id was already consumed is rejected, and a verifier that drops the consume step is shown to
 accept the same request twice. The evidence proof is a round-trip: splitting a blob into response
 fragments and reassembling recovers exactly the original bytes, while a dropped fragment fails closed
-rather than being silently zero-filled. The hybrid one, verbatim from `make qseal-hybrid`:
+rather than being silently zero-filled. The last one is different in kind: the observed-action assertion
+type is meant to come only from a trusted internal callback, never a handset command, so it is a
+reachability question. In ProVerif, with the host APDU channel attacker-controlled and the internal
+callback private, an observed-type signing provably happens only after the internal callback; drop the
+host-path guard and ProVerif finds the attack. The hybrid one, verbatim from `make qseal-hybrid`:
 
 ```
 Proof succeeded! qseal_hybrid_accept
@@ -68,11 +74,15 @@ On the protocol side: the single-use proof is safety only (no double-accept), on
 that fails closed when full and has no expiry-based eviction, and it is the sequential case, so the
 check-and-consume race under concurrency is assumed away, not verified. The validation proof rejects
 out-of-enumeration field *values*; it does not cover length parsing of the incoming APDU (that is
-upstream of the typed request it starts from), cross-field constraints, or authorization, so a
-profile-observed assertion type under a host-asserted origin still passes it (which path can reach which
-type is the one property still open). The evidence proof is the byte-level reassembly identity, not the
-APDU transport state machine and not the evidence content (that the reassembled transcript and
-signatures are the ones the applet signed is the binding and hybrid properties, not re-checked there).
+upstream of the typed request it starts from), cross-field constraints, or authorization, so the field
+gate still passes a profile-observed assertion type under a host-asserted origin. The reachability
+property (5) forbids that observed type on the host path, but it does so in a separate ProVerif model,
+not in the verified C, so the two are not linked yet. That reachability result is a symbolic (Dolev-Yao)
+model of the command surface, with cryptography idealized and no C == model link: it assumes the host
+channel is what the attacker controls and the internal callback is private, and it abstracts the applet
+to the assertion-type dispatch. The evidence proof is the byte-level reassembly identity, not the APDU
+transport state machine and not the evidence content (that the reassembled transcript and signatures are
+the ones the applet signed is the binding and hybrid properties, not re-checked there).
 The mutants above are hand-injected, not bugs found in the wild, so catching them shows sensitivity to
 one clause, not adequacy. To measure adequacy I ran a systematic pass (`make qseal-mutants`): apply the
 CVE's operator class (`<` vs `<=`, `==` vs `!=`, `&&` vs `||`, and so on) to each C reference, one

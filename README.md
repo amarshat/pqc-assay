@@ -51,16 +51,16 @@ decoder (CVE-2026-24850) shows the primitives need checking, not just testing.
 
 The applied setting is **Q-SEAL** ([`docs/qseal/QSEAL-v0.1.md`](docs/qseal/QSEAL-v0.1.md)), a hybrid
 quantum-safe secure-element attestation layer whose mandatory suite pairs ECDSA P-256 with ML-DSA-44.
-Verification of Q-SEAL lives in [`qseal/`](qseal/): SAW proves a C reference of six of the seven
-section-16 targets matches a Cryptol model of the spec, each with an injected-mutant non-vacuity check
-(and a mutation-adequacy pass that kills 38 of 40 systematic relational/logical mutants of the C, the
-two survivors being equivalent mutants; `make qseal-mutants`).
-These are the transcript-format, field, and state checks (1 transcript bijection, 2 challenge binding, 3
-hybrid no-downgrade with the signature verifiers left uninterpreted, 4 sequential single-use, 6 evidence
-reassembly round-trip-or-fail-closed, 7 field-value validation before signing); the remaining one (5,
-`PROFILE_ACTION_OBSERVED` APDU-path reachability) needs a protocol prover and is open. See
+Verification of Q-SEAL lives in [`qseal/`](qseal/): all seven of the section-16 targets are
+machine-checked. Six (1 transcript bijection, 2 challenge binding, 3 hybrid no-downgrade with the
+signature verifiers left uninterpreted, 4 sequential single-use, 6 evidence reassembly
+round-trip-or-fail-closed, 7 field-value validation before signing) are SAW proofs that a C reference
+matches a Cryptol model of the spec rule, each with an injected-mutant non-vacuity check (and a
+mutation-adequacy pass that kills 38 of 40 systematic relational/logical mutants of the C, the two
+survivors being equivalent mutants; `make qseal-mutants`). The seventh (5, `PROFILE_ACTION_OBSERVED`
+cannot be reached through a host-exposed APDU path) is a reachability property checked in ProVerif. See
 [`qseal/README.md`](qseal/README.md) for the exact scope and non-claims of each. `make qseal-tbs
-qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence`.
+qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-reachability`.
 
 ## What's proven
 

@@ -146,6 +146,23 @@ reassembly identity, not the APDU chaining/transport state machine, and not the 
 the reassembled `tbs`/signatures are the ones the applet signed is properties 2 and 3, not re-checked
 here.
 
+**PROFILE_ACTION_OBSERVED is not reachable through a host-exposed APDU path (property 5 of section 16).**
+This is a reachability question over the command surface, not a fixed-format identity, so it is checked
+in ProVerif (symbolic / Dolev-Yao) rather than the SAW/Cryptol pipeline. `proof/proverif/property5.pv`
+models the host APDU channel as attacker-controlled and the internal eUICC event callback as a private
+channel, and proves the correspondence `event(Signed(OBSERVED)) ==> event(InternalFired())`: any signing
+of a `PROFILE_ACTION_OBSERVED` (type `0x04`) assertion is preceded by the trusted internal callback. The
+host-callable path signs only `if t <> OBSERVED` (spec 8.4). `property5_mutant.pv` drops that guard, and
+ProVerif reports the same query *false*, finding a trace where the attacker obtains an OBSERVED assertion
+through the host path. `verify_reachability.sh` runs both and exits 0 only if the good model proves the
+query and the mutant refutes it.
+
+Scope: this is a symbolic model of the command surface, with no C == model link (unlike the SAW
+properties). "Host-exposed" is a public channel and the trusted callback a private one; the model
+abstracts the applet to the assertion-type dispatch. The guard it proves necessary (the host path must
+refuse type `0x04`) is exactly the authorization check property 7's field gate does not make, so this is
+where that gap is closed at the model level. Details in [`proof/proverif/README.md`](proof/proverif/README.md).
+
 ## Mutation adequacy
 
 Each proof above carries one hand-injected mutant, which shows the proof is sensitive to that one
@@ -165,17 +182,20 @@ set. Details in [`mutation/README.md`](mutation/README.md); run with `make qseal
     ./verify_hybrid.sh     # SAW: hybrid accept requires BOTH signatures; downgrade variant caught
     ./verify_nonce.sh      # cryptol + SAW: consumed request_id can't be accepted twice; no-consume bug caught
     ./verify_validate.sh   # cryptol + SAW: a malformed request fails before signing; no-suite-check bug caught
-    ./verify_evidence.sh   # cryptol + SAW: evidence reassembly round-trips or fails closed; no-completeness bug caught
+    ./verify_evidence.sh     # cryptol + SAW: evidence reassembly round-trips or fails closed; no-completeness bug caught
+    ./verify_reachability.sh # ProVerif: OBSERVED reachable only via the internal callback; host-path mutant refuted
 
-All exit non-zero on failure. `verify_tbs.sh` needs `cryptol`; the others need `clang` + `saw` (or the
-pinned `../.tools/bin`). Also wired as `make qseal-tbs`, `make qseal-ref`, `make qseal-assert`,
-`make qseal-hybrid`, `make qseal-nonce`, `make qseal-validate`, `make qseal-evidence`.
+All exit non-zero on failure. `verify_tbs.sh` needs `cryptol`; the SAW ones need `clang` + `saw`;
+`verify_reachability.sh` needs `proverif` (all findable in `../.tools/bin`). Also wired as `make qseal-tbs`,
+`make qseal-ref`, `make qseal-assert`, `make qseal-hybrid`, `make qseal-nonce`, `make qseal-validate`,
+`make qseal-evidence`, `make qseal-reachability`.
 
-## Not yet done (section 16 remainder)
+## Section 16 coverage
 
-One property remains. Property 5 (`PROFILE_ACTION_OBSERVED` cannot be reached through a host-exposed APDU
-path) is a reachability question over an APDU state machine and is a better fit for a protocol prover
-(Tamarin, ProVerif) than for the SAW/Cryptol/Isabelle pipeline; it is also the property the authorization
-gap noted under property 7 above really belongs to. Verifying a shipped Rust (de)serializer directly is
-known to hit a crucible-mir limitation on slice access, which is why the work here is done at the model
-level and against a C reference written to be verifiable.
+All seven verification targets are now machine-checked: 1-4, 6, 7 as SAW proofs that a C reference equals
+a Cryptol model of the spec rule (each with an injected-mutant non-vacuity check and a 38/40
+mutation-adequacy pass, see above), and 5 as a ProVerif reachability result. Properties 1-4/6/7 are
+code-level (a C reference is verified); property 5 is a symbolic protocol model with no C link, and the
+scope note under each property states what it does and does not establish. A shipped Rust
+(de)serializer cannot be verified directly here (a crucible-mir limitation on slice access), which is why
+the code-level work is done against C references written to be verifiable.

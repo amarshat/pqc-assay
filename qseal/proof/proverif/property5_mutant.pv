@@ -1,0 +1,34 @@
+(* Mutant of property5.pv: the host-callable CREATE_ASSERTION drops the guard, so it signs an assertion
+   of ANY type the handset asks for, including OBSERVED. ProVerif must FALSIFY the same correspondence
+   query (find a trace where an OBSERVED assertion is signed with no internal callback), which is the
+   host-exposed reachability the property forbids. The runner treats "query is true" here as a failure. *)
+
+free host: channel.
+free internalCb: channel [private].
+
+type key.
+fun sign(bitstring, key): bitstring.
+
+free sk: key [private].
+
+const OBSERVED: bitstring.
+
+event Signed(bitstring).
+event InternalFired().
+
+(* BUG: no `if t <> OBSERVED` guard, so the host can request an OBSERVED assertion directly. *)
+let hostCreate =
+  in(host, (t: bitstring, req: bitstring));
+  event Signed(t);
+  out(host, sign((t, req), sk)).
+
+let internalObserved =
+  in(internalCb, req: bitstring);
+  event InternalFired();
+  event Signed(OBSERVED);
+  out(host, sign((OBSERVED, req), sk)).
+
+query event(Signed(OBSERVED)) ==> event(InternalFired()).
+
+process
+  ( (!hostCreate) | (!internalObserved) )
