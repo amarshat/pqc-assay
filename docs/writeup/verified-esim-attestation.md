@@ -59,6 +59,25 @@ VERIFIED: qseal_hybrid_accept == vE(pk_c,tbs,sig_c) AND vM(pk_pq,tbs,sig_pq) -- 
 MUTATION CAUGHT: the downgrade variant (accept on either signature) is REJECTED by the both-required spec
 ```
 
+## Catching the CVE
+
+All of the above holds a design of mine to targets of mine, so here is the same method pointed at the
+actual bug this post opened with. CVE-2026-24850 lived in the FIPS 204 hint encoding: a decoder that used
+`<=` where the spec requires a strict `<` on the indices within a polynomial block, so it accepted a
+non-canonical signature with a repeated index. The rule is FIPS 204's, not Q-SEAL's. I model the
+decoder's accept/reject predicate in Cryptol, write a verifiable C reference of it, and prove them equal;
+then the `<=` variant is shown to fail that same proof, on a concrete encoding with a repeated index.
+That is the exact defect, machine-checked and rejected (`make cve-anchor`):
+
+```
+VERIFIED: qseal_hint_canonical == Cryptol canonical (FIPS 204 hint-decode canonicity)
+CVE CAUGHT: qseal_hint_canonical_lax (<= instead of <) is REJECTED by the canonical spec -- this is CVE-2026-24850 / GHSA-5x2r-hc65-25f9
+```
+
+The honest boundary: this checks a verifiable reference decoder of the FIPS rule, not the shipped Rust
+crate, whose slice access defeats the symbolic simulator. So the claim is that the method catches the
+CVE-2026-24850 class on a faithful reference of the same rule, not that it verifies the deployed code.
+
 ## What I am not claiming
 
 These are scoped results, and the scope matters more than the count.
@@ -90,7 +109,8 @@ mutation at a time, and rerun the matching proof. The proofs kill 39 of 41 such 
 survivors are equivalent mutants (a loop bound whose extra iteration a downstream guard makes a no-op),
 so no proof or test could kill them. And the C references are written to be verifiable; the shipped Rust
 deserializer, where the CVE lived, is outside the verified set because of a tool limit on how it slices
-memory, so that path is covered by tests, not a proof, and the repo says so.
+memory, so that path is covered by tests, not a proof, and the repo says so. The CVE anchor above checks
+the FIPS rule on a reference decoder, which is why it catches the bug class rather than the exact crate.
 
 Everything above reproduces from a `make` target. The primitive chain has 341 Isabelle lemmas (most are
 supporting lemmas), 12 SAW proofs on the C, and 37 on the Rust.
