@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-demo writeup clean
+.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -141,6 +141,14 @@ qseal-evidence:
 qseal-reachability:
 	@echo ">> ProVerif: OBSERVED assertion reachable only via the internal callback; host-path mutant refuted"
 	./qseal/verify_reachability.sh
+
+## CVE-2026-24850 anchor: FIPS 204 hint-decode canonicity. The rule is FIPS 204's (external referent),
+## the caught defect is the exact GHSA-5x2r-hc65-25f9 bug (`<=` for strict `<`, accepting a repeated
+## index). cryptol shows the CVE decoder accepts a non-canonical hint; SAW proves the C reference
+## canonical predicate == the model and the `<=` variant is rejected.
+cve-anchor:
+	@echo ">> cryptol + SAW: FIPS 204 hint canonicity; the CVE-2026-24850 (<= for <) variant is caught"
+	./cve-anchor/verify.sh
 
 ## Mutation-adequacy report for the Q-SEAL C references: apply relational/logical operator mutations
 ## one at a time and rerun the matching SAW proof, measuring how many mutants the proofs kill. Slower

@@ -62,6 +62,11 @@ cannot be reached through a host-exposed APDU path) is a reachability property c
 [`qseal/README.md`](qseal/README.md) for the exact scope and non-claims of each. `make qseal-tbs
 qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-reachability`.
 
+To anchor the method to a real defect, [`cve-anchor/`](cve-anchor/) machine-checks the FIPS 204
+hint-decode canonicity rule that CVE-2026-24850 (GHSA-5x2r-hc65-25f9) broke: SAW proves a verifiable
+reference decoder equals a Cryptol model of the rule, and the buggy `<=` variant (the exact CVE) is
+rejected by the same proof. The rule is FIPS 204's, not ours. `make cve-anchor`.
+
 ## What's proven
 
 `make verify` checks both legs (exit 0):

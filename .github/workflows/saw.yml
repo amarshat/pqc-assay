@@ -31,3 +31,5 @@ jobs:
         run: make mutation-test
       - name: Q-SEAL protocol properties (cryptol + SAW; each with a mutation guard)
         run: make qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence
+      - name: CVE-2026-24850 anchor (FIPS 204 hint canonicity; the CVE variant is caught)
+        run: make cve-anchor
