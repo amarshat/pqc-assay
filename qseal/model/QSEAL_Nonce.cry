@@ -16,11 +16,11 @@
 
 module QSEAL_Nonce where
 
-// The single-use key is verifier_id (16) concatenated with request_id (16). The spec requires a
-// request_id to be unique per verifier, so keying on the verifier as well as the request_id makes the
-// store per-verifier: two verifiers reusing the same request_id do not collide (a request_id-only store
-// would let one verifier's request block another's, a cross-verifier denial of service).
-type Key = [32][8]
+// The single-use challenge key is verifier_id (16) || request_id (16) || nonce (32) = 64 bytes. The
+// spec (section 4) consumes the challenge once, and a request_id is unique per verifier, so the key
+// covers the verifier (per-verifier store, no cross-verifier collision), the request_id, and the nonce
+// together. This is the exact key the Q-SEAL spec's consume-once rule is defined over.
+type Key = [64][8]
 type CAP   = 8            // fixed store capacity; see note above
 
 // A bounded single-use store: `count` request_ids consumed so far, held in the first `count` slots as

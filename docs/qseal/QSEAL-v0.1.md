@@ -82,15 +82,25 @@ accept(assertion) =
     verify_ecdsa(classical_public_key, TBS, sig_classical)
 AND verify_mldsa(pqc_public_key, TBS, sig_pqc)
 AND verify_policy(TBS)
-AND consume_nonce_once(TBS.request_id, TBS.nonce)
+AND consume_challenge_once(challenge_key(TBS))
 ```
+
+The challenge key is the concatenation
+
+```text
+challenge_key(TBS) = TBS.verifier_id || TBS.request_id || TBS.nonce
+```
+
+A `request_id` is unique per verifier (section 10), so this key is per-verifier and covers the request
+identifier and the nonce together. `consume_challenge_once` records the key on acceptance and rejects any
+later assertion carrying the same key.
 
 The verifier MUST reject:
 
 * an assertion with only one valid signature
 * an assertion where the signatures cover different transcripts
 * an unsupported suite identifier
-* a request whose nonce or request ID has already been consumed
+* a request whose challenge key (`verifier_id || request_id || nonce`) has already been consumed
 * a signature generated under a legacy-only suite when `HYB-1` was required
 
 There is no "either signature is fine" fallback inside `HYB-1`. That would turn hybrid security into decorative garnish.

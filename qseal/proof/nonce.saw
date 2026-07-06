@@ -15,14 +15,14 @@ let arr n = llvm_array n (llvm_int 8);
 // A store argument: fresh symbolic {count, slots}, returned as the Cryptol Store term too.
 let accept_spec = do {
     count <- llvm_fresh_var "count" (llvm_int 8);
-    slots <- llvm_fresh_var "slots" (llvm_array 8 (arr 32));
+    slots <- llvm_fresh_var "slots" (llvm_array 8 (arr 64));
     ok    <- llvm_fresh_var "ok" (llvm_int 32);
-    r     <- llvm_fresh_var "r" (arr 32);
+    r     <- llvm_fresh_var "r" (arr 64);
 
     ps <- llvm_alloc (llvm_alias "struct.qseal_nonce_store_t");
     llvm_points_to ps (llvm_struct_value [llvm_term count, llvm_term slots]);
 
-    pr <- llvm_alloc_readonly (arr 32);
+    pr <- llvm_alloc_readonly (arr 64);
     llvm_points_to pr (llvm_term r);
 
     llvm_execute_func [ps, llvm_term ok, pr];

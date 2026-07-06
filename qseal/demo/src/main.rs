@@ -65,19 +65,26 @@ fn verify_both(pk: &PublicKeys, tbs: &[u8], sig: &HybridSig) -> (bool, bool) {
 /// twin of qseal/ref/nonce.c (an append-only store there, a HashSet here; the single-use logic is what
 /// qseal/proof/nonce.saw verifies). Accept iff the signatures/policy are OK AND the challenge is fresh;
 /// on accept, consume it so a resubmission is rejected.
-struct NonceStore(HashSet<[u8; 32]>);
+struct NonceStore(HashSet<[u8; 64]>);
 impl NonceStore {
     fn new() -> Self {
         NonceStore(HashSet::new())
     }
-    /// `sigs_ok` folds in the HYB-1 both-signatures decision. The single-use key is verifier_id
-    /// concatenated with request_id, so the store is per-verifier (the spec requires request_id unique
-    /// per verifier; a request_id-only key would let one verifier's request block another's). Returns
-    /// true (accept) iff validated and the key has not been consumed; records it on accept.
-    fn accept_once(&mut self, sigs_ok: bool, verifier_id: &[u8; 16], request_id: &[u8; 16]) -> bool {
-        let mut key = [0u8; 32];
+    /// `sigs_ok` folds in the HYB-1 both-signatures decision. The single-use challenge key is
+    /// verifier_id || request_id || nonce, the key the spec's consume-once rule is defined over (a
+    /// request_id is unique per verifier, so the key is also per-verifier). Returns true (accept) iff
+    /// validated and the key has not been consumed; records it on accept.
+    fn accept_once(
+        &mut self,
+        sigs_ok: bool,
+        verifier_id: &[u8; 16],
+        request_id: &[u8; 16],
+        nonce: &[u8; 32],
+    ) -> bool {
+        let mut key = [0u8; 64];
         key[..16].copy_from_slice(verifier_id);
-        key[16..].copy_from_slice(request_id);
+        key[16..32].copy_from_slice(request_id);
+        key[32..].copy_from_slice(nonce);
         let fresh = !self.0.contains(&key);
         let accept = sigs_ok && fresh;
         if accept {
@@ -187,9 +194,9 @@ fn main() {
     //    first accept, so the replay is rejected even though both signatures still verify.
     let mut store = NonceStore::new();
     let (c, q) = verify_both(&pk, &tbs, &sig);
-    let first = store.accept_once(c && q, &req.verifier_id, &req.request_id);
+    let first = store.accept_once(c && q, &req.verifier_id, &req.request_id, &req.nonce);
     let (c, q) = verify_both(&pk, &tbs, &sig);
-    let replay = store.accept_once(c && q, &req.verifier_id, &req.request_id);
+    let replay = store.accept_once(c && q, &req.verifier_id, &req.request_id, &req.nonce);
     println!("4. first submission            sigs_ok={:5}  fresh={:5}  ->  {}", c && q, first, outcome(first));
     println!("   replay (same request_id)    sigs_ok={:5}  fresh={:5}  ->  {}", c && q, replay, outcome(replay));
     println!("   a verifier that skips consume_nonce_once would have returned {} on the replay.", outcome(c && q));
@@ -229,8 +236,8 @@ fn main() {
     let (cd, qd) = verify_both(&pk, &tbs, &downgrade);
     let ok_downgrade_rejected = !(cd && qd) && cd; // rejected overall, but classical alone was valid
     let mut store2 = NonceStore::new();
-    let ok_first = store2.accept_once(true, &req.verifier_id, &req.request_id); // fresh challenge accepts
-    let ok_replay_rejected = !store2.accept_once(true, &req.verifier_id, &req.request_id); // same id, now consumed
+    let ok_first = store2.accept_once(true, &req.verifier_id, &req.request_id, &req.nonce); // fresh challenge accepts
+    let ok_replay_rejected = !store2.accept_once(true, &req.verifier_id, &req.request_id, &req.nonce); // same id, now consumed
     let mut bad2 = sample_request();
     bad2.suite_id = [0x00, 0x02];
     let ok_valid_signed = create_assertion_checked(&req, &app).is_some();

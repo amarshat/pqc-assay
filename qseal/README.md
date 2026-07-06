@@ -87,10 +87,10 @@ Scope, and what this does NOT prove:
 - **Sequential/atomic only.** `step` does seen-check-then-consume in one step. The real replay risk is
   the TOCTOU window between verifying and consuming under concurrency; two simultaneous submissions of
   the same id both seeing `fresh` is not expressible in this model. Atomic check-and-consume is assumed.
-- **Keyed on `verifier_id ‖ request_id`** (32 bytes), so the store is per-verifier as the spec requires
-  (`request_id` is unique per verifier). An earlier request_id-only key would let one verifier's request
-  block another's, a cross-verifier denial of service; that is fixed. The nonce is still not part of the
-  key (the spec's full key is `(request_id, nonce)`).
+- **Keyed on `verifier_id ‖ request_id ‖ nonce`** (64 bytes), the exact challenge key the spec's
+  `consume_challenge_once` rule is defined over (section 4). A `request_id` is unique per verifier, so the
+  key is per-verifier and covers the request_id and the nonce together; model, C, and demo all use this
+  key.
 - Signature/policy correctness is the abstract `ok` bit (that is property 3).
 
 **Field values outside the spec enumerations fail before signing (part of property 7 of section 16).**

@@ -1,15 +1,15 @@
 /* Q-SEAL single-use challenge store reference (section 16 property 4: a consumed request cannot be
  * accepted twice). Verified against QSEAL_Nonce.cry by qseal/proof/nonce.saw. The signature/policy
  * checks are folded into the `ok` bit (property 3, opaque here); this file is only the consume-once
- * state machine. The single-use key is verifier_id concatenated with request_id, so the store is
- * per-verifier (the spec requires request_id unique per verifier). Capacity is fixed and small so the
- * proof stays bounded; the single-use logic is independent of it. */
+ * state machine. The single-use challenge key is verifier_id || request_id || nonce, the key the spec's
+ * consume-once rule is defined over. Capacity is fixed and small so the proof stays bounded; the
+ * single-use logic is independent of it. */
 #ifndef QSEAL_NONCE_H
 #define QSEAL_NONCE_H
 
 #include <stdint.h>
 
-#define QSEAL_KEY_LEN   32   /* verifier_id (16) || request_id (16) */
+#define QSEAL_KEY_LEN   64   /* verifier_id (16) || request_id (16) || nonce (32) */
 #define QSEAL_STORE_CAP 8
 
 /* Append-only single-use store: the first `count` slots hold consumed keys. Field order and types match
