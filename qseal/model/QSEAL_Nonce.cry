@@ -1,0 +1,101 @@
+// Q-SEAL single-use challenge store: Cryptol model + replay-resistance proofs (section 16 property 4,
+// "a consumed request_id cannot be accepted twice").
+//
+// Properties 1-3 are fixed-format identities over one transcript. Property 4 is the first genuinely
+// STATEFUL one: acceptance depends on what the verifier has already consumed. The spec's accept rule
+// (section 4) is
+//     accept = verify_ecdsa AND verify_mldsa AND verify_policy AND consume_nonce_once(request_id)
+// and the verifier MUST reject "a request whose ... request ID has already been consumed". We model the
+// signature/policy checks as one abstract bit `ok` (they are property 3; kept opaque here) and model
+// consume_nonce_once as a bounded single-use store. The theorems below say: the store advances only on
+// accept, a consumed id can never be accepted again, and a verifier that skips the consume step is
+// demonstrably replayable.
+//
+// Verified with cryptol :prove (z3). CAP is a small fixed capacity so the goals stay bounded; the
+// single-use LOGIC is independent of CAP (a real verifier uses a large table or hash set).
+
+module QSEAL_Nonce where
+
+type ReqId = [16][8]      // the 16-byte request_id (spec section 7 / 11)
+type CAP   = 8            // fixed store capacity; see note above
+
+// A bounded single-use store: `count` request_ids consumed so far, held in the first `count` slots as
+// an append-only log. count ranges 0..CAP.
+type Store = { count : [8], slots : [CAP]ReqId }
+
+// The index positions 0..CAP-1 (kept in one place so `seen` and `consume` scan identically, which is
+// also how the C reference will be written: a fixed unrolled scan, no slicing).
+idxs : [CAP][8]
+idxs = [0 .. 7]
+
+empty : Store
+empty = { count = 0, slots = zero }
+
+// The store cannot record any more ids. accept fails closed here.
+full : Store -> Bit
+full s = s.count >= `CAP
+
+// r is already consumed iff it equals one of the first `count` slots.
+seen : Store -> ReqId -> Bit
+seen s r = or [ (i < s.count) && (s.slots @ i == r) | i <- idxs ]
+
+// Record r by appending at index `count` (a no-op scan when the guard never fires, i.e. when full).
+// Written as a whole-array rebuild rather than an update at a symbolic index so it maps directly onto
+// a constant-index C scan.
+consume : Store -> ReqId -> Store
+consume s r = { count = s.count + 1
+              , slots = [ if i == s.count then r else s.slots @ i | i <- idxs ] }
+
+// The verifier's single-use decision for an otherwise-validated request. `ok` folds in both signature
+// checks and the policy check (property 3, opaque here). Accept iff validated, not already consumed,
+// and the store can still record it (fail-closed when full).
+accept : Store -> Bit -> ReqId -> Bit
+accept s ok r = ok && (~ (seen s r)) && (~ (full s))
+
+// One verifier step: (accepted?, next store). The store advances only on accept.
+step : Store -> Bit -> ReqId -> (Bit, Store)
+step s ok r = (a, if a then consume s r else s)
+  where a = accept s ok r
+
+// ---- Section 16 property 4 ----------------------------------------------------------------------
+
+// The headline: replaying the exact same validated request against the post-consume store is rejected.
+// (a1 ==> ~a2): if the first step accepts and consumes, the identical second step cannot accept.
+property no_replay s ok r = a1 ==> (~ a2)
+  where
+    (a1, s1) = step s ok r
+    (a2, _ ) = step s1 ok r
+
+// The spec words directly: once a request_id is in the store, no amount of valid signatures (`ok`) can
+// make it accept. A consumed challenge is dead.
+property consumed_never_accepts s ok r = seen s r ==> (~ accept s ok r)
+
+// The mechanism behind no_replay: consuming into a non-full store marks the id seen.
+property consume_marks_seen s r = (~ full s) ==> seen (consume s r) r
+
+// ---- Mutation / non-vacuity ---------------------------------------------------------------------
+
+// The buggy verifier: it validates the request but never records the request_id (it drops
+// consume_nonce_once). This is exactly the replay hole. no_replay does NOT hold for it.
+step_noconsume : Store -> Bit -> ReqId -> (Bit, Store)
+step_noconsume s ok r = (accept s ok r, s)
+
+// A witness that the bug is real: there is a reachable state where the SAME validated request is
+// accepted twice. `:sat` on this must be Satisfiable, which both catches the mutant and shows the good
+// no_replay theorem is non-vacuous (accept is reachable).
+replay_possible_bug : Store -> Bit -> ReqId -> Bit
+replay_possible_bug s ok r = a1 && a2
+  where
+    (a1, s1) = step_noconsume s ok r
+    (a2, _ ) = step_noconsume s1 ok r
+
+// ---- SAW-facing views ---------------------------------------------------------------------------
+// The C reference (qseal/ref/nonce.c) takes `int ok` and mutates the store in place. These split the
+// step result into the returned bit and the next store, with ok as a 32-bit int (nonzero = validated),
+// so the SAW spec can state the return value and the post-state store directly.
+
+acceptBit : Store -> [32] -> ReqId -> [32]
+acceptBit s ok r = if accept s (ok != 0) r then 1 else 0
+
+nextStore : Store -> [32] -> ReqId -> Store
+nextStore s ok r = if accept s (ok != 0) r then consume s r else s

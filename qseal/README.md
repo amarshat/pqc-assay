@@ -59,23 +59,87 @@ requires both signatures over identical bytes for *any* real verifiers. Then a d
 the downgrade. Scope: verifiers are abstract, so this is a statement about the acceptance *structure*
 (both required, same bytes), not about ECDSA/ML-DSA correctness.
 
+**A consumed request_id is not accepted twice, in the sequential case (property 4 of section 16).**
+This is the first *stateful* property: acceptance depends on what the verifier has already consumed, not
+just on one transcript. The spec's accept rule ends with `consume_nonce_once(request_id)` and the
+verifier MUST reject "a request whose ... request ID has already been consumed". `model/QSEAL_Nonce.cry`
+models the signature/policy checks as one abstract bit `ok` (that is property 3, kept opaque) and models
+`consume_nonce_once` as a bounded single-use store. The result with content is `no_replay`: if a
+validated request is accepted and consumed, replaying the exact same request against the resulting store
+is rejected. It reduces to `consume_marks_seen` (appending at index `count` and scanning `i < count`
+actually records the id, with the `>= CAP` boundary keeping the index in range), so the proof exercises
+the store's index arithmetic and would catch an off-by-one there. (`consumed_never_accepts` is also
+proved but is a restatement of the accept definition, not independent content.)
+
+`ref/nonce.c` is the C reference store, and `proof/nonce.saw` proves `qseal_nonce_accept` equals the
+Cryptol model (it returns the accept bit and advances the store to the model's next state), memory-safe,
+with no uninterpreted functions or assumed overrides. An injected mutant `qseal_nonce_accept_noconsume`
+(returns the same bit but never records the id) is shown to *fail* that spec: a non-vacuity check that
+the proof depends on the consume step, not a bug found in the wild. The demo (`demo/`) carries an
+illustrative in-memory store and rejects a replayed valid attestation.
+
+Scope, and what this does NOT prove:
+- **Safety only.** The theorem is "no double-accept." Liveness is not modeled: `accept` requires
+  `~full`, and there is no eviction, so the verified store accepts the first `CAP` (=8, fixed) distinct
+  ids and then rejects everything. That is fail-closed but also a denial-of-service footgun; the spec's
+  real retention mechanism is expiry (section 10), which is out of scope here. "Independent of CAP"
+  applies to safety only.
+- **Sequential/atomic only.** `step` does seen-check-then-consume in one step. The real replay risk is
+  the TOCTOU window between verifying and consuming under concurrency; two simultaneous submissions of
+  the same id both seeing `fresh` is not expressible in this model. Atomic check-and-consume is assumed.
+- **Keyed on `request_id` only**, whereas the spec key is `(request_id, nonce)` and `request_id` is
+  unique per verifier (no `verifier_id` scoping here). request_id-only over-rejects, never
+  under-rejects, so it is safe for replay, but it is not the spec's key.
+- Signature/policy correctness is the abstract `ok` bit (that is property 3).
+
+**Field values outside the spec enumerations fail before signing (part of property 7 of section 16).**
+Section 11.2 requires the applet to validate the requested suite and assertion type and reject
+unsupported origins before it builds and signs a transcript. `model/QSEAL_Validate.cry` models a
+well-formedness gate `valid` over the spec enumerations (version `0x01`, suite `0x0001` = HYB-1,
+assertion_type `0x01..0x06`, assertion_origin `0x01..0x03`, object_hash_algorithm `0x01` = SHA-256), and
+`create_checked` = validate-then-sign-else-zero.
+
+The real result here is the SAW one: `proof/validate.saw` proves `qseal_validate_request` equals `valid`
+and `qseal_create_assertion_checked` equals `create_checked` (on a valid request the C signs and returns
+1; on an invalid one it zeroes the buffer and returns 0), memory-safe, no assumed overrides. An injected
+mutant `qseal_create_assertion_checked_nosuitecheck` (drops the suite check) is shown to *fail* that
+spec: a non-vacuity check, not bug discovery. (The two model-level lemmas `malformed_never_signs` and
+`signed_is_validated` are proved but are definitional consequences of how `create_checked` is written,
+so they carry no content beyond the SAW equivalence; do not read them as substantive theorems.) The demo
+(`demo/`) refuses a bad-suite request before signing.
+
+Scope, and what this does NOT prove. This is a field-*value* gate only. It does not cover:
+- **Length.** Property 7 and 11.2 step 1 ("validate all field lengths") are about the incoming
+  APDU/wire encoding, upstream of the typed `qseal_request_t` this gate starts from. That parse is not
+  modeled or verified. The fixed-format transcript (property 1) is downstream of a struct we already
+  hold; it is not the length validation the spec means.
+- **Cross-field and semantic constraints**, e.g. an object_length that disagrees with the digest, or an
+  expiry in the past.
+- **Authorization.** A `HOST_ASSERTED` request (origin `0x01`) carrying assertion_type `0x04`
+  (`PROFILE_ACTION_OBSERVED`) passes `valid` and is signed, even though section 8.4 says that type must
+  not be host-callable. Which types are reachable through which path is property 5 (open). So the bare
+  claim "a malformed request is never signed" is false for that class; only out-of-enumeration field
+  values are rejected here.
+
 ## Reproduce
 
     ./verify_tbs.sh        # cryptol + z3: the model is bijective/injective (3 properties Q.E.D.)
     ./verify_ref.sh        # clang + SAW: the C reference (de)serializer == the Cryptol model
     ./verify_assertion.sh  # cryptol + SAW: CREATE_ASSERTION binds the validated challenge
     ./verify_hybrid.sh     # SAW: hybrid accept requires BOTH signatures; downgrade variant caught
+    ./verify_nonce.sh      # cryptol + SAW: consumed request_id can't be accepted twice; no-consume bug caught
+    ./verify_validate.sh   # cryptol + SAW: a malformed request fails before signing; no-suite-check bug caught
 
 All exit non-zero on failure. `verify_tbs.sh` needs `cryptol`; the others need `clang` + `saw` (or the
 pinned `../.tools/bin`). Also wired as `make qseal-tbs`, `make qseal-ref`, `make qseal-assert`,
-`make qseal-hybrid`.
+`make qseal-hybrid`, `make qseal-nonce`, `make qseal-validate`.
 
 ## Not yet done (section 16 remainder)
 
-Properties 2-7 (transcript binding to the validated request, hybrid acceptance over identical bytes,
-challenge single-use, `PROFILE_ACTION_OBSERVED` reachability, evidence reassembly fail-closed, malformed
-input rejected before signing) are protocol-logic and state-machine properties, not fixed-format
-identities. They need a protocol model, and some are a better fit for a protocol prover (Tamarin,
-ProVerif) than for the SAW/Cryptol/Isabelle pipeline. Verifying a shipped Rust (de)serializer directly is
-known to hit a crucible-mir limitation on slice access, which is why the transcript work is done at the
-model level here.
+Two properties remain. Property 5 (`PROFILE_ACTION_OBSERVED` cannot be reached through a host-exposed
+APDU path) is a reachability question over an APDU state machine and is a better fit for a protocol
+prover (Tamarin, ProVerif) than for the SAW/Cryptol/Isabelle pipeline. Property 6 (evidence fragment
+reassembly produces exactly the original bytes or fails closed) is a fixed-format reassembly identity in
+the same style as the transcript work here, and is the next model+C+SAW rung. Verifying a shipped Rust
+(de)serializer directly is known to hit a crucible-mir limitation on slice access, which is why the
+transcript work is done at the model level here.

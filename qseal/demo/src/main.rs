@@ -7,10 +7,17 @@
 //!   1. a valid attestation accepts,
 //!   2. a tampered transcript is rejected,
 //!   3. a downgrade (valid classical signature, no valid PQ signature) is rejected, where a buggy
-//!      "accept on either" verifier would have accepted.
+//!      "accept on either" verifier would have accepted,
+//!   4. a replay of a valid attestation (same request_id, resubmitted) is rejected by a stateful
+//!      verifier that consumes the challenge once, matching qseal/proof/nonce.saw (section 16
+//!      property 4). A verifier that skips the consume step would accept the replay,
+//!   5. a malformed request (unsupported suite) is refused before signing, matching
+//!      qseal/proof/validate.saw (section 16 property 7). The applet produces no transcript at all.
 
 mod tbs;
-use tbs::{create_assertion, AppletId, Request};
+use tbs::{create_assertion, create_assertion_checked, AppletId, Request};
+
+use std::collections::HashSet;
 
 use ml_dsa::{Generate, Keypair, MlDsa44};
 use ml_dsa::{Signature as MlSig, Signer as MlSign, SigningKey as MlSk, Verifier as MlVerify, VerifyingKey as MlVk};
@@ -49,6 +56,27 @@ fn verify_both(pk: &PublicKeys, tbs: &[u8], sig: &HybridSig) -> (bool, bool) {
     let ok_c = pk.ec.verify(tbs, &sig.ec).is_ok();
     let ok_pq = pk.ml.verify(tbs, &sig.ml).is_ok();
     (ok_c, ok_pq)
+}
+
+/// Stateful single-use challenge store: the set of request_ids already consumed. This is the runnable
+/// twin of qseal/ref/nonce.c (an append-only store there, a HashSet here; the single-use logic is what
+/// qseal/proof/nonce.saw verifies). Accept iff the signatures/policy are OK AND the challenge is fresh;
+/// on accept, consume it so a resubmission is rejected.
+struct NonceStore(HashSet<[u8; 16]>);
+impl NonceStore {
+    fn new() -> Self {
+        NonceStore(HashSet::new())
+    }
+    /// `sigs_ok` folds in the HYB-1 both-signatures decision. Returns true (accept) iff validated and
+    /// the request_id has not been consumed; records it on accept.
+    fn accept_once(&mut self, sigs_ok: bool, request_id: &[u8; 16]) -> bool {
+        let fresh = !self.0.contains(request_id);
+        let accept = sigs_ok && fresh;
+        if accept {
+            self.0.insert(*request_id);
+        }
+        accept
+    }
 }
 
 fn sample_request() -> Request {
@@ -110,8 +138,30 @@ fn main() {
     println!("3. downgrade (classical only)  classical={c:5}  pq={q:5}  ->  {}", outcome(c && q));
     println!("   a buggy \"accept on either\" verifier would have returned {} here.", outcome(c || q));
 
-    println!("\nHYB-1 accepts only when both signatures verify over the same transcript.");
-    println!("That acceptance rule is machine-checked in qseal/proof/hybrid.saw.");
+    // 4. Replay: resubmit the SAME valid attestation. A stateful verifier consumes the request_id on
+    //    first accept, so the replay is rejected even though both signatures still verify.
+    let mut store = NonceStore::new();
+    let (c, q) = verify_both(&pk, &tbs, &sig);
+    let first = store.accept_once(c && q, &req.request_id);
+    let (c, q) = verify_both(&pk, &tbs, &sig);
+    let replay = store.accept_once(c && q, &req.request_id);
+    println!("4. first submission            sigs_ok={:5}  fresh={:5}  ->  {}", c && q, first, outcome(first));
+    println!("   replay (same request_id)    sigs_ok={:5}  fresh={:5}  ->  {}", c && q, replay, outcome(replay));
+    println!("   a verifier that skips consume_nonce_once would have returned {} on the replay.", outcome(c && q));
+
+    // 5. Malformed request: an unsupported suite. The applet validates before signing, so it produces
+    //    no transcript at all (nothing to sign, nothing to verify).
+    let mut bad = sample_request();
+    bad.suite_id = [0x00, 0x02]; // not HYB-1
+    let signed_ok = create_assertion_checked(&req, &app).is_some();
+    let signed_bad = create_assertion_checked(&bad, &app).is_some();
+    println!("5. valid request               validated={:5}  ->  {}", signed_ok, if signed_ok { "SIGN" } else { "REFUSE" });
+    println!("   malformed (bad suite_id)    validated={:5}  ->  {}", signed_bad, if signed_bad { "SIGN" } else { "REFUSE" });
+    println!("   a verifier that skipped the suite check would have signed the malformed request.");
+
+    println!("\nHYB-1 accepts only when both signatures verify over the same transcript, each challenge");
+    println!("is single-use, and a malformed request is never signed. Those rules are machine-checked in");
+    println!("qseal/proof/hybrid.saw, qseal/proof/nonce.saw, and qseal/proof/validate.saw.");
 
     // Non-zero exit if the demo does not behave (keeps it usable as a check).
     let (c1, q1) = verify_both(&pk, &tbs, &sig);
@@ -120,7 +170,21 @@ fn main() {
     let ok_tamper_rejected = !(ct && qt);
     let (cd, qd) = verify_both(&pk, &tbs, &downgrade);
     let ok_downgrade_rejected = !(cd && qd) && cd; // rejected overall, but classical alone was valid
-    if !(ok_valid && ok_tamper_rejected && ok_downgrade_rejected) {
+    let mut store2 = NonceStore::new();
+    let ok_first = store2.accept_once(true, &req.request_id); // fresh challenge accepts
+    let ok_replay_rejected = !store2.accept_once(true, &req.request_id); // same id, now consumed
+    let mut bad2 = sample_request();
+    bad2.suite_id = [0x00, 0x02];
+    let ok_valid_signed = create_assertion_checked(&req, &app).is_some();
+    let ok_malformed_refused = create_assertion_checked(&bad2, &app).is_none();
+    if !(ok_valid
+        && ok_tamper_rejected
+        && ok_downgrade_rejected
+        && ok_first
+        && ok_replay_rejected
+        && ok_valid_signed
+        && ok_malformed_refused)
+    {
         eprintln!("DEMO SELF-CHECK FAILED");
         std::process::exit(1);
     }

@@ -31,6 +31,27 @@ pub struct AppletId {
     pub issued_at: [u8; 8],
 }
 
+/// The well-formedness gate the applet runs before signing, the Rust twin of QSEAL_Validate.cry
+/// `valid` (proved equal to the C `qseal_validate_request` in qseal/proof/validate.saw): version 0x01,
+/// suite 0x0001 (HYB-1), assertion_type 0x01..0x06, assertion_origin 0x01..0x03, hash alg 0x01.
+pub fn validate_request(r: &Request, a: &AppletId) -> bool {
+    a.version == [0x01]
+        && r.suite_id == [0x00, 0x01]
+        && (0x01..=0x06).contains(&r.assertion_type[0])
+        && (0x01..=0x03).contains(&r.assertion_origin[0])
+        && r.object_hash_algorithm == [0x01]
+}
+
+/// Validate, then sign: `Some(transcript)` for a well-formed request, `None` (no signing) otherwise.
+/// Mirrors the C `qseal_create_assertion_checked`.
+pub fn create_assertion_checked(r: &Request, a: &AppletId) -> Option<[u8; QSEAL_TBS_LEN]> {
+    if validate_request(r, a) {
+        Some(create_assertion(r, a))
+    } else {
+        None
+    }
+}
+
 /// Build the TBS-V1 bytes: challenge fields from the request, identity/clock from the applet.
 /// Field order matches QSEAL_TBS.cry `serialize` exactly.
 pub fn create_assertion(r: &Request, a: &AppletId) -> [u8; QSEAL_TBS_LEN] {

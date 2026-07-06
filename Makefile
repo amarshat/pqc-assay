@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-demo writeup clean
+.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-demo writeup clean
 
 all: verify
 
@@ -112,6 +112,20 @@ qseal-assert:
 qseal-hybrid:
 	@echo ">> SAW: hybrid accept requires BOTH signatures over the same transcript; downgrade variant caught"
 	./qseal/verify_hybrid.sh
+
+## Q-SEAL single-use challenge store (section 16 property 4): a consumed request_id cannot be accepted
+## twice. cryptol proves the model (no_replay etc.) and that a no-consume verifier is replayable; SAW
+## proves the C reference nonce store equals the model. This is the first STATEFUL protocol property.
+qseal-nonce:
+	@echo ">> cryptol + SAW: single-use challenge store; a consumed request_id cannot be accepted twice; no-consume bug caught"
+	./qseal/verify_nonce.sh
+
+## Q-SEAL request validation (section 16 property 7): a malformed version/suite/type/origin fails
+## before signing. cryptol proves the model (malformed_never_signs etc.); SAW proves the C validate
+## + validate-then-sign path equals the model; a no-suite-check gate is caught.
+qseal-validate:
+	@echo ">> cryptol + SAW: a malformed request (bad version/suite/type/origin) fails before signing; no-suite-check bug caught"
+	./qseal/verify_validate.sh
 
 ## Runnable demo: real ECDSA P-256 + ML-DSA-44 over the verified TBS-V1 transcript. Needs cargo, no
 ## proof toolchain. Valid accepts; tampered and downgrade attestations reject.

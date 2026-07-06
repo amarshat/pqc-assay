@@ -1,0 +1,67 @@
+// Q-SEAL request validation: the applet rejects a malformed request BEFORE signing (section 16
+// property 7, "any malformed length, version, suite, or origin fails before signing"). Section 11.2
+// CREATE_ASSERTION requires the applet to validate the requested suite and assertion type and reject
+// unsupported origins. We model that gate and prove a malformed request never produces a transcript.
+//
+// The field enumerations are from the spec: version = 0x01 (TBS-V1, section 7); suite_id = 0x0001
+// (HYB-1, the only mandatory suite, section 4); assertion_type in 0x01..0x06 (section 8);
+// assertion_origin in 0x01..0x03 (section 9); object_hash_algorithm = 0x01 (SHA-256, the suite digest).
+//
+// Verified with cryptol :prove (z3). The C reference is qseal/ref/validate.c, proved equal to `valid`
+// and `create_checked` by qseal/proof/validate.saw.
+
+module QSEAL_Validate where
+
+import QSEAL_Assertion   // Request, AppletId, create
+
+// The spec-defined well-formedness gate over the fields the applet checks before signing.
+valid : Request -> AppletId -> Bit
+valid r a =
+     (a.version == [0x01])
+  && (r.suite_id == [0x00, 0x01])
+  && (t >= 0x01) && (t <= 0x06)
+  && (o >= 0x01) && (o <= 0x03)
+  && (r.object_hash_algorithm == [0x01])
+  where
+    t = r.assertion_type   @ 0
+    o = r.assertion_origin @ 0
+
+// The applet signs only after validation. The outcome is (signed?, transcript); a rejected request
+// produces no transcript (the applet does not sign).
+type Signed = { ok : Bit, tbs : [231][8] }
+
+create_checked : Request -> AppletId -> Signed
+create_checked r a =
+  if valid r a then { ok = True,  tbs = create r a }
+               else { ok = False, tbs = zero }
+
+// ---- Section 16 property 7 ----------------------------------------------------------------------
+
+// The headline: any malformed version / suite / assertion_type / origin / hash algorithm fails before
+// signing. If the request is not valid, the applet emits no transcript.
+property malformed_never_signs r a = (~ valid r a) ==> (~ (create_checked r a).ok)
+
+// The other direction, with content: a transcript is emitted only for a validated request, and it is
+// exactly the create() output (so property 2's binding still applies to it).
+property signed_is_validated r a =
+  (create_checked r a).ok ==> (valid r a /\ ((create_checked r a).tbs == create r a))
+
+// ---- Mutation / non-vacuity ---------------------------------------------------------------------
+
+// The buggy validator drops the suite check, so it would sign a request under an unsupported suite
+// (exactly what section 4 says the verifier MUST reject: "an unsupported suite identifier").
+valid_nosuite : Request -> AppletId -> Bit
+valid_nosuite r a =
+     (a.version == [0x01])
+  && (t >= 0x01) && (t <= 0x06)
+  && (o >= 0x01) && (o <= 0x03)
+  && (r.object_hash_algorithm == [0x01])
+  where
+    t = r.assertion_type   @ 0
+    o = r.assertion_origin @ 0
+
+// A witness that the bug is real: the buggy gate accepts a request the spec rejects. `:sat` must be
+// Satisfiable, which catches the mutant and shows the good properties are non-vacuous (valid is
+// reachable, since valid_nosuite is a relaxation of valid).
+bug_signs_malformed : Request -> AppletId -> Bit
+bug_signs_malformed r a = valid_nosuite r a && (~ valid r a)

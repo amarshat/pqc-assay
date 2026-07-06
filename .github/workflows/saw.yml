@@ -29,3 +29,5 @@ jobs:
         run: make saw
       - name: Non-vacuity guard (SAW must reject a deliberately-wrong model)
         run: make mutation-test
+      - name: Q-SEAL protocol properties (cryptol + SAW; each with a mutation guard)
+        run: make qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate

@@ -1,0 +1,79 @@
+// SAW: the C reference request validation (qseal/ref/validate.c) computes exactly the Cryptol model
+// QSEAL_Validate.cry. Two goals: qseal_validate_request == `valid` (the well-formedness gate), and
+// qseal_create_assertion_checked == `create_checked` (it returns the signed bit and, only for a valid
+// request, the create() transcript; a malformed request is zeroed, not signed). This is section 16
+// property 7 at the code level: a malformed version/suite/type/origin fails before signing. The
+// no-suite-check variant is then shown to FAIL the create_checked spec, so the proof catches a
+// validator that would sign under an unsupported suite. Built as one TU with tbs_v1.c + assertion.c.
+enable_experimental;
+
+m <- llvm_load_module "../build/validate.bc";
+import "../model/QSEAL_Assertion.cry";   // Request, AppletId, create (not re-exported transitively)
+import "../model/QSEAL_Validate.cry";    // valid, create_checked, Signed
+
+let field nm n = llvm_fresh_var nm (llvm_array n (llvm_int 8));
+
+// Build fresh request + applet structs and the matching Cryptol values; returns (pr, pa, req, app).
+let make_inputs = do {
+    suite_id                <- field "suite_id" 2;
+    assertion_type          <- field "assertion_type" 1;
+    assertion_origin        <- field "assertion_origin" 1;
+    verifier_id             <- field "verifier_id" 16;
+    request_id              <- field "request_id" 16;
+    nonce                   <- field "nonce" 32;
+    policy_id               <- field "policy_id" 4;
+    expires_at              <- field "expires_at" 8;
+    subject_ref             <- field "subject_ref" 32;
+    object_hash_algorithm   <- field "object_hash_algorithm" 1;
+    object_length           <- field "object_length" 8;
+    object_digest           <- field "object_digest" 32;
+    associated_claim_digest <- field "associated_claim_digest" 32;
+    version                 <- field "version" 1;
+    issuer_id               <- field "issuer_id" 16;
+    ak_id                   <- field "ak_id" 16;
+    issued_at               <- field "issued_at" 8;
+
+    pr <- llvm_alloc (llvm_alias "struct.qseal_request_t");
+    llvm_points_to pr (llvm_struct_value [
+        llvm_term suite_id, llvm_term assertion_type, llvm_term assertion_origin,
+        llvm_term verifier_id, llvm_term request_id, llvm_term nonce, llvm_term policy_id,
+        llvm_term expires_at, llvm_term subject_ref, llvm_term object_hash_algorithm,
+        llvm_term object_length, llvm_term object_digest, llvm_term associated_claim_digest ]);
+
+    pa <- llvm_alloc (llvm_alias "struct.qseal_applet_id_t");
+    llvm_points_to pa (llvm_struct_value [
+        llvm_term version, llvm_term issuer_id, llvm_term ak_id, llvm_term issued_at ]);
+
+    let req = {{ { suite_id = suite_id, assertion_type = assertion_type,
+        assertion_origin = assertion_origin, verifier_id = verifier_id, request_id = request_id,
+        nonce = nonce, policy_id = policy_id, expires_at = expires_at, subject_ref = subject_ref,
+        object_hash_algorithm = object_hash_algorithm, object_length = object_length,
+        object_digest = object_digest, associated_claim_digest = associated_claim_digest } : Request }};
+    let app = {{ { version = version, issuer_id = issuer_id, ak_id = ak_id,
+        issued_at = issued_at } : AppletId }};
+    return (pr, pa, req, app);
+};
+
+// 1. The gate.
+let validate_spec = do {
+    (pr, pa, req, app) <- make_inputs;
+    llvm_execute_func [pr, pa];
+    llvm_return (llvm_term {{ if valid req app then (1 : [32]) else 0 }});
+};
+validate_ov <- llvm_verify m "qseal_validate_request" [] true validate_spec z3;
+print "VERIFIED: qseal_validate_request == Cryptol valid (spec field enumerations)";
+
+// 2. Validate-then-sign: return bit and (only for valid) the create() transcript.
+let checked_spec = do {
+    (pr, pa, req, app) <- make_inputs;
+    pout <- llvm_alloc (llvm_array 231 (llvm_int 8));
+    llvm_execute_func [pr, pa, pout];
+    llvm_points_to pout (llvm_term {{ (create_checked req app).tbs }});
+    llvm_return (llvm_term {{ if (create_checked req app).ok then (1 : [32]) else 0 }});
+};
+checked_ov <- llvm_verify m "qseal_create_assertion_checked" [] true checked_spec z3;
+print "VERIFIED: qseal_create_assertion_checked == Cryptol create_checked (malformed request is not signed)";
+
+// The no-suite-check variant must NOT satisfy the spec: it signs under an unsupported suite.
+fails (llvm_verify m "qseal_create_assertion_checked_nosuitecheck" [] true checked_spec z3);
+print "MUTATION CAUGHT: the no-suite-check variant signs an unsupported suite, REJECTED by the validate-then-sign spec";

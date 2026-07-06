@@ -1,0 +1,44 @@
+// SAW: the C reference single-use store (qseal/ref/nonce.c) computes exactly the Cryptol model
+// QSEAL_Nonce.cry. `qseal_nonce_accept` is proved equal to (acceptBit, nextStore): it returns the
+// accept bit and mutates the store to the model's next state, so at the code level a consumed
+// request_id can never be accepted again (section 16 property 4, machine-checked as no_replay in the
+// model). The replay-bug variant (qseal_nonce_accept_noconsume, never records r) is then shown to FAIL
+// the same spec, so the proof catches the missing consume. Exits 0 only if the good proof discharges
+// and the mutant is rejected.
+enable_experimental;
+
+m <- llvm_load_module "../build/nonce.bc";
+import "../model/QSEAL_Nonce.cry";
+
+let arr n = llvm_array n (llvm_int 8);
+
+// A store argument: fresh symbolic {count, slots}, returned as the Cryptol Store term too.
+let accept_spec = do {
+    count <- llvm_fresh_var "count" (llvm_int 8);
+    slots <- llvm_fresh_var "slots" (llvm_array 8 (arr 16));
+    ok    <- llvm_fresh_var "ok" (llvm_int 32);
+    r     <- llvm_fresh_var "r" (arr 16);
+
+    ps <- llvm_alloc (llvm_alias "struct.qseal_nonce_store_t");
+    llvm_points_to ps (llvm_struct_value [llvm_term count, llvm_term slots]);
+
+    pr <- llvm_alloc_readonly (arr 16);
+    llvm_points_to pr (llvm_term r);
+
+    llvm_execute_func [ps, llvm_term ok, pr];
+
+    let s = {{ { count = count, slots = slots } : Store }};
+    // Post-state store == the model's next store (unchanged unless accept).
+    llvm_points_to ps (llvm_struct_value [
+        llvm_term {{ (nextStore s ok r).count }},
+        llvm_term {{ (nextStore s ok r).slots }} ]);
+    // Return value == the model's accept bit.
+    llvm_return (llvm_term {{ acceptBit s ok r }});
+};
+
+accept_ov <- llvm_verify m "qseal_nonce_accept" [] true accept_spec z3;
+print "VERIFIED: qseal_nonce_accept == Cryptol (acceptBit, nextStore) -- consumed request_id records once, never re-accepts";
+
+// The replay bug (never records r) must NOT satisfy the same spec. `fails` succeeds iff verify fails.
+fails (llvm_verify m "qseal_nonce_accept_noconsume" [] true accept_spec z3);
+print "MUTATION CAUGHT: the no-consume variant (drops consume_nonce_once) is REJECTED by the record-then-reject spec";
