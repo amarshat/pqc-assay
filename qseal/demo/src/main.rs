@@ -12,7 +12,10 @@
 //!      verifier that consumes the challenge once, matching qseal/proof/nonce.saw (section 16
 //!      property 4). A verifier that skips the consume step would accept the replay,
 //!   5. a malformed request (unsupported suite) is refused before signing, matching
-//!      qseal/proof/validate.saw (section 16 property 7). The applet produces no transcript at all.
+//!      qseal/proof/validate.saw (section 16 property 7). The applet produces no transcript at all,
+//!   6. evidence returned as fragments reassembles to exactly the original bytes, and a dropped
+//!      fragment fails closed rather than being zero-filled, matching qseal/proof/evidence.saw
+//!      (section 16 property 6).
 
 mod tbs;
 use tbs::{create_assertion, create_assertion_checked, AppletId, Request};
@@ -77,6 +80,43 @@ impl NonceStore {
         }
         accept
     }
+}
+
+// Evidence-fragment sizes, matching qseal/model/QSEAL_Evidence.cry and qseal/ref/evidence.c.
+const FRAG_SIZE: usize = 32;
+const NUM_FRAGS: usize = 4;
+const EVID_LEN: usize = FRAG_SIZE * NUM_FRAGS;
+
+struct Frag {
+    seq: u8,
+    total: u8,
+    data: [u8; FRAG_SIZE],
+}
+
+/// Split an evidence blob into fragments (READ_EVIDENCE response chaining). Twin of the model `fragment`.
+fn fragment_evidence(e: &[u8; EVID_LEN]) -> [Frag; NUM_FRAGS] {
+    std::array::from_fn(|i| {
+        let mut data = [0u8; FRAG_SIZE];
+        data.copy_from_slice(&e[i * FRAG_SIZE..(i + 1) * FRAG_SIZE]);
+        Frag { seq: i as u8, total: NUM_FRAGS as u8, data }
+    })
+}
+
+/// Reassemble the blob iff the fragment set is well formed (indices a permutation of 0..NF-1, correct
+/// total), else `None` (fail closed). Twin of qseal/ref/evidence.c, proved == the model in
+/// qseal/proof/evidence.saw.
+fn reassemble_evidence(frags: &[Frag; NUM_FRAGS]) -> Option<[u8; EVID_LEN]> {
+    let totals_ok = frags.iter().all(|f| f.total as usize == NUM_FRAGS);
+    let perm_ok = (0..NUM_FRAGS as u8).all(|j| frags.iter().filter(|f| f.seq == j).count() == 1);
+    if !(totals_ok && perm_ok) {
+        return None;
+    }
+    let mut out = [0u8; EVID_LEN];
+    for j in 0..NUM_FRAGS {
+        let f = frags.iter().find(|f| f.seq as usize == j).unwrap();
+        out[j * FRAG_SIZE..(j + 1) * FRAG_SIZE].copy_from_slice(&f.data);
+    }
+    Some(out)
 }
 
 fn sample_request() -> Request {
@@ -159,9 +199,22 @@ fn main() {
     println!("   malformed (bad suite_id)    validated={:5}  ->  {}", signed_bad, if signed_bad { "SIGN" } else { "REFUSE" });
     println!("   a verifier that skipped the suite check would have signed the malformed request.");
 
-    println!("\nHYB-1 accepts only when both signatures verify over the same transcript, each challenge");
-    println!("is single-use, and a malformed request is never signed. Those rules are machine-checked in");
-    println!("qseal/proof/hybrid.saw, qseal/proof/nonce.saw, and qseal/proof/validate.saw.");
+    // 6. Evidence read-back: the applet returns evidence as fragments; the host reassembles. A complete
+    //    set recovers the exact bytes; a dropped fragment (a duplicated index) fails closed.
+    let evidence: [u8; EVID_LEN] = std::array::from_fn(|i| (i as u8).wrapping_mul(7).wrapping_add(1));
+    let recovered = reassemble_evidence(&fragment_evidence(&evidence));
+    let exact = recovered.as_ref() == Some(&evidence);
+    let mut dropped = fragment_evidence(&evidence);
+    dropped[2].seq = dropped[1].seq; // fragment 2 lost: index 1 now duplicated, index 2 missing
+    let recovered_bad = reassemble_evidence(&dropped);
+    println!("6. complete fragment set       exact={:5}      ->  {}", exact, if exact { "RECOVER" } else { "WRONG" });
+    println!("   dropped fragment            recovered={:5}  ->  {}", recovered_bad.is_some(), if recovered_bad.is_none() { "REJECT" } else { "ACCEPT" });
+    println!("   a reassembler that skipped the completeness check would have returned zero-filled bytes.");
+
+    println!("\nHYB-1 accepts only when both signatures verify over the same transcript, each challenge is");
+    println!("single-use, a malformed request is never signed, and fragmented evidence reassembles exactly");
+    println!("or fails closed. Those rules are machine-checked in qseal/proof/hybrid.saw, nonce.saw,");
+    println!("validate.saw, and evidence.saw.");
 
     // Non-zero exit if the demo does not behave (keeps it usable as a check).
     let (c1, q1) = verify_both(&pk, &tbs, &sig);
@@ -177,13 +230,20 @@ fn main() {
     bad2.suite_id = [0x00, 0x02];
     let ok_valid_signed = create_assertion_checked(&req, &app).is_some();
     let ok_malformed_refused = create_assertion_checked(&bad2, &app).is_none();
+    let ev: [u8; EVID_LEN] = std::array::from_fn(|i| (i as u8).wrapping_mul(7).wrapping_add(1));
+    let ok_evidence_exact = reassemble_evidence(&fragment_evidence(&ev)).as_ref() == Some(&ev);
+    let mut ev_dropped = fragment_evidence(&ev);
+    ev_dropped[2].seq = ev_dropped[1].seq;
+    let ok_dropped_rejected = reassemble_evidence(&ev_dropped).is_none();
     if !(ok_valid
         && ok_tamper_rejected
         && ok_downgrade_rejected
         && ok_first
         && ok_replay_rejected
         && ok_valid_signed
-        && ok_malformed_refused)
+        && ok_malformed_refused
+        && ok_evidence_exact
+        && ok_dropped_rejected)
     {
         eprintln!("DEMO SELF-CHECK FAILED");
         std::process::exit(1);

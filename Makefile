@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-demo writeup clean
+.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-demo writeup clean
 
 all: verify
 
@@ -126,6 +126,14 @@ qseal-nonce:
 qseal-validate:
 	@echo ">> cryptol + SAW: a malformed request (bad version/suite/type/origin) fails before signing; no-suite-check bug caught"
 	./qseal/verify_validate.sh
+
+## Q-SEAL evidence-fragment reassembly (section 16 property 6): reassembly produces exactly the
+## original evidence bytes or fails closed. cryptol proves the round trip + fail-closed on a dropped or
+## mis-sized fragment; SAW proves the C reassembler equals the model; a no-completeness reassembler is
+## caught.
+qseal-evidence:
+	@echo ">> cryptol + SAW: evidence-fragment reassembly round-trips or fails closed; no-completeness bug caught"
+	./qseal/verify_evidence.sh
 
 ## Runnable demo: real ECDSA P-256 + ML-DSA-44 over the verified TBS-V1 transcript. Needs cargo, no
 ## proof toolchain. Valid accepts; tampered and downgrade attestations reject.

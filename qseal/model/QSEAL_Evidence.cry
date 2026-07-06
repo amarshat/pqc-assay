@@ -1,0 +1,82 @@
+// Q-SEAL evidence-fragment reassembly (section 16 property 6: "evidence fragment reassembly produces
+// exactly the original evidence bytes or fails closed"). READ_EVIDENCE (section 11.3) returns the
+// evidence blob as response fragments (APDU chaining), which the host reassembles. This models the
+// split and the reassembly and proves the round trip plus fail-closed behavior on a dropped or
+// mis-sized fragment.
+//
+// Sizes are fixed and small so the goals stay bounded; the reassembly LOGIC (index permutation +
+// placement) is independent of them. Each fragment carries its index and the total count, so an
+// out-of-order or incomplete transfer is detectable.
+//
+// Verified with cryptol :prove (z3). The C reference is qseal/ref/evidence.c, proved equal by
+// qseal/proof/evidence.saw.
+
+module QSEAL_Evidence where
+
+type FS   = 32          // fragment payload size (a stand-in for the APDU response cap)
+type NF   = 4           // number of fragments
+type EVID = FS * NF     // 128-byte evidence blob (fixed for the model)
+
+type Frag = { seq : [8], total : [8], data : [FS][8] }
+
+// Fragment indices 0..NF-1 (kept in one place so split, the permutation check, and placement scan
+// identically, which is also how the C reference is written).
+idxs : [NF][8]
+idxs = [0 .. 3]
+
+// Split a blob into NF fragments: fragment i carries chunk i, tagged with its index and the total.
+fragment : [EVID][8] -> [NF]Frag
+fragment e = [ { seq = i, total = `NF, data = ch @ i } | i <- idxs ]
+  where ch = split e : [NF][FS][8]
+
+// The fragment set is well formed iff every fragment reports the right total and the indices are a
+// permutation of 0..NF-1 (each present exactly once). A dropped fragment shows up as a missing index
+// (some other index then repeats), a duplicate as a repeat; both make this false.
+wellformed : [NF]Frag -> Bit
+wellformed fs =
+      (and [ f.total == `NF | f <- fs ])
+   && (and [ (count j) == 1 | j <- idxs ])
+  where count j = sum [ if f.seq == j then (1 : [8]) else 0 | f <- fs ]
+
+// The payload for output index j: the data of the fragment whose seq == j (unique when well formed).
+dataAt : [NF]Frag -> [8] -> [FS][8]
+dataAt fs j = foldl (\acc f -> if f.seq == j then f.data else acc) zero fs
+
+// Place each fragment's payload at its index and concatenate.
+place : [NF]Frag -> [EVID][8]
+place fs = join [ dataAt fs j | j <- idxs ]
+
+// Reassembly: recover the blob only from a well-formed set; otherwise fail closed (no partial output).
+type Reasm = { ok : Bit, evid : [EVID][8] }
+reassemble : [NF]Frag -> Reasm
+reassemble fs = if wellformed fs then { ok = True,  evid = place fs }
+                                 else { ok = False, evid = zero }
+
+// ---- Section 16 property 6 ----------------------------------------------------------------------
+
+// The substantive result: fragmenting a blob and reassembling recovers exactly the original bytes.
+// This exercises the split/placement index arithmetic (chunk i lands back at output index i).
+property reassemble_round_trip e = reassemble (fragment e) == { ok = True, evid = e }
+
+// Fail closed on a dropped fragment: if two received fragments carry the same index, then by the
+// pigeonhole some index is missing, so reassembly rejects rather than zero-filling the gap. i, j index
+// the received fragments (2 bits = exactly 0..NF-1, always in range).
+property dropped_fragment_rejected fs i j =
+    ((i : [2]) != j) /\ ((fs @ i).seq == (fs @ j).seq) ==> ~ (reassemble fs).ok
+
+// Fail closed on a mis-sized transfer: any fragment reporting the wrong total is rejected.
+property wrong_total_rejected fs =
+    (~ (and [ f.total == `NF | f <- fs ])) ==> ~ (reassemble fs).ok
+
+// ---- Mutation / non-vacuity ---------------------------------------------------------------------
+
+// The buggy reassembler drops the completeness (permutation) check: it places by index and fills any
+// missing index with zero, so an incomplete transfer yields corrupted bytes under an "ok" result.
+reassemble_bug : [NF]Frag -> Reasm
+reassemble_bug fs = { ok = and [ f.total == `NF | f <- fs ], evid = place fs }
+
+// A witness that the bug corrupts: there is a fragment set the bug accepts but that is not well formed
+// (so `place` invented bytes for a missing index). `:sat` must be Satisfiable, catching the mutant and
+// showing the completeness check is load-bearing.
+bug_corrupts : [NF]Frag -> Bit
+bug_corrupts fs = (reassemble_bug fs).ok && (~ wellformed fs)

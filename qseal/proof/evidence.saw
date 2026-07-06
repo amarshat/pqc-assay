@@ -1,0 +1,44 @@
+// SAW: the C reference evidence reassembler (qseal/ref/evidence.c) computes exactly the Cryptol model
+// QSEAL_Evidence.cry `reassemble`. It returns the ok bit and, only for a well-formed fragment set, the
+// placed evidence blob; a dropped, duplicated, or mis-sized fragment set is zeroed and rejected (fail
+// closed). This is section 16 property 6 at the code level. The no-completeness-check variant (which
+// zero-fills a missing fragment) is then shown to FAIL that spec, so the proof catches the corrupting
+// reassembler. Exits 0 only if the good proof discharges and the mutant is rejected.
+enable_experimental;
+
+m <- llvm_load_module "../build/evidence.bc";
+import "../model/QSEAL_Evidence.cry";
+
+// One fragment: fresh {seq, total, data}, returned as both an LLVM struct value and a Cryptol Frag.
+let mk_frag nm = do {
+    seq   <- llvm_fresh_var (str_concat nm "_seq")   (llvm_int 8);
+    total <- llvm_fresh_var (str_concat nm "_total") (llvm_int 8);
+    dat   <- llvm_fresh_var (str_concat nm "_data")  (llvm_array 32 (llvm_int 8));
+    let sv = llvm_struct_value [llvm_term seq, llvm_term total, llvm_term dat];
+    let ct = {{ { seq = seq, total = total, data = dat } : Frag }};
+    return (sv, ct);
+};
+
+let reasm_spec = do {
+    (sv0, c0) <- mk_frag "f0";
+    (sv1, c1) <- mk_frag "f1";
+    (sv2, c2) <- mk_frag "f2";
+    (sv3, c3) <- mk_frag "f3";
+
+    pfrags <- llvm_alloc_readonly (llvm_array 4 (llvm_alias "struct.qseal_frag_t"));
+    llvm_points_to pfrags (llvm_array_value [sv0, sv1, sv2, sv3]);
+
+    pout <- llvm_alloc (llvm_array 128 (llvm_int 8));
+    llvm_execute_func [pfrags, pout];
+
+    let fs = {{ [c0, c1, c2, c3] : [4]Frag }};
+    llvm_points_to pout (llvm_term {{ (reassemble fs).evid }});
+    llvm_return (llvm_term {{ if (reassemble fs).ok then (1 : [32]) else 0 }});
+};
+
+reasm_ov <- llvm_verify m "qseal_evidence_reassemble" [] true reasm_spec z3;
+print "VERIFIED: qseal_evidence_reassemble == Cryptol reassemble (round-trips a well-formed set, fails closed otherwise)";
+
+// The no-completeness-check variant must NOT satisfy the spec: it zero-fills a missing fragment.
+fails (llvm_verify m "qseal_evidence_reassemble_nocomplete" [] true reasm_spec z3);
+print "MUTATION CAUGHT: the no-completeness-check variant zero-fills a missing fragment, REJECTED by the reassemble spec";

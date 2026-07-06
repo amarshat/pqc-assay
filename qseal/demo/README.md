@@ -22,6 +22,9 @@ Output:
     5. valid request               validated=true   ->  SIGN
        malformed (bad suite_id)    validated=false  ->  REFUSE
        a verifier that skipped the suite check would have signed the malformed request.
+    6. complete fragment set       exact=true       ->  RECOVER
+       dropped fragment            recovered=false  ->  REJECT
+       a reassembler that skipped the completeness check would have returned zero-filled bytes.
 
 Case 3 is the downgrade point: a valid classical signature with no valid post-quantum one (the situation
 once the classical scheme is broken). HYB-1 rejects it because it requires both. A verifier that accepted
@@ -33,6 +36,11 @@ verifier that skipped the consume step would accept it.
 
 Case 5 is malformed input: a request under an unsupported suite. The applet validates before signing, so
 it produces no transcript at all. A gate that skipped the suite check would have signed it.
+
+Case 6 is evidence read-back: the applet returns the evidence blob as fragments (APDU chaining). A
+complete set reassembles to exactly the original bytes; a dropped fragment (which shows up as a
+duplicated index) is rejected rather than zero-filled. A reassembler that skipped the completeness check
+would have returned corrupted bytes under an "ok" result.
 
 ## What ties to the verification
 
@@ -48,6 +56,9 @@ it produces no transcript at all. A gate that skipped the suite check would have
   `qseal/model/QSEAL_Validate.cry` (`valid` / `create_checked`), proved equal to the C
   `qseal_validate_request` / `qseal_create_assertion_checked` in `qseal/proof/validate.saw`: a malformed
   request is refused before signing.
+- `reassemble_evidence` in `src/main.rs` is the twin of `qseal/ref/evidence.c`, proved equal to
+  `qseal/model/QSEAL_Evidence.cry` in `qseal/proof/evidence.saw`: a complete fragment set recovers the
+  exact bytes, a dropped or mis-sized one fails closed.
 
 The demo binary is NOT itself verified. Each piece above is a Rust twin of a rule proved in
 `qseal/proof/*.saw`; the proofs are about the Cryptol model and the C reference, not this code. The twins

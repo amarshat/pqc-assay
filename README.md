@@ -51,13 +51,14 @@ decoder (CVE-2026-24850) shows the primitives need checking, not just testing.
 
 The applied setting is **Q-SEAL** ([`docs/qseal/QSEAL-v0.1.md`](docs/qseal/QSEAL-v0.1.md)), a hybrid
 quantum-safe secure-element attestation layer whose mandatory suite pairs ECDSA P-256 with ML-DSA-44.
-Verification of Q-SEAL lives in [`qseal/`](qseal/): SAW proves a C reference of five of the seven
+Verification of Q-SEAL lives in [`qseal/`](qseal/): SAW proves a C reference of six of the seven
 section-16 targets matches a Cryptol model of the spec, each with an injected-mutant non-vacuity check.
-These are the transcript-format and field/state checks (1 transcript bijection, 2 challenge binding, 3
-hybrid no-downgrade with the signature verifiers left uninterpreted, 4 sequential single-use, 7
-field-value validation before signing); the two requiring APDU-reachability (5) and fragment-reassembly
-(6) reasoning are open. See [`qseal/README.md`](qseal/README.md) for the exact scope and non-claims of
-each. `make qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate`.
+These are the transcript-format, field, and state checks (1 transcript bijection, 2 challenge binding, 3
+hybrid no-downgrade with the signature verifiers left uninterpreted, 4 sequential single-use, 6 evidence
+reassembly round-trip-or-fail-closed, 7 field-value validation before signing); the remaining one (5,
+`PROFILE_ACTION_OBSERVED` APDU-path reachability) needs a protocol prover and is open. See
+[`qseal/README.md`](qseal/README.md) for the exact scope and non-claims of each. `make qseal-tbs
+qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence`.
 
 ## What's proven
 

@@ -121,6 +121,31 @@ Scope, and what this does NOT prove. This is a field-*value* gate only. It does 
   claim "a malformed request is never signed" is false for that class; only out-of-enumeration field
   values are rejected here.
 
+**Evidence reassembly recovers the exact bytes or fails closed (property 6 of section 16).**
+`READ_EVIDENCE` (section 11.3) returns the evidence blob as response fragments (APDU chaining) that the
+host reassembles. `model/QSEAL_Evidence.cry` models the split into fragments (each tagged with its index
+and the total count) and the reassembly, and proves with `cryptol` and z3:
+
+- `reassemble_round_trip`: splitting a blob and reassembling recovers exactly the blob. This is the
+  substantive result, a structural identity over the split/placement index arithmetic (chunk `i` lands
+  back at output index `i`), in the same style as the property-1 transcript bijection.
+- `dropped_fragment_rejected`: if two received fragments carry the same index then, by pigeonhole, some
+  index is missing, and reassembly rejects rather than zero-filling the gap.
+- `wrong_total_rejected`: any fragment reporting the wrong total count is rejected.
+
+`ref/evidence.c` is the C reference, and `proof/evidence.saw` proves `qseal_evidence_reassemble` equals
+the model (return bit plus the reassembled bytes; zeroed and rejected when the set is not well formed),
+memory-safe, no assumed overrides. An injected mutant `qseal_evidence_reassemble_nocomplete` (drops the
+completeness check and zero-fills a missing fragment) is shown to *fail* that spec, so the proof catches
+a reassembler that would emit corrupted bytes under an "ok" result. The demo (`demo/`) recovers a
+complete set and rejects a dropped fragment.
+
+Scope: fragment size and count are fixed and small (32 bytes x 4 = 128) so the goals stay bounded; the
+reassembly logic (index permutation plus placement) is independent of them. This is the byte-level
+reassembly identity, not the APDU chaining/transport state machine, and not the evidence *content*: that
+the reassembled `tbs`/signatures are the ones the applet signed is properties 2 and 3, not re-checked
+here.
+
 ## Reproduce
 
     ./verify_tbs.sh        # cryptol + z3: the model is bijective/injective (3 properties Q.E.D.)
@@ -129,17 +154,17 @@ Scope, and what this does NOT prove. This is a field-*value* gate only. It does 
     ./verify_hybrid.sh     # SAW: hybrid accept requires BOTH signatures; downgrade variant caught
     ./verify_nonce.sh      # cryptol + SAW: consumed request_id can't be accepted twice; no-consume bug caught
     ./verify_validate.sh   # cryptol + SAW: a malformed request fails before signing; no-suite-check bug caught
+    ./verify_evidence.sh   # cryptol + SAW: evidence reassembly round-trips or fails closed; no-completeness bug caught
 
 All exit non-zero on failure. `verify_tbs.sh` needs `cryptol`; the others need `clang` + `saw` (or the
 pinned `../.tools/bin`). Also wired as `make qseal-tbs`, `make qseal-ref`, `make qseal-assert`,
-`make qseal-hybrid`, `make qseal-nonce`, `make qseal-validate`.
+`make qseal-hybrid`, `make qseal-nonce`, `make qseal-validate`, `make qseal-evidence`.
 
 ## Not yet done (section 16 remainder)
 
-Two properties remain. Property 5 (`PROFILE_ACTION_OBSERVED` cannot be reached through a host-exposed
-APDU path) is a reachability question over an APDU state machine and is a better fit for a protocol
-prover (Tamarin, ProVerif) than for the SAW/Cryptol/Isabelle pipeline. Property 6 (evidence fragment
-reassembly produces exactly the original bytes or fails closed) is a fixed-format reassembly identity in
-the same style as the transcript work here, and is the next model+C+SAW rung. Verifying a shipped Rust
-(de)serializer directly is known to hit a crucible-mir limitation on slice access, which is why the
-transcript work is done at the model level here.
+One property remains. Property 5 (`PROFILE_ACTION_OBSERVED` cannot be reached through a host-exposed APDU
+path) is a reachability question over an APDU state machine and is a better fit for a protocol prover
+(Tamarin, ProVerif) than for the SAW/Cryptol/Isabelle pipeline; it is also the property the authorization
+gap noted under property 7 above really belongs to. Verifying a shipped Rust (de)serializer directly is
+known to hit a crucible-mir limitation on slice access, which is why the work here is done at the model
+level and against a C reference written to be verifiable.
