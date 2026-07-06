@@ -4,11 +4,13 @@
    a handset application."
 
    This is a reachability property over the command surface, not a fixed-format identity, so it is
-   modelled and checked in ProVerif (symbolic / Dolev-Yao) rather than in the SAW/Cryptol pipeline. The
-   host APDU channel is attacker-controlled; the internal callback is a private channel the attacker
-   cannot use. The correspondence proved is: any signing of an OBSERVED assertion is preceded by the
-   internal callback firing. property5_mutant.pv drops the host-path guard and ProVerif falsifies the
-   same query (an attacker obtains an OBSERVED assertion through the host path). *)
+   modelled and checked in ProVerif (symbolic / Dolev-Yao). The host APDU channel is attacker-controlled;
+   the internal callback is a private channel the attacker cannot use. The correspondence is INJECTIVE
+   and PARAMETERISED by the event data (id, subject, object digest, policy): each observed-action signing
+   is preceded by a distinct trusted internal callback carrying the same data, so the host can neither
+   originate an observed assertion nor replay one internal callback into several assertions.
+
+   property5_mutant.pv drops the host-path guard and ProVerif falsifies the same query. *)
 
 free host: channel.                  (* host-exposed APDU path: attacker-controlled *)
 free internalCb: channel [private].  (* trusted internal event callback: not attacker-reachable *)
@@ -20,8 +22,10 @@ free sk: key [private].              (* applet signing key *)
 
 const OBSERVED: bitstring.           (* assertion type PROFILE_ACTION_OBSERVED (0x04) *)
 
-event Signed(bitstring).             (* an assertion of the given type was signed *)
-event InternalFired().               (* the trusted internal callback ran *)
+(* Event data: a callback/assertion carries an event id, subject, object digest, and policy. *)
+event SignedObserved(bitstring, bitstring, bitstring, bitstring).
+event InternalFired(bitstring, bitstring, bitstring, bitstring).
+event SignedOther(bitstring).
 
 (* Host-callable CREATE_ASSERTION: the handset supplies the assertion type and request. The applet must
    NOT sign an OBSERVED assertion on this path (spec 8.4). *)
@@ -29,21 +33,23 @@ let hostCreate =
   in(host, (t: bitstring, req: bitstring));
   if t <> OBSERVED then
   (
-    event Signed(t);
+    event SignedOther(t);
     out(host, sign((t, req), sk))
   ).
 
 (* Trusted internal callback: fires only after a real profile state transition, then signs the OBSERVED
-   assertion. Reached over a private channel, so the attacker cannot invoke it. *)
+   assertion for that specific event. Reached over a private channel, so the attacker cannot invoke it. *)
 let internalObserved =
-  in(internalCb, req: bitstring);
-  event InternalFired();
-  event Signed(OBSERVED);
-  out(host, sign((OBSERVED, req), sk)).
+  in(internalCb, (id: bitstring, subject: bitstring, digest: bitstring, policy: bitstring));
+  event InternalFired(id, subject, digest, policy);
+  event SignedObserved(id, subject, digest, policy);
+  out(host, sign((OBSERVED, id, subject, digest, policy), sk)).
 
-(* Any OBSERVED signing is preceded by the trusted internal callback. If the host path could produce one,
-   this correspondence fails. *)
-query event(Signed(OBSERVED)) ==> event(InternalFired()).
+(* Injective correspondence: every observed-action signing, with its event data, is preceded by a
+   distinct internal callback carrying the same data. *)
+query id: bitstring, subject: bitstring, digest: bitstring, policy: bitstring;
+  inj-event(SignedObserved(id, subject, digest, policy)) ==>
+  inj-event(InternalFired(id, subject, digest, policy)).
 
 process
   ( (!hostCreate) | (!internalObserved) )

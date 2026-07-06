@@ -15,15 +15,18 @@ the SAW/Cryptol pipeline.
 - `internalObserved`, reading from a private channel `internalCb` (the trusted internal eUICC event
   callback, which the attacker cannot use). It signs the `OBSERVED` assertion.
 
-The query is the correspondence
+The query is an injective, parameterised correspondence
 
-    event(Signed(OBSERVED)) ==> event(InternalFired())
+    inj-event(SignedObserved(id, subject, digest, policy)) ==>
+    inj-event(InternalFired(id, subject, digest, policy))
 
-"any signing of an OBSERVED assertion is preceded by the trusted internal callback." ProVerif proves it
-**true** for `property5.pv`. `property5_mutant.pv` drops the `if t <> OBSERVED` guard on the host path,
-and ProVerif reports the same query **false** (it finds a trace where the attacker obtains an OBSERVED
-assertion through `host` with no internal callback). `../../verify_reachability.sh` runs both and exits 0
-only if the good model proves the query and the mutant refutes it.
+"every observed-action signing, carrying its event data, is preceded by a distinct trusted internal
+callback carrying the same data." Injectivity rules out replaying one internal callback into several
+assertions; the parameters rule out an unrelated callback standing in for a different observed action.
+ProVerif proves it **true** for `property5.pv`. `property5_mutant.pv` drops the `if t <> OBSERVED` guard,
+so on an OBSERVED request the host obtains the assertion with its own event data and no internal callback,
+and ProVerif reports the query **false**. `../../verify_reachability.sh` runs both and exits 0 only if the
+good model proves the query and the mutant refutes it.
 
 ## Scope, and what this does NOT prove
 

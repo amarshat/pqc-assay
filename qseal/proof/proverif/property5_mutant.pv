@@ -1,7 +1,8 @@
-(* Mutant of property5.pv: the host-callable CREATE_ASSERTION drops the guard, so it signs an assertion
-   of ANY type the handset asks for, including OBSERVED. ProVerif must FALSIFY the same correspondence
-   query (find a trace where an OBSERVED assertion is signed with no internal callback), which is the
-   host-exposed reachability the property forbids. The runner treats "query is true" here as a failure. *)
+(* Mutant of property5.pv: the host-callable CREATE_ASSERTION drops the guard, so on an OBSERVED request
+   it signs and emits SignedObserved with host-supplied event data and no internal callback. ProVerif
+   must FALSIFY the injective correspondence (an observed-action assertion with no matching
+   InternalFired), which is the host-exposed reachability the property forbids. The runner treats "query
+   is true" here as a failure. *)
 
 free host: channel.
 free internalCb: channel [private].
@@ -13,22 +14,34 @@ free sk: key [private].
 
 const OBSERVED: bitstring.
 
-event Signed(bitstring).
-event InternalFired().
+event SignedObserved(bitstring, bitstring, bitstring, bitstring).
+event InternalFired(bitstring, bitstring, bitstring, bitstring).
+event SignedOther(bitstring).
 
-(* BUG: no `if t <> OBSERVED` guard, so the host can request an OBSERVED assertion directly. *)
+(* BUG: no `if t <> OBSERVED` guard. On an OBSERVED request the host obtains an observed-action assertion
+   directly, with event data it chose. *)
 let hostCreate =
   in(host, (t: bitstring, req: bitstring));
-  event Signed(t);
-  out(host, sign((t, req), sk)).
+  if t = OBSERVED then
+  (
+    event SignedObserved(req, req, req, req);
+    out(host, sign((OBSERVED, req), sk))
+  )
+  else
+  (
+    event SignedOther(t);
+    out(host, sign((t, req), sk))
+  ).
 
 let internalObserved =
-  in(internalCb, req: bitstring);
-  event InternalFired();
-  event Signed(OBSERVED);
-  out(host, sign((OBSERVED, req), sk)).
+  in(internalCb, (id: bitstring, subject: bitstring, digest: bitstring, policy: bitstring));
+  event InternalFired(id, subject, digest, policy);
+  event SignedObserved(id, subject, digest, policy);
+  out(host, sign((OBSERVED, id, subject, digest, policy), sk)).
 
-query event(Signed(OBSERVED)) ==> event(InternalFired()).
+query id: bitstring, subject: bitstring, digest: bitstring, policy: bitstring;
+  inj-event(SignedObserved(id, subject, digest, policy)) ==>
+  inj-event(InternalFired(id, subject, digest, policy)).
 
 process
   ( (!hostCreate) | (!internalObserved) )

@@ -33,8 +33,10 @@ good_false="$(printf '%s\n' "$GOOD" | grep -cE '^RESULT .* is false\.' || true)"
 mut_true="$(printf '%s\n' "$MUT"    | grep -cE '^RESULT .* is true\.'  || true)"
 mut_false="$(printf '%s\n' "$MUT"   | grep -cE '^RESULT .* is false\.' || true)"
 
-if [ "$good_true" = "1" ] && [ "$good_false" = "0" ] && [ "$mut_false" = "1" ] && [ "$mut_true" = "0" ]; then
-  echo "OK: OBSERVED is reachable only via the internal callback (query true); the host-path mutant is refuted (query false)."
+# ProVerif may print an extra parenthetical "(even event ... is false.)" line when an injective query
+# fails, so require at-least-one false for the mutant rather than exactly one.
+if [ "$good_true" -ge 1 ] && [ "$good_false" -eq 0 ] && [ "$mut_false" -ge 1 ] && [ "$mut_true" -eq 0 ]; then
+  echo "OK: the injective correspondence holds (query true); the host-path mutant is refuted (query false)."
   exit 0
 fi
 echo "FAIL: expected good=true/mutant=false; got good_true=$good_true good_false=$good_false mut_true=$mut_true mut_false=$mut_false"
