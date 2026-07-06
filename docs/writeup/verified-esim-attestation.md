@@ -73,10 +73,14 @@ profile-observed assertion type under a host-asserted origin still passes it (wh
 type is the one property still open). The evidence proof is the byte-level reassembly identity, not the
 APDU transport state machine and not the evidence content (that the reassembled transcript and
 signatures are the ones the applet signed is the binding and hybrid properties, not re-checked there).
-The mutants above are injected, not bugs found in the wild; catching them shows the proofs are
-sensitive, not that the pipeline discovered a defect. And the C references are written to be verifiable;
-the shipped Rust deserializer, where the CVE lived, is outside the verified set because of a tool limit
-on how it slices memory, so that path is covered by tests, not a proof, and the repo says so.
+The mutants above are hand-injected, not bugs found in the wild, so catching them shows sensitivity to
+one clause, not adequacy. To measure adequacy I ran a systematic pass (`make qseal-mutants`): apply the
+CVE's operator class (`<` vs `<=`, `==` vs `!=`, `&&` vs `||`, and so on) to each C reference, one
+mutation at a time, and rerun the matching proof. The proofs kill 38 of 40 such mutants; the two
+survivors are equivalent mutants (a loop bound whose extra iteration a downstream guard makes a no-op),
+so no proof or test could kill them. And the C references are written to be verifiable; the shipped Rust
+deserializer, where the CVE lived, is outside the verified set because of a tool limit on how it slices
+memory, so that path is covered by tests, not a proof, and the repo says so.
 
 Everything above reproduces from a `make` target. The primitive chain has 341 Isabelle lemmas (most are
 supporting lemmas), 12 SAW proofs on the C, and 37 on the Rust.

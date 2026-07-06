@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-demo writeup clean
+.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-demo writeup clean
 
 all: verify
 
@@ -134,6 +134,14 @@ qseal-validate:
 qseal-evidence:
 	@echo ">> cryptol + SAW: evidence-fragment reassembly round-trips or fails closed; no-completeness bug caught"
 	./qseal/verify_evidence.sh
+
+## Mutation-adequacy report for the Q-SEAL C references: apply relational/logical operator mutations
+## one at a time and rerun the matching SAW proof, measuring how many mutants the proofs kill. Slower
+## (~1 min, rebuilds + reruns SAW per mutant); a report, not a gate, so it is not in the saw.yml push
+## check. Runs on a copy; tracked files are untouched.
+qseal-mutants:
+	@echo ">> mutation-adequacy: operator mutants of the C references vs the SAW proofs (kill ratio)"
+	python3 qseal/mutation/mutate.py
 
 ## Runnable demo: real ECDSA P-256 + ML-DSA-44 over the verified TBS-V1 transcript. Needs cargo, no
 ## proof toolchain. Valid accepts; tampered and downgrade attestations reject.

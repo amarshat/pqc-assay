@@ -52,7 +52,9 @@ decoder (CVE-2026-24850) shows the primitives need checking, not just testing.
 The applied setting is **Q-SEAL** ([`docs/qseal/QSEAL-v0.1.md`](docs/qseal/QSEAL-v0.1.md)), a hybrid
 quantum-safe secure-element attestation layer whose mandatory suite pairs ECDSA P-256 with ML-DSA-44.
 Verification of Q-SEAL lives in [`qseal/`](qseal/): SAW proves a C reference of six of the seven
-section-16 targets matches a Cryptol model of the spec, each with an injected-mutant non-vacuity check.
+section-16 targets matches a Cryptol model of the spec, each with an injected-mutant non-vacuity check
+(and a mutation-adequacy pass that kills 38 of 40 systematic relational/logical mutants of the C, the
+two survivors being equivalent mutants; `make qseal-mutants`).
 These are the transcript-format, field, and state checks (1 transcript bijection, 2 challenge binding, 3
 hybrid no-downgrade with the signature verifiers left uninterpreted, 4 sequential single-use, 6 evidence
 reassembly round-trip-or-fail-closed, 7 field-value validation before signing); the remaining one (5,

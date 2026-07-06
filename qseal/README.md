@@ -146,6 +146,17 @@ reassembly identity, not the APDU chaining/transport state machine, and not the 
 the reassembled `tbs`/signatures are the ones the applet signed is properties 2 and 3, not re-checked
 here.
 
+## Mutation adequacy
+
+Each proof above carries one hand-injected mutant, which shows the proof is sensitive to that one
+clause. To measure adequacy rather than sensitivity, `mutation/mutate.py` applies a relational/logical
+operator set (the class CVE-2026-24850 lived in: `<`/`<=`, `==`/`!=`, `&&`/`||`, and so on) to each C
+reference systematically, one mutation per occurrence, and reruns the matching SAW proof. Across the six
+references, the proofs kill **38 of 40** such mutants. The two survivors are the same shape, a loop bound
+`i < CAP` weakened to `i <= CAP`, and are semantically equivalent mutants: a downstream guard makes the
+extra iteration a no-op, so no proof or test could kill them. There are no adequacy gaps in this operator
+set. Details in [`mutation/README.md`](mutation/README.md); run with `make qseal-mutants`.
+
 ## Reproduce
 
     ./verify_tbs.sh        # cryptol + z3: the model is bijective/injective (3 properties Q.E.D.)
