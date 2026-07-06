@@ -16,12 +16,16 @@
 
 module QSEAL_Nonce where
 
-type ReqId = [16][8]      // the 16-byte request_id (spec section 7 / 11)
+// The single-use key is verifier_id (16) concatenated with request_id (16). The spec requires a
+// request_id to be unique per verifier, so keying on the verifier as well as the request_id makes the
+// store per-verifier: two verifiers reusing the same request_id do not collide (a request_id-only store
+// would let one verifier's request block another's, a cross-verifier denial of service).
+type Key = [32][8]
 type CAP   = 8            // fixed store capacity; see note above
 
 // A bounded single-use store: `count` request_ids consumed so far, held in the first `count` slots as
 // an append-only log. count ranges 0..CAP.
-type Store = { count : [8], slots : [CAP]ReqId }
+type Store = { count : [8], slots : [CAP]Key }
 
 // The index positions 0..CAP-1 (kept in one place so `seen` and `consume` scan identically, which is
 // also how the C reference will be written: a fixed unrolled scan, no slicing).
@@ -36,24 +40,24 @@ full : Store -> Bit
 full s = s.count >= `CAP
 
 // r is already consumed iff it equals one of the first `count` slots.
-seen : Store -> ReqId -> Bit
+seen : Store -> Key -> Bit
 seen s r = or [ (i < s.count) && (s.slots @ i == r) | i <- idxs ]
 
 // Record r by appending at index `count` (a no-op scan when the guard never fires, i.e. when full).
 // Written as a whole-array rebuild rather than an update at a symbolic index so it maps directly onto
 // a constant-index C scan.
-consume : Store -> ReqId -> Store
+consume : Store -> Key -> Store
 consume s r = { count = s.count + 1
               , slots = [ if i == s.count then r else s.slots @ i | i <- idxs ] }
 
 // The verifier's single-use decision for an otherwise-validated request. `ok` folds in both signature
 // checks and the policy check (property 3, opaque here). Accept iff validated, not already consumed,
 // and the store can still record it (fail-closed when full).
-accept : Store -> Bit -> ReqId -> Bit
+accept : Store -> Bit -> Key -> Bit
 accept s ok r = ok && (~ (seen s r)) && (~ (full s))
 
 // One verifier step: (accepted?, next store). The store advances only on accept.
-step : Store -> Bit -> ReqId -> (Bit, Store)
+step : Store -> Bit -> Key -> (Bit, Store)
 step s ok r = (a, if a then consume s r else s)
   where a = accept s ok r
 
@@ -77,13 +81,13 @@ property consume_marks_seen s r = (~ full s) ==> seen (consume s r) r
 
 // The buggy verifier: it validates the request but never records the request_id (it drops
 // consume_nonce_once). This is exactly the replay hole. no_replay does NOT hold for it.
-step_noconsume : Store -> Bit -> ReqId -> (Bit, Store)
+step_noconsume : Store -> Bit -> Key -> (Bit, Store)
 step_noconsume s ok r = (accept s ok r, s)
 
 // A witness that the bug is real: there is a reachable state where the SAME validated request is
 // accepted twice. `:sat` on this must be Satisfiable, which both catches the mutant and shows the good
 // no_replay theorem is non-vacuous (accept is reachable).
-replay_possible_bug : Store -> Bit -> ReqId -> Bit
+replay_possible_bug : Store -> Bit -> Key -> Bit
 replay_possible_bug s ok r = a1 && a2
   where
     (a1, s1) = step_noconsume s ok r
@@ -94,8 +98,8 @@ replay_possible_bug s ok r = a1 && a2
 // step result into the returned bit and the next store, with ok as a 32-bit int (nonzero = validated),
 // so the SAW spec can state the return value and the post-state store directly.
 
-acceptBit : Store -> [32] -> ReqId -> [32]
+acceptBit : Store -> [32] -> Key -> [32]
 acceptBit s ok r = if accept s (ok != 0) r then 1 else 0
 
-nextStore : Store -> [32] -> ReqId -> Store
+nextStore : Store -> [32] -> Key -> Store
 nextStore s ok r = if accept s (ok != 0) r then consume s r else s

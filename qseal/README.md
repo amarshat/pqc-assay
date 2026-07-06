@@ -87,9 +87,10 @@ Scope, and what this does NOT prove:
 - **Sequential/atomic only.** `step` does seen-check-then-consume in one step. The real replay risk is
   the TOCTOU window between verifying and consuming under concurrency; two simultaneous submissions of
   the same id both seeing `fresh` is not expressible in this model. Atomic check-and-consume is assumed.
-- **Keyed on `request_id` only**, whereas the spec key is `(request_id, nonce)` and `request_id` is
-  unique per verifier (no `verifier_id` scoping here). request_id-only over-rejects, never
-  under-rejects, so it is safe for replay, but it is not the spec's key.
+- **Keyed on `verifier_id ‖ request_id`** (32 bytes), so the store is per-verifier as the spec requires
+  (`request_id` is unique per verifier). An earlier request_id-only key would let one verifier's request
+  block another's, a cross-verifier denial of service; that is fixed. The nonce is still not part of the
+  key (the spec's full key is `(request_id, nonce)`).
 - Signature/policy correctness is the abstract `ok` bit (that is property 3).
 
 **Field values outside the spec enumerations fail before signing (part of property 7 of section 16).**
