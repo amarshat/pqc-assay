@@ -115,11 +115,13 @@ Scope, and what this does NOT prove. This is a field-*value* gate only. It does 
   hold; it is not the length validation the spec means.
 - **Cross-field and semantic constraints**, e.g. an object_length that disagrees with the digest, or an
   expiry in the past.
-- **Authorization.** A `HOST_ASSERTED` request (origin `0x01`) carrying assertion_type `0x04`
-  (`PROFILE_ACTION_OBSERVED`) passes `valid` and is signed, even though section 8.4 says that type must
-  not be host-callable. Which types are reachable through which path is property 5 (open). So the bare
-  claim "a malformed request is never signed" is false for that class; only out-of-enumeration field
-  values are rejected here.
+
+The gate does now enforce one authorization rule: it rejects assertion_type `0x04`
+(`PROFILE_ACTION_OBSERVED`), which section 8.4 says must not be host-callable. `proof/validate.saw`
+carries a second mutant, `qseal_create_assertion_checked_allowobserved`, that drops that rejection and is
+shown to *fail* the spec. This is the code-level counterpart of the ProVerif guard in property 5 (the
+host path refuses `0x04`); the two meet at that guard, though there is no shared model linking them. The
+rest of the reachability question (which command paths can reach which types) is property 5's model.
 
 **Evidence reassembly recovers the exact bytes or fails closed (property 6 of section 16).**
 `READ_EVIDENCE` (section 11.3) returns the evidence blob as response fragments (APDU chaining) that the
@@ -160,8 +162,10 @@ query and the mutant refutes it.
 Scope: this is a symbolic model of the command surface, with no C == model link (unlike the SAW
 properties). "Host-exposed" is a public channel and the trusted callback a private one; the model
 abstracts the applet to the assertion-type dispatch. The guard it proves necessary (the host path must
-refuse type `0x04`) is exactly the authorization check property 7's field gate does not make, so this is
-where that gap is closed at the model level. Details in [`proof/proverif/README.md`](proof/proverif/README.md).
+refuse type `0x04`) is now also enforced in the verified C: property 7's `qseal_validate_request` rejects
+`0x04`, with a mutant that allows it caught in `proof/validate.saw`. So the reachability argument and the
+code-level check meet at that guard (there is no shared model tying them together). Details in
+[`proof/proverif/README.md`](proof/proverif/README.md).
 
 ## Mutation adequacy
 
@@ -169,7 +173,7 @@ Each proof above carries one hand-injected mutant, which shows the proof is sens
 clause. To measure adequacy rather than sensitivity, `mutation/mutate.py` applies a relational/logical
 operator set (the class CVE-2026-24850 lived in: `<`/`<=`, `==`/`!=`, `&&`/`||`, and so on) to each C
 reference systematically, one mutation per occurrence, and reruns the matching SAW proof. Across the six
-references, the proofs kill **38 of 40** such mutants. The two survivors are the same shape, a loop bound
+references, the proofs kill **39 of 41** such mutants. The two survivors are the same shape, a loop bound
 `i < CAP` weakened to `i <= CAP`, and are semantically equivalent mutants: a downstream guard makes the
 extra iteration a no-op, so no proof or test could kill them. There are no adequacy gaps in this operator
 set. Details in [`mutation/README.md`](mutation/README.md); run with `make qseal-mutants`.
@@ -193,7 +197,7 @@ All exit non-zero on failure. `verify_tbs.sh` needs `cryptol`; the SAW ones need
 ## Section 16 coverage
 
 All seven verification targets are now machine-checked: 1-4, 6, 7 as SAW proofs that a C reference equals
-a Cryptol model of the spec rule (each with an injected-mutant non-vacuity check and a 38/40
+a Cryptol model of the spec rule (each with an injected-mutant non-vacuity check and a 39/41
 mutation-adequacy pass, see above), and 5 as a ProVerif reachability result. Properties 1-4/6/7 are
 code-level (a C reference is verified); property 5 is a symbolic protocol model with no C link, and the
 scope note under each property states what it does and does not establish. A shipped Rust

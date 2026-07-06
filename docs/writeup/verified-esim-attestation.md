@@ -74,19 +74,19 @@ On the protocol side: the single-use proof is safety only (no double-accept), on
 that fails closed when full and has no expiry-based eviction, and it is the sequential case, so the
 check-and-consume race under concurrency is assumed away, not verified. The validation proof rejects
 out-of-enumeration field *values*; it does not cover length parsing of the incoming APDU (that is
-upstream of the typed request it starts from), cross-field constraints, or authorization, so the field
-gate still passes a profile-observed assertion type under a host-asserted origin. The reachability
-property (5) forbids that observed type on the host path, but it does so in a separate ProVerif model,
-not in the verified C, so the two are not linked yet. That reachability result is a symbolic (Dolev-Yao)
-model of the command surface, with cryptography idealized and no C == model link: it assumes the host
-channel is what the attacker controls and the internal callback is private, and it abstracts the applet
-to the assertion-type dispatch. The evidence proof is the byte-level reassembly identity, not the APDU
+upstream of the typed request it starts from) or cross-field constraints. It does now reject the one
+authorization case the reachability property (5) cares about: the verified C refuses a
+profile-observed assertion type (`0x04`) on the host path, which is the guard property 5 proves
+necessary. But property 5 itself is a symbolic (Dolev-Yao) model of the command surface, with
+cryptography idealized and no C == model link: it assumes the host channel is what the attacker controls
+and the internal callback is private, and it abstracts the applet to the assertion-type dispatch, so the
+code-level check and the reachability argument meet only at that one guard, not through a shared model. The evidence proof is the byte-level reassembly identity, not the APDU
 transport state machine and not the evidence content (that the reassembled transcript and signatures are
 the ones the applet signed is the binding and hybrid properties, not re-checked there).
 The mutants above are hand-injected, not bugs found in the wild, so catching them shows sensitivity to
 one clause, not adequacy. To measure adequacy I ran a systematic pass (`make qseal-mutants`): apply the
 CVE's operator class (`<` vs `<=`, `==` vs `!=`, `&&` vs `||`, and so on) to each C reference, one
-mutation at a time, and rerun the matching proof. The proofs kill 38 of 40 such mutants; the two
+mutation at a time, and rerun the matching proof. The proofs kill 39 of 41 such mutants; the two
 survivors are equivalent mutants (a loop bound whose extra iteration a downstream guard makes a no-op),
 so no proof or test could kill them. And the C references are written to be verifiable; the shipped Rust
 deserializer, where the CVE lived, is outside the verified set because of a tool limit on how it slices

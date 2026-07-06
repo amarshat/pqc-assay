@@ -52,7 +52,7 @@ for a, b in SWAPS:
 
 # Functions that exist only as injected-bug demos for the SAW `fails` guards. They are NOT the verified
 # artifact, so mutating them is meaningless for adequacy; skip them.
-EXCLUDE_FUNC = ["_noconsume", "_downgrade", "_nosuitecheck", "_nocomplete"]
+EXCLUDE_FUNC = ["_noconsume", "_downgrade", "_nosuitecheck", "_nocomplete", "_allowobserved"]
 FUNC_RE = re.compile(r"^\s*(?:static\s+)?(?:int|void|unsigned|size_t)\s+(\w+)\s*\(")
 
 

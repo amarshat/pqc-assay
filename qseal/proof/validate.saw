@@ -77,3 +77,8 @@ print "VERIFIED: qseal_create_assertion_checked == Cryptol create_checked (malfo
 // The no-suite-check variant must NOT satisfy the spec: it signs under an unsupported suite.
 fails (llvm_verify m "qseal_create_assertion_checked_nosuitecheck" [] true checked_spec z3);
 print "MUTATION CAUGHT: the no-suite-check variant signs an unsupported suite, REJECTED by the validate-then-sign spec";
+
+// The allow-observed variant must NOT satisfy the spec: it signs a host request for the observed type
+// 0x04, which the spec (and property 5) forbid on the host path.
+fails (llvm_verify m "qseal_create_assertion_checked_allowobserved" [] true checked_spec z3);
+print "MUTATION CAUGHT: the allow-observed variant signs a host PROFILE_ACTION_OBSERVED (0x04) request, REJECTED by the validate-then-sign spec";

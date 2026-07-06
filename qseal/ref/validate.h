@@ -20,4 +20,9 @@ int qseal_create_assertion_checked(const qseal_request_t *r, const qseal_applet_
 int qseal_create_assertion_checked_nosuitecheck(const qseal_request_t *r, const qseal_applet_id_t *a,
                                    uint8_t out[QSEAL_TBS_LEN]);
 
+/* Deliberate bug: drops the observed-type rejection, so it signs a host request for
+ * PROFILE_ACTION_OBSERVED (0x04), which spec 8.4 forbids (property 5). */
+int qseal_create_assertion_checked_allowobserved(const qseal_request_t *r, const qseal_applet_id_t *a,
+                                   uint8_t out[QSEAL_TBS_LEN]);
+
 #endif

@@ -38,6 +38,7 @@ pub fn validate_request(r: &Request, a: &AppletId) -> bool {
     a.version == [0x01]
         && r.suite_id == [0x00, 0x01]
         && (0x01..=0x06).contains(&r.assertion_type[0])
+        && r.assertion_type[0] != 0x04 // PROFILE_ACTION_OBSERVED is not host-callable (spec 8.4)
         && (0x01..=0x03).contains(&r.assertion_origin[0])
         && r.object_hash_algorithm == [0x01]
 }

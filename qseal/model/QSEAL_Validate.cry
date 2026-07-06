@@ -20,11 +20,19 @@ valid r a =
      (a.version == [0x01])
   && (r.suite_id == [0x00, 0x01])
   && (t >= 0x01) && (t <= 0x06)
+  && (t != 0x04)                        // PROFILE_ACTION_OBSERVED is not host-callable (spec 8.4)
   && (o >= 0x01) && (o <= 0x03)
   && (r.object_hash_algorithm == [0x01])
   where
     t = r.assertion_type   @ 0
     o = r.assertion_origin @ 0
+
+// The observed assertion type the host CREATE_ASSERTION must refuse. This is the code-level counterpart
+// of the ProVerif guard in proof/proverif/property5.pv (`if t <> OBSERVED`): property 5 proves the
+// observed type is reachable only via the trusted internal callback given that the host path rejects it,
+// and this gate is where the verified C enforces that rejection.
+OBSERVED : [8]
+OBSERVED = 0x04
 
 // The applet signs only after validation. The outcome is (signed?, transcript); a rejected request
 // produces no transcript (the applet does not sign).
@@ -65,3 +73,20 @@ valid_nosuite r a =
 // reachable, since valid_nosuite is a relaxation of valid).
 bug_signs_malformed : Request -> AppletId -> Bit
 bug_signs_malformed r a = valid_nosuite r a && (~ valid r a)
+
+// A second buggy validator that keeps the suite check but drops the observed-type rejection, so it would
+// let the host sign a PROFILE_ACTION_OBSERVED (0x04) assertion (spec 8.4 forbids this; property 5).
+valid_allowobserved : Request -> AppletId -> Bit
+valid_allowobserved r a =
+     (a.version == [0x01])
+  && (r.suite_id == [0x00, 0x01])
+  && (t >= 0x01) && (t <= 0x06)
+  && (o >= 0x01) && (o <= 0x03)
+  && (r.object_hash_algorithm == [0x01])
+  where
+    t = r.assertion_type   @ 0
+    o = r.assertion_origin @ 0
+
+// The observed-type bug accepts a host request the spec rejects (type 0x04). `:sat` must be Satisfiable.
+bug_signs_observed : Request -> AppletId -> Bit
+bug_signs_observed r a = valid_allowobserved r a && (~ valid r a)

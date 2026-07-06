@@ -23,7 +23,7 @@ skipped. The run works on a copy of `qseal/`, so tracked files are never modifie
 
 ## Result (2026-07-06)
 
-40 valid relational/logical mutants across the six C references, **38 killed, 2 survived** (95%). Both
+41 valid relational/logical mutants across the six C references, **39 killed, 2 survived** (95%). Both
 survivors are the same shape and are semantically equivalent mutants, not adequacy gaps:
 
 - `nonce.c:23` and `evidence.c:20`, a loop upper bound `i < CAP` changed to `i <= CAP`. The extra
