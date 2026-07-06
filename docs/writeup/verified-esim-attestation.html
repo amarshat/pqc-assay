@@ -227,8 +227,12 @@ and Isabelle shows the lifted model equals the FIPS 204 transform. No
 theorems. It is the toolchain Apple used on corecrypto, pointed at the
 reference C that everyone else derives their understanding from rather
 than at our own code.</p>
-<p>On top of that, four Q-SEAL protocol properties, each verifying in
-about a second:</p>
+<p>On top of that, six of the seven protocol properties in the spec’s
+verification-targets list. Each is a Cryptol model of a spec rule, a C
+reference written to be verifiable, and a SAW proof that the C equals
+the model. Each also carries an injected mutant that the proof rejects,
+a sensitivity check that the proof depends on the clause it is meant to
+check. Each runs in a second or two:</p>
 <table>
 <colgroup>
 <col style="width: 33%" />
@@ -244,71 +248,115 @@ about a second:</p>
 </thead>
 <tbody>
 <tr>
-<td>The 231-byte transcript serializer is a bijection</td>
+<td>The 231-byte transcript serializer is a bijection (no
+malleability)</td>
 <td><code>make qseal-tbs</code></td>
 <td>0.4 s</td>
 </tr>
 <tr>
 <td>The C (de)serializer matches that model, field for field</td>
 <td><code>make qseal-ref</code></td>
-<td>1.9 s</td>
+<td>1.6 s</td>
 </tr>
 <tr>
-<td>The assertion binds the verifier’s challenge, and the applet fills
-its own identity fields</td>
+<td>The assertion binds the verifier’s challenge; the applet fills its
+own identity</td>
 <td><code>make qseal-assert</code></td>
+<td>0.5 s</td>
+</tr>
+<tr>
+<td>Acceptance requires both signatures over the same bytes (no
+downgrade)</td>
+<td><code>make qseal-hybrid</code></td>
 <td>0.7 s</td>
 </tr>
 <tr>
-<td>Acceptance requires both signatures over the same bytes</td>
-<td><code>make qseal-hybrid</code></td>
-<td>0.9 s</td>
+<td>A consumed request_id is not accepted twice, in the sequential
+case</td>
+<td><code>make qseal-nonce</code></td>
+<td>1.6 s</td>
+</tr>
+<tr>
+<td>Field values outside the spec enumerations are rejected before
+signing</td>
+<td><code>make qseal-validate</code></td>
+<td>1.0 s</td>
+</tr>
+<tr>
+<td>Fragmented evidence reassembles to the exact bytes or fails
+closed</td>
+<td><code>make qseal-evidence</code></td>
+<td>2.0 s</td>
 </tr>
 </tbody>
 </table>
-<p>Two of these are worth a sentence. The transcript is fixed-length
-with no optional fields, and the proof is that its serializer is
-injective: two different transcripts can never produce the same bytes.
-That is an analogous property, one layer up from where CVE-2026-24850
-lived. For the hybrid check, the two signature verifiers are left
-uninterpreted, and the accept logic is proved equal to “both verify,
-over the same transcript”. A variant that accepts on either signature
-fails the same proof, so the hybrid cannot quietly degrade to
-classical-only. That last one, verbatim from
+<p>A few are worth a sentence. The transcript is fixed-length with no
+optional fields, and the proof is that its serializer is injective: two
+different transcripts can never produce the same bytes. That is an
+analogous property, one layer up from where CVE-2026-24850 lived. The
+hybrid check leaves the two signature verifiers uninterpreted and proves
+the accept logic equal to “both verify, over the same transcript”; a
+variant that accepts on either signature fails the same proof, so the
+hybrid cannot quietly degrade to classical-only. The single-use proof is
+the first stateful one: a request whose request_id was already consumed
+is rejected, and a verifier that drops the consume step is shown to
+accept the same request twice. The evidence proof is a round-trip:
+splitting a blob into response fragments and reassembling recovers
+exactly the original bytes, while a dropped fragment fails closed rather
+than being silently zero-filled. The hybrid one, verbatim from
 <code>make qseal-hybrid</code>:</p>
 <pre><code>Proof succeeded! qseal_hybrid_accept
 VERIFIED: qseal_hybrid_accept == vE(pk_c,tbs,sig_c) AND vM(pk_pq,tbs,sig_pq) -- both required, same transcript
 MUTATION CAUGHT: the downgrade variant (accept on either signature) is REJECTED by the both-required spec</code></pre>
 <h2 id="what-i-am-not-claiming">What I am not claiming</h2>
+<p>These are scoped results, and the scope matters more than the
+count.</p>
 <p>The inverse NTT equivalence is proved under a non-negative input
 window, coefficients in <code>[0, Q)</code>, which does not cover the
 signed, centered coefficients the reference actually feeds it. Extending
 that is open. The hybrid proof abstracts the verifiers, so it is about
 the acceptance logic, not whether ECDSA or ML-DSA verification is itself
-correct; and “the applet fills its own identity” is a data-flow property
-that assumes the runtime hands the applet an identity the host cannot
-set. The Rust crate’s hint decoder, where the CVE lived, is outside the
-verified set because of a tool limit on how it slices memory; that path
-is covered by tests, not a proof, and the repo says so. One step in the
-ML-DSA chain, that the <code>-fwrapv</code> build has no signed-overflow
-undefined behavior, is argued from a machine-checked bound rather than
-mechanized as one theorem.</p>
+correct. One step in the ML-DSA chain, that the <code>-fwrapv</code>
+build has no signed-overflow undefined behavior, is argued from a
+machine-checked bound rather than mechanized as one theorem.</p>
+<p>On the protocol side: the single-use proof is safety only (no
+double-accept), on a fixed, small store that fails closed when full and
+has no expiry-based eviction, and it is the sequential case, so the
+check-and-consume race under concurrency is assumed away, not verified.
+The validation proof rejects out-of-enumeration field <em>values</em>;
+it does not cover length parsing of the incoming APDU (that is upstream
+of the typed request it starts from), cross-field constraints, or
+authorization, so a profile-observed assertion type under a
+host-asserted origin still passes it (which path can reach which type is
+the one property still open). The evidence proof is the byte-level
+reassembly identity, not the APDU transport state machine and not the
+evidence content (that the reassembled transcript and signatures are the
+ones the applet signed is the binding and hybrid properties, not
+re-checked there). The mutants above are injected, not bugs found in the
+wild; catching them shows the proofs are sensitive, not that the
+pipeline discovered a defect. And the C references are written to be
+verifiable; the shipped Rust deserializer, where the CVE lived, is
+outside the verified set because of a tool limit on how it slices
+memory, so that path is covered by tests, not a proof, and the repo says
+so.</p>
 <p>Everything above reproduces from a <code>make</code> target. The
-transcript proofs are kept honest by their injectivity and binding
-properties; the hybrid proof carries an injected downgrade variant that
-it rejects. The primitive chain has 341 Isabelle lemmas (most are
-supporting lemmas), 12 SAW proofs on the C, and 37 on the Rust.</p>
+primitive chain has 341 Isabelle lemmas (most are supporting lemmas), 12
+SAW proofs on the C, and 37 on the Rust.</p>
 <h2 id="try-it">Try it</h2>
 <p>The runnable demo needs only Rust, no proof toolchain. It signs the
-verified transcript with real ECDSA P-256 and ML-DSA-44 and shows a
-valid attestation accept, a tampered one reject, and a downgrade (valid
-classical signature, no valid post-quantum one) reject:</p>
+verified transcript with real ECDSA P-256 and ML-DSA-44 and walks six
+outcomes: a valid attestation accepts; a tampered transcript rejects; a
+downgrade (valid classical signature, no valid post-quantum one)
+rejects; a replayed request rejects; a malformed request is refused
+before signing; and fragmented evidence reassembles exactly, while a
+dropped fragment is rejected. The demo binary is not itself verified;
+each piece is a Rust twin of a rule proved in the SAW scripts.</p>
 <pre><code>git clone https://github.com/amarshat/pqc-assay
 cd pqc-assay/qseal/demo
 cargo run</code></pre>
 <p>The proofs reproduce from make targets
-(<code>make qseal-tbs qseal-ref qseal-assert qseal-hybrid</code>, a few
-seconds each, need cryptol and SAW). The ML-DSA primitive chain
+(<code>make qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence</code>,
+a second or two each, need cryptol and SAW). The ML-DSA primitive chain
 (<code>make verify</code>) needs the pinned SAW + Isabelle toolchain;
 see the repo’s setup script.</p>
 </body>
