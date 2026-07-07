@@ -72,7 +72,7 @@ enforcement are still separate, upcoming targets.
 ## Machine-checked properties (this session, Kani)
 
 `cap/src/lib.rs`, harnesses under `#[cfg(kani)] mod verification`, run with `cargo kani` (or
-`make cap-kani`). Kani 0.67.0, CBMC backend. All eleven verified, 0 failures. `any_cap()` is
+`make cap-kani`). Kani 0.67.0, CBMC backend. All fourteen verified, 0 failures. `any_cap()` is
 `parse(kani::any::<[u8; 191]>())`, which ranges over all `CapV1` (each field is an independent slice
 of a fully symbolic buffer).
 
@@ -115,15 +115,29 @@ device):
 - `accept_within_window`: `accept_leaf(cap, v, now, s) => not_before <= now <= not_after`. No
   expired or not-yet-valid capability is accepted.
 
+Chain accept (`accept_chain2(root, leaf, verifier_id, now, root_sig_ok, leaf_sig_ok)`) composes the
+link check and the leaf gate: accept iff `root` is a root, both signatures verify, `leaf` is a valid
+re-delegation of `root`, and `leaf` passes the leaf gate.
+
+- `chain_accept_reachable`: satisfiable (`kani::cover!`, SATISFIED).
+- `chain_accept_requires_all_sigs`: `accept_chain2(..) => root_sig_ok && leaf_sig_ok`. Every link's
+  signature must verify; the post-quantum signature cannot be stripped from a link.
+- `chain_accept_attenuates`: if the chain is accepted then the leaf grants no more than the root:
+  `action_bits(leaf) ⊆ action_bits(root)`, `leaf.max_depth < root.max_depth`, `now` is inside the
+  root's window, both name the presenting verifier as audience, and the resource is the same. So
+  accepting a re-delegation can never exceed the root grant. This is the end-to-end statement the
+  earlier link/gate lemmas build up to.
+
 ## Scope and limitations
 
-- The proved properties are the format bijection, the attenuation behavior of `valid_delegation`,
-  and the structure of the single-capability accept gate. The signature check is abstract (`sig_ok`
-  is an input), so nothing here proves ECDSA/ML-DSA correctness; it proves that acceptance is
-  gated on the signature bit plus audience and window, for any correct verifier.
-- Not yet connected: `valid_delegation` (chains) and `accept_leaf` (single capability with the
-  signature bit) are not composed into one chain-accept decision that requires every link's
-  signature to verify. That is the next target.
+- The signature check is abstract (`sig_ok` / `root_sig_ok` / `leaf_sig_ok` are inputs), so nothing
+  here proves ECDSA/ML-DSA correctness. It proves that acceptance is gated on those signature bits
+  plus audience, window, and attenuation, for any correct verifier. Wiring in a real signature
+  verifier (over `serialize(cap)`) is a separate step; the ML-DSA-44 primitive itself is verified
+  elsewhere in this repo.
+- `accept_chain2` covers a two-link chain (root + one re-delegation). A general N-link chain accept
+  is not yet stated; `chain_attenuates` gives the inductive step, so the extension is mechanical but
+  unproven as written.
 - Freshness/replay beyond the validity window (nonce single-use, like Q-SEAL property 4) is not
   modeled here.
 - The layout is frozen (the bijection depends on it); field *meanings* above are provisional and may

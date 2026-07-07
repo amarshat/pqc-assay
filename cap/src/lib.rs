@@ -205,6 +205,31 @@ pub fn accept_leaf(cap: &CapV1, verifier_id: &[u8; 16], now: u64, sig_ok: bool) 
     sig_ok && cap.audience_id == *verifier_id && nb <= now && now <= na
 }
 
+/// A capability is a chain root: it has no parent.
+pub fn is_root(cap: &CapV1) -> bool {
+    cap.parent_id == [0u8; 16]
+}
+
+/// Accept a two-link chain: a root capability `root` and a re-delegation `leaf` of it, presented to
+/// `verifier_id` at `now`. `root_sig_ok` / `leaf_sig_ok` are the two signature-check outcomes
+/// (abstract, as in `accept_leaf`). Acceptance requires: `root` is a root, both signatures verify,
+/// `leaf` is a valid re-delegation of `root`, and `leaf` passes the leaf accept gate (audience +
+/// window). Because `valid_delegation` narrows the window and preserves audience, the leaf gate plus
+/// the link check imply the root's own window and audience hold too, so they need not be rechecked.
+pub fn accept_chain2(
+    root: &CapV1,
+    leaf: &CapV1,
+    verifier_id: &[u8; 16],
+    now: u64,
+    root_sig_ok: bool,
+    leaf_sig_ok: bool,
+) -> bool {
+    is_root(root)
+        && root_sig_ok
+        && valid_delegation(root, leaf)
+        && accept_leaf(leaf, verifier_id, now, leaf_sig_ok)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,6 +317,43 @@ mod tests {
         // Expired / not yet valid: rejected.
         assert!(!accept_leaf(&cap, &v, 250, true));
         assert!(!accept_leaf(&cap, &v, 50, true));
+    }
+
+    #[test]
+    fn concrete_accept_chain2() {
+        let mut root = CapV1::zeroed();
+        root.subject_id = [0xAA; 16];
+        root.cap_id = [0xBB; 16];
+        root.parent_id = [0; 16]; // root
+        root.resource_id = [0x44; 32];
+        root.audience_id = [0x77; 16];
+        root.suite_id = [0, 1];
+        root.max_depth = [3];
+        root.action = [0, 0, 0, 0b0000_0011];
+        root.not_before = 100u64.to_be_bytes();
+        root.not_after = 200u64.to_be_bytes();
+
+        let mut leaf = CapV1::zeroed();
+        leaf.issuer_id = root.subject_id;
+        leaf.subject_id = [0xCC; 16];
+        leaf.parent_id = root.cap_id;
+        leaf.resource_id = root.resource_id;
+        leaf.audience_id = root.audience_id;
+        leaf.suite_id = root.suite_id;
+        leaf.max_depth = [2];
+        leaf.action = [0, 0, 0, 0b0000_0001];
+        leaf.not_before = 120u64.to_be_bytes();
+        leaf.not_after = 180u64.to_be_bytes();
+
+        let v = [0x77; 16];
+        assert!(accept_chain2(&root, &leaf, &v, 150, true, true));
+        // Drop either signature: rejected.
+        assert!(!accept_chain2(&root, &leaf, &v, 150, false, true));
+        assert!(!accept_chain2(&root, &leaf, &v, 150, true, false));
+        // Root is not actually a root: rejected.
+        let mut not_root = root;
+        not_root.parent_id = [0x01; 16];
+        assert!(!accept_chain2(&not_root, &leaf, &v, 150, true, true));
     }
 }
 
@@ -397,6 +459,53 @@ mod verification {
         kani::assume(accept_leaf(&cap, &v, now, sig_ok));
         let (nb, na) = window(&cap);
         assert!(nb <= now && now <= na);
+    }
+
+    /// A two-link chain accept is reachable (the guarantees below are not vacuous).
+    #[kani::proof]
+    fn chain_accept_reachable() {
+        let root = any_cap();
+        let leaf = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        kani::cover!(accept_chain2(&root, &leaf, &v, now, true, true));
+    }
+
+    /// Accepting a chain requires every link's signature: dropping either the root or the leaf
+    /// signature makes it reject. The post-quantum signature cannot be stripped from a link.
+    #[kani::proof]
+    fn chain_accept_requires_all_sigs() {
+        let root = any_cap();
+        let leaf = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let rs: bool = kani::any();
+        let ls: bool = kani::any();
+        kani::assume(accept_chain2(&root, &leaf, &v, now, rs, ls));
+        assert!(rs && ls);
+    }
+
+    /// End-to-end attenuation: if a two-link chain is accepted, the delegated (leaf) capability
+    /// grants no more than the root. Its action bits are a subset of the root's, its depth is below
+    /// the root's, `now` falls inside the root's window, and both name the presenting verifier as
+    /// audience over the same resource. Accepting a re-delegation can never exceed the root grant.
+    #[kani::proof]
+    fn chain_accept_attenuates() {
+        let root = any_cap();
+        let leaf = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let rs: bool = kani::any();
+        let ls: bool = kani::any();
+        kani::assume(accept_chain2(&root, &leaf, &v, now, rs, ls));
+        assert_eq!(action_bits(&leaf) & !action_bits(&root), 0);
+        assert!(leaf.max_depth[0] < root.max_depth[0]);
+        let (r_nb, r_na) = window(&root);
+        assert!(r_nb <= now && now <= r_na);
+        assert_eq!(leaf.audience_id, v);
+        assert_eq!(root.audience_id, v);
+        assert_eq!(leaf.resource_id, root.resource_id);
+        assert!(is_root(&root));
     }
 
     /// Round-trip on records: parsing a serialized capability recovers it exactly, for every

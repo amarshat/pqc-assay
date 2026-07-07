@@ -46,6 +46,13 @@ Accept gate (`accept_leaf`, signature check abstract):
 - `accept_binds_audience`: a capability accepted by verifier `v` names `v` as its audience.
 - `accept_within_window`: an accepted capability is inside its validity window at `now`.
 
+Chain accept (`accept_chain2`, composes the link check and the leaf gate):
+
+- `chain_accept_reachable`: satisfiable (`kani::cover!`, SATISFIED).
+- `chain_accept_requires_all_sigs`: acceptance requires every link's signature; none can be stripped.
+- `chain_accept_attenuates`: an accepted re-delegation grants no more than the root (action subset,
+  lower depth, `now` inside the root window, same audience and resource). End-to-end statement.
+
 ## Layout
 
 Byte-exact layout is in the spec. `src/lib.rs` is the single source: `CapV1`, `serialize`, `parse`,
@@ -54,9 +61,10 @@ unverified third-party code.
 
 ## Scope
 
-Proved: the format bijection and the attenuation behavior of the `valid_delegation` link check.
-Not yet: signature verification, freshness/replay enforcement, and connecting `valid_delegation` to
-signature checking for a full end-to-end accept decision. Those are the next Kani targets. See the
+Proved: the format bijection, `valid_delegation` attenuation, the leaf accept gate, and a two-link
+chain accept that requires both signatures and never exceeds the root grant. The signature check is
+abstract (a bool input), so a real ECDSA/ML-DSA verifier over `serialize(cap)` is not wired in yet;
+N-link (N > 2) chain accept and nonce single-use replay are not stated. Next Kani targets. See the
 spec's scope section.
 
 ## Run
