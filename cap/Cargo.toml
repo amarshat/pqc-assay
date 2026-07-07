@@ -1,0 +1,18 @@
+[package]
+name = "cap-v1"
+version = "0.1.0"
+edition = "2021"
+description = "Cap-V1: fixed-format post-quantum agent-delegation capability token, with a Kani-verified verifier"
+license = "Apache-2.0"
+
+[lib]
+name = "cap_v1"
+path = "src/lib.rs"
+
+# No dependencies on purpose. The trusted parse/serialize path is pure byte layout,
+# so the Kani-verified core pulls in no unverified third-party code.
+[dependencies]
+
+# `kani` cfg is set by cargo-kani, not by a Cargo feature; declare it so plain builds don't warn.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

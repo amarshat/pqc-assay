@@ -164,6 +164,13 @@ qseal-demo:
 	@echo ">> Q-SEAL hybrid attestation demo (valid accepts; tampered + downgrade reject)"
 	cd qseal/demo && cargo run --quiet
 
+## Cap-V1 capability layer (Rust verifier, Kani proof). The fixed-format agent-delegation TBS
+## serializer is a bijection and injective (no token-level malleability), proved with Kani/CBMC over
+## the full 191-byte buffer. Needs cargo + kani on PATH. Model + proof in cap/, spec in docs/cap/.
+cap-kani:
+	@echo ">> Kani: Cap-V1 TBS bijective + injective (no token malleability); 3 harnesses over the 191-byte buffer"
+	./cap/verify_cap.sh
+
 ## The writeups: the NTT/SAW/Isabelle technical piece, and the Q-SEAL eSIM-attestation post
 ## (docs/writeup/verified-esim-attestation.{md,html}; the .html is self-contained for GitHub Pages).
 writeup:

@@ -38,6 +38,7 @@ proof/**/_*.saw
 qseal/model/_*.cry
 qseal/build/
 qseal/demo/target/
+cap/target/
 
 # Blog drafts / generated images (kept local; public repo, private framing)
 **/BLOG_*.md
