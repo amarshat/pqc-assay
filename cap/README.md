@@ -53,6 +53,15 @@ Chain accept (`accept_chain2`, composes the link check and the leaf gate):
 - `chain_accept_attenuates`: an accepted re-delegation grants no more than the root (action subset,
   lower depth, `now` inside the root window, same audience and resource). End-to-end statement.
 
+Signature binding (`signed_message` = the canonical bytes the signature covers):
+
+- `signed_message_covers_all_fields`: `parse(signed_message(cap)) == cap`; no field is left unsigned.
+- `signed_message_injective`: distinct capabilities never share signed bytes.
+- `omitting_audience_breaks_binding`: non-vacuity witness. A signer that omitted `audience_id` would
+  give two differing-audience capabilities identical bytes; the correct one does not. Catches the
+  unsigned-field bug class. The reduction to ML-DSA unforgeability is an argument (see the spec), not
+  a Kani result.
+
 ## Layout
 
 Byte-exact layout is in the spec. `src/lib.rs` is the single source: `CapV1`, `serialize`, `parse`,
@@ -61,11 +70,12 @@ unverified third-party code.
 
 ## Scope
 
-Proved: the format bijection, `valid_delegation` attenuation, the leaf accept gate, and a two-link
-chain accept that requires both signatures and never exceeds the root grant. The signature check is
-abstract (a bool input), so a real ECDSA/ML-DSA verifier over `serialize(cap)` is not wired in yet;
-N-link (N > 2) chain accept and nonce single-use replay are not stated. Next Kani targets. See the
-spec's scope section.
+Proved: the format bijection, `valid_delegation` attenuation, the leaf accept gate, a two-link chain
+accept that requires both signatures and never exceeds the root grant, and that the signed message is
+the canonical, complete, injective encoding. Not yet: the reduction to unforgeability is an argument
+(not machine-checked), no real ECDSA/ML-DSA verifier is run over `serialize(cap)`, and N-link (N > 2)
+chain accept and nonce single-use replay are not stated. Next Kani targets. See the spec's scope
+section.
 
 ## Run
 

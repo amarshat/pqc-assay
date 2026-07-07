@@ -201,8 +201,38 @@ pub fn valid_delegation(parent: &CapV1, child: &CapV1) -> bool {
 /// device Q-SEAL uses for its uninterpreted verifiers). Acceptance additionally requires the
 /// capability to name this verifier as its audience and `now` to fall inside the validity window.
 pub fn accept_leaf(cap: &CapV1, verifier_id: &[u8; 16], now: u64, sig_ok: bool) -> bool {
+    // `sig_ok` is the verifier's verdict over `signed_message(cap)`, i.e. the signature checked over
+    // exactly the canonical TBS bytes. See `signed_message`.
     let (nb, na) = window(cap);
     sig_ok && cap.audience_id == *verifier_id && nb <= now && now <= na
+}
+
+/// The exact bytes a Cap-V1 signature must cover: the canonical 191-byte serialization. A verifier
+/// checks the signature over precisely these bytes and nothing else.
+///
+/// Two facts about this message are machine-checked below: it covers every field of the capability
+/// (`parse(signed_message(cap)) == cap`, so nothing authorized is left unsigned), and it is unique
+/// to the capability (`serialize` is injective, so distinct capabilities never share signed bytes).
+/// Given those, ML-DSA-44 unforgeability over this message transfers to the capability: a signature
+/// that verifies for one capability's bytes is not valid over any other capability's bytes. That
+/// last step is a reduction to the signature scheme's security, not proved here (the ML-DSA-44
+/// primitive is verified elsewhere in this repo); see docs/cap/CAP-V1.md.
+pub fn signed_message(cap: &CapV1) -> [u8; WIRE_LEN] {
+    serialize(cap)
+}
+
+/// A deliberately broken signer that leaves `audience_id` out of the signed region (zeros it). Used
+/// only to witness that field coverage is not vacuous: under this version a capability's audience
+/// could be swapped after signing. Not part of the shipped API.
+#[cfg(any(test, kani))]
+fn signed_message_omitting_audience(cap: &CapV1) -> [u8; WIRE_LEN] {
+    let mut b = serialize(cap);
+    let mut i = O_AUDIENCE_ID;
+    while i < O_END {
+        b[i] = 0;
+        i += 1;
+    }
+    b
 }
 
 /// A capability is a chain root: it has no parent.
@@ -355,6 +385,23 @@ mod tests {
         not_root.parent_id = [0x01; 16];
         assert!(!accept_chain2(&not_root, &leaf, &v, 150, true, true));
     }
+
+    #[test]
+    fn concrete_signed_message() {
+        let mut cap = CapV1::zeroed();
+        cap.audience_id = [0x77; 16];
+        // Signed bytes are the canonical serialization, and cover every field.
+        assert_eq!(signed_message(&cap), serialize(&cap));
+        assert_eq!(parse(&signed_message(&cap)), cap);
+        // The audience-omitting signer drops the audience: a differing-audience capability collides.
+        let mut other = cap;
+        other.audience_id = [0x88; 16];
+        assert_ne!(signed_message(&cap), signed_message(&other));
+        assert_eq!(
+            signed_message_omitting_audience(&cap),
+            signed_message_omitting_audience(&other)
+        );
+    }
 }
 
 /// Kani proof harnesses. Run with `cargo kani`. These establish, by bounded symbolic execution over
@@ -506,6 +553,41 @@ mod verification {
         assert_eq!(root.audience_id, v);
         assert_eq!(leaf.resource_id, root.resource_id);
         assert!(is_root(&root));
+    }
+
+    /// The signed message covers every field: parsing it back yields the same capability, so no
+    /// authorized field sits outside the signature.
+    #[kani::proof]
+    fn signed_message_covers_all_fields() {
+        let cap = any_cap();
+        assert_eq!(parse(&signed_message(&cap)), cap);
+    }
+
+    /// Distinct capabilities never share signed bytes, so one signature cannot cover two of them.
+    #[kani::proof]
+    fn signed_message_injective() {
+        let c1 = any_cap();
+        let c2 = any_cap();
+        kani::assume(signed_message(&c1) == signed_message(&c2));
+        assert_eq!(c1, c2);
+    }
+
+    /// Coverage is not vacuous, and it is exactly what binds the audience: the correct signer gives
+    /// two capabilities that differ only in `audience_id` different signed bytes, while a signer that
+    /// omitted `audience_id` would give them identical bytes (so a signature would authorize either
+    /// audience). This is the Kani analogue of the repo's mutation checks: the property catches the
+    /// unsigned-field bug class.
+    #[kani::proof]
+    fn omitting_audience_breaks_binding() {
+        let c1 = any_cap();
+        let mut c2 = c1;
+        c2.audience_id = kani::any();
+        kani::assume(c1.audience_id != c2.audience_id);
+        assert_ne!(signed_message(&c1), signed_message(&c2));
+        assert_eq!(
+            signed_message_omitting_audience(&c1),
+            signed_message_omitting_audience(&c2)
+        );
     }
 
     /// Round-trip on records: parsing a serialized capability recovers it exactly, for every

@@ -72,7 +72,7 @@ enforcement are still separate, upcoming targets.
 ## Machine-checked properties (this session, Kani)
 
 `cap/src/lib.rs`, harnesses under `#[cfg(kani)] mod verification`, run with `cargo kani` (or
-`make cap-kani`). Kani 0.67.0, CBMC backend. All fourteen verified, 0 failures. `any_cap()` is
+`make cap-kani`). Kani 0.67.0, CBMC backend. All seventeen verified, 0 failures. `any_cap()` is
 `parse(kani::any::<[u8; 191]>())`, which ranges over all `CapV1` (each field is an independent slice
 of a fully symbolic buffer).
 
@@ -128,13 +128,35 @@ re-delegation of `root`, and `leaf` passes the leaf gate.
   accepting a re-delegation can never exceed the root grant. This is the end-to-end statement the
   earlier link/gate lemmas build up to.
 
+Signature binding (`signed_message(cap)` is the canonical byte string the signature covers, and in
+`accept_leaf` the `sig_ok` bit is the verifier's verdict over exactly those bytes):
+
+- `signed_message_covers_all_fields`: `parse(signed_message(cap)) == cap`. Every field of the
+  capability sits inside the signed bytes; nothing authorized is left unsigned.
+- `signed_message_injective`: distinct capabilities never share signed bytes, so one signature
+  cannot cover two capabilities.
+- `omitting_audience_breaks_binding`: the coverage property is not vacuous and is exactly what binds
+  the audience. Two capabilities differing only in `audience_id` get different signed bytes under the
+  correct serializer, but identical bytes under a signer that omitted `audience_id`. So the property
+  catches the unsigned-field bug class (the Kani analogue of the repo's mutation checks). Concrete
+  `cargo test` witnesses the same collision.
+
+Reduction to unforgeability (argument, not machine-checked). The two facts above plus ML-DSA-44
+unforgeability give the security statement we want: a signature that verifies over one capability's
+`signed_message` is not valid over any other capability's bytes (the messages differ by injectivity),
+so a captured signature cannot be re-bound to a different capability. The unforgeability step is an
+assumption about the signature scheme, not a Kani result; the ML-DSA-44 primitive itself is verified
+elsewhere in this repo (SAW/Isabelle). What Cap-V1 owns and proves here is that the signed message is
+the canonical, complete, injective encoding, which is the precondition that reduction needs.
+
 ## Scope and limitations
 
 - The signature check is abstract (`sig_ok` / `root_sig_ok` / `leaf_sig_ok` are inputs), so nothing
   here proves ECDSA/ML-DSA correctness. It proves that acceptance is gated on those signature bits
-  plus audience, window, and attenuation, for any correct verifier. Wiring in a real signature
-  verifier (over `serialize(cap)`) is a separate step; the ML-DSA-44 primitive itself is verified
-  elsewhere in this repo.
+  plus audience, window, and attenuation, and (signature-binding section) that the signed message is
+  the canonical, complete, injective encoding. What is not machine-checked is the reduction to
+  unforgeability and the run of an actual verifier over `serialize(cap)`; the ML-DSA-44 primitive
+  itself is verified elsewhere in this repo.
 - `accept_chain2` covers a two-link chain (root + one re-delegation). A general N-link chain accept
   is not yet stated; `chain_attenuates` gives the inductive step, so the extension is mechanical but
   unproven as written.
