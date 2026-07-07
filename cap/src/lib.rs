@@ -193,6 +193,18 @@ pub fn valid_delegation(parent: &CapV1, child: &CapV1) -> bool {
         && c_nb <= c_na
 }
 
+/// Accept a single (leaf) capability presented to a verifier.
+///
+/// `sig_ok` is the outcome of the signature check over `serialize(cap)`. It is an input, not
+/// computed here: the real verifier runs the hybrid ECDSA P-256 + ML-DSA-44 check, but keeping it
+/// abstract means the structural guarantees below hold for any correct signature verifier (the same
+/// device Q-SEAL uses for its uninterpreted verifiers). Acceptance additionally requires the
+/// capability to name this verifier as its audience and `now` to fall inside the validity window.
+pub fn accept_leaf(cap: &CapV1, verifier_id: &[u8; 16], now: u64, sig_ok: bool) -> bool {
+    let (nb, na) = window(cap);
+    sig_ok && cap.audience_id == *verifier_id && nb <= now && now <= na
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,6 +275,24 @@ mod tests {
         same_depth.max_depth = [3];
         assert!(!valid_delegation(&parent, &same_depth));
     }
+
+    #[test]
+    fn concrete_accept_leaf() {
+        let mut cap = CapV1::zeroed();
+        cap.audience_id = [0x77; 16];
+        cap.not_before = 100u64.to_be_bytes();
+        cap.not_after = 200u64.to_be_bytes();
+        let v = [0x77; 16];
+
+        assert!(accept_leaf(&cap, &v, 150, true));
+        // No valid signature: rejected.
+        assert!(!accept_leaf(&cap, &v, 150, false));
+        // Wrong audience: rejected.
+        assert!(!accept_leaf(&cap, &[0x88; 16], 150, true));
+        // Expired / not yet valid: rejected.
+        assert!(!accept_leaf(&cap, &v, 250, true));
+        assert!(!accept_leaf(&cap, &v, 50, true));
+    }
 }
 
 /// Kani proof harnesses. Run with `cargo kani`. These establish, by bounded symbolic execution over
@@ -324,6 +354,49 @@ mod verification {
         assert!(c_nb >= a_nb && c_na <= a_na);
         assert_eq!(c.resource_id, a.resource_id);
         assert_eq!(c.audience_id, a.audience_id);
+    }
+
+    /// The accept gate is reachable (its guarantees below are not vacuous).
+    #[kani::proof]
+    fn accept_reachable() {
+        let cap = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let sig_ok: bool = kani::any();
+        kani::cover!(accept_leaf(&cap, &v, now, sig_ok));
+    }
+
+    /// No capability is accepted without a valid signature: the signature check cannot be bypassed.
+    #[kani::proof]
+    fn accept_requires_signature() {
+        let cap = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        assert!(!accept_leaf(&cap, &v, now, false));
+    }
+
+    /// A capability accepted by verifier `v` names `v` as its audience: no cross-service replay.
+    #[kani::proof]
+    fn accept_binds_audience() {
+        let cap = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let sig_ok: bool = kani::any();
+        kani::assume(accept_leaf(&cap, &v, now, sig_ok));
+        assert_eq!(cap.audience_id, v);
+    }
+
+    /// An accepted capability is within its validity window at `now`: no expired or not-yet-valid
+    /// token is accepted.
+    #[kani::proof]
+    fn accept_within_window() {
+        let cap = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let sig_ok: bool = kani::any();
+        kani::assume(accept_leaf(&cap, &v, now, sig_ok));
+        let (nb, na) = window(&cap);
+        assert!(nb <= now && now <= na);
     }
 
     /// Round-trip on records: parsing a serialized capability recovers it exactly, for every

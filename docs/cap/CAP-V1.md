@@ -72,7 +72,7 @@ enforcement are still separate, upcoming targets.
 ## Machine-checked properties (this session, Kani)
 
 `cap/src/lib.rs`, harnesses under `#[cfg(kani)] mod verification`, run with `cargo kani` (or
-`make cap-kani`). Kani 0.67.0, CBMC backend. All seven verified, 0 failures. `any_cap()` is
+`make cap-kani`). Kani 0.67.0, CBMC backend. All eleven verified, 0 failures. `any_cap()` is
 `parse(kani::any::<[u8; 191]>())`, which ranges over all `CapV1` (each field is an independent slice
 of a fully symbolic buffer).
 
@@ -103,15 +103,29 @@ Delegation (attenuation / chains terminate):
   global invariant (authority only attenuates down the chain); two hops discharge the inductive step
   for any length.
 
+Accept gate (`accept_leaf(cap, verifier_id, now, sig_ok)`). `sig_ok` is the signature-check outcome,
+kept as an input so the guarantees hold for any correct verifier (Q-SEAL's uninterpreted-verifier
+device):
+
+- `accept_reachable`: `accept_leaf` is satisfiable (`kani::cover!`, SATISFIED).
+- `accept_requires_signature`: `!accept_leaf(cap, v, now, false)`. Nothing is accepted without a
+  valid signature; the check cannot be bypassed.
+- `accept_binds_audience`: `accept_leaf(cap, v, now, s) => cap.audience_id == v`. A capability
+  accepted by verifier `v` was issued for `v` (no cross-service replay).
+- `accept_within_window`: `accept_leaf(cap, v, now, s) => not_before <= now <= not_after`. No
+  expired or not-yet-valid capability is accepted.
+
 ## Scope and limitations
 
-- The proved properties are the format bijection and the attenuation behavior of the
-  `valid_delegation` link check. They say nothing about signature verification, freshness/replay
-  enforcement, or the full end-to-end authorization decision. Those are separate, upcoming
-  properties.
-- `valid_delegation` is proved to attenuate, but it is not yet connected to signature checking: a
-  chain the verifier accepts must also have every link's signature verify. That composition is not
-  done.
+- The proved properties are the format bijection, the attenuation behavior of `valid_delegation`,
+  and the structure of the single-capability accept gate. The signature check is abstract (`sig_ok`
+  is an input), so nothing here proves ECDSA/ML-DSA correctness; it proves that acceptance is
+  gated on the signature bit plus audience and window, for any correct verifier.
+- Not yet connected: `valid_delegation` (chains) and `accept_leaf` (single capability with the
+  signature bit) are not composed into one chain-accept decision that requires every link's
+  signature to verify. That is the next target.
+- Freshness/replay beyond the validity window (nonce single-use, like Q-SEAL property 4) is not
+  modeled here.
 - The layout is frozen (the bijection depends on it); field *meanings* above are provisional and may
   change without invalidating the proof technique.
 - `parse` is total and does not check `magic`; `well_formed` is the separate magic check. A

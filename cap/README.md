@@ -39,6 +39,13 @@ Delegation (attenuation, chains terminate):
   subset of `a`'s, depth strictly decreases, the validity window is contained, and resource and
   audience are unchanged. The local link check composes into the global chain invariant.
 
+Accept gate (`accept_leaf`, signature check abstract):
+
+- `accept_reachable`: the gate is satisfiable (`kani::cover!`, SATISFIED).
+- `accept_requires_signature`: nothing is accepted without a valid signature (no bypass).
+- `accept_binds_audience`: a capability accepted by verifier `v` names `v` as its audience.
+- `accept_within_window`: an accepted capability is inside its validity window at `now`.
+
 ## Layout
 
 Byte-exact layout is in the spec. `src/lib.rs` is the single source: `CapV1`, `serialize`, `parse`,
