@@ -3,7 +3,7 @@ name = "cap-v1"
 version = "0.1.0"
 edition = "2021"
 description = "Cap-V1: fixed-format post-quantum agent-delegation capability token, with a Kani-verified verifier"
-license = "Apache-2.0"
+license = "MIT"
 
 [lib]
 name = "cap_v1"

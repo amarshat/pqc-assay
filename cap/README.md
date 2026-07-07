@@ -1,10 +1,12 @@
 # Cap-V1 capability layer (Rust verifier, Kani-proved)
 
-Cap-V1 is the to-be-signed core of a post-quantum agent-delegation capability token: a fixed-length
-(191 byte) record where one agent delegates a specific action over a specific resource to another,
-bounded by validity window, audience, and re-delegation depth. The full token is the TBS followed by
-its signature(s), signed with the ML-DSA-44 primitive this repo verifies (hybrid HYB-1: ECDSA P-256
-+ ML-DSA-44). Format spec: [`../docs/cap/CAP-V1.md`](../docs/cap/CAP-V1.md).
+Cap-V1 is the to-be-signed core of an agent-delegation capability token: a fixed-length (191 byte)
+record where one agent delegates a specific action over a specific resource to another, bounded by
+validity window, audience, and re-delegation depth. It is designed to be signed with the HYB-1 hybrid
+suite (ECDSA P-256 + ML-DSA-44, the primitive this repo verifies), so the token is post-quantum by
+design. That "post-quantum" property is not yet machine-checked here: the signature check is an
+abstract bool in the proofs (see the spec's Scope). Format spec:
+[`../docs/cap/CAP-V1.md`](../docs/cap/CAP-V1.md).
 
 This directory is the Rust verifier and its first machine-checked property. The rest of the repo
 proves ML-DSA-44 arithmetic (SAW/Isabelle) and Q-SEAL protocol properties (Cryptol/SAW/ProVerif);
@@ -12,8 +14,14 @@ Cap-V1 is the "verified Rust" track, so the proof tool is Kani (CBMC), not SMT o
 
 ## Verified so far (Kani 0.67, this repo)
 
-`make cap-kani` (or `cargo kani` in this directory) checks seven harnesses in `src/lib.rs`, all
-verified with 0 failures.
+`make cap-kani` (or `cargo kani` in this directory) checks seventeen harnesses in `src/lib.rs`, all
+verified with 0 failures. Read the count honestly: the independent-content harnesses are the format
+bijection/injectivity, the two-hop `chain_attenuates`, and `omitting_audience_breaks_binding`. Many
+of the rest are *definition checks* (they assert one clause of the predicate they assume) or
+`kani::cover!` non-vacuity pings; the `signed_message_*` pair restates the format lemmas under the
+`signed_message == serialize` alias. The spec's "Machine-checked properties" section tags each. And
+see the spec's Scope: no signature scheme runs in the verified path, so nothing "post-quantum" is
+proved here yet.
 
 Format (bijection, no malleability):
 

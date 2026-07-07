@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Machine-check the Cap-V1 TBS bijection/injectivity properties with Kani (CBMC backend).
-# Exits 0 only if all three harnesses verify and none fails.
+# Machine-check the Cap-V1 Kani harnesses (format bijection, delegation attenuation, accept gate,
+# signature binding) with Kani (CBMC backend). Exits 0 only if every harness verifies and none fails.
+# See docs/cap/CAP-V1.md for which harnesses carry independent content vs are definition checks.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

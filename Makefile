@@ -168,7 +168,7 @@ qseal-demo:
 ## serializer is a bijection and injective (no token-level malleability), proved with Kani/CBMC over
 ## the full 191-byte buffer. Needs cargo + kani on PATH. Model + proof in cap/, spec in docs/cap/.
 cap-kani:
-	@echo ">> Kani: Cap-V1 TBS bijective + injective (no token malleability); 3 harnesses over the 191-byte buffer"
+	@echo ">> Kani: Cap-V1 format bijection + delegation attenuation + accept gate + signature binding (17 harnesses)"
 	./cap/verify_cap.sh
 
 ## The writeups: the NTT/SAW/Isabelle technical piece, and the Q-SEAL eSIM-attestation post

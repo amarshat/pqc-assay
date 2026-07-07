@@ -39,7 +39,7 @@ fixed length; offsets are cumulative from the start of the buffer.
 | 42     | 16  | parent_id            | parent capability id in the chain; all-zero for a root cap   |
 | 58     | 16  | cap_id               | unique id of this capability                                 |
 | 74     | 32  | resource_id          | digest of the resource / object the capability is over       |
-| 106    | 4   | action               | permitted actions, bitmask / enum                            |
+| 106    | 4   | action               | permitted actions, bitmask (independent bits; attenuation is bitwise subset) |
 | 110    | 1   | max_depth            | remaining re-delegation depth; 0 = may not re-delegate       |
 | 111    | 32  | constraints_digest   | digest binding out-of-band policy constraints                |
 | 143    | 8   | not_before           | validity start, unix seconds, big-endian                     |
@@ -50,24 +50,35 @@ fixed length; offsets are cumulative from the start of the buffer.
 
 ## Signature envelope
 
-Cap-V1 is signature-agnostic. The full token is `serialize(cap) || sig`, where `sig` is produced
-over the exact 191 TBS bytes. The intended suite is HYB-1: ECDSA P-256 and ML-DSA-44, both required
-(same hybrid, no-downgrade stance as Q-SEAL HYB-1), reusing the ML-DSA-44 primitive this repo
-verifies. Signature verification is out of scope for the property below, which is about the TBS
-format itself.
+Cap-V1 is signature-agnostic at the format level. The full token is `serialize(cap) || sig`, where
+`sig` is produced over the exact 191 TBS bytes. The intended suite is HYB-1: ECDSA P-256 and
+ML-DSA-44, both required (same hybrid, no-downgrade stance as Q-SEAL HYB-1), reusing the ML-DSA-44
+primitive this repo verifies. Signature verification itself is not exercised by the proofs below: the
+`sig_ok` bit is an abstract input (see Scope). See Domain separation for the shared-key caveat with
+Q-SEAL.
 
 ## Delegation model (intended, not all machine-checked yet)
 
 - A root capability has `parent_id = 0` and is signed by the resource owner's key.
 - A re-delegation sets `parent_id` to the parent's `cap_id`, `issuer_id` to the re-delegating
-  agent's key (which must equal the parent's `subject_id`), and `max_depth` to at most parent
-  `max_depth - 1`. Its `action` and `resource_id` must not exceed the parent's (attenuation only).
+  agent's key (which must equal the parent's `subject_id`), and `max_depth` strictly below the
+  parent's. What the current `valid_delegation` check actually enforces: `issuer_id ==
+  parent.subject_id`, `parent_id == parent.cap_id`, `resource_id`/`audience_id`/`suite_id` **equal**
+  the parent's (not "subset"; `resource_id` is a digest with no subset order), `action` bits a subset
+  of the parent's, `max_depth` strictly decreasing with the parent still having budget, and the
+  validity window nested and non-empty.
+- Known gaps in that check (see Scope): it does **not** yet constrain `flags`, `cap_type`,
+  `constraints_digest`, or `version`. So the documented `flags` bit0 ("further delegation permitted")
+  is not consulted (re-delegation is gated only by `max_depth > 0`), and a child may point at a
+  different `constraints_digest` than its parent. "Authority only narrows" holds for `action`, depth,
+  and window; it does not yet hold for those fields.
 - A verifier accepts a chain if every link's signature verifies, windows are current, the audience
-  matches, depth is non-negative down the chain, and each link attenuates the previous.
+  matches, depth decreases down the chain, and each link attenuates the previous.
 
 The chain-link check `valid_delegation(parent, child)` (`cap/src/lib.rs`) is the non-signature part
-of this rule, and its attenuation properties are proved below. Signature verification and freshness
-enforcement are still separate, upcoming targets.
+of this rule. Crucially it checks `issuer_id`/`subject_id` as **byte equality of opaque ids**, not
+that the key which produced the signature is the key named by `issuer_id`. Binding ids to keys is out
+of scope here (see Scope); without it the chain guarantees are conditional on that binding holding.
 
 ## Machine-checked properties (this session, Kani)
 
@@ -75,6 +86,17 @@ enforcement are still separate, upcoming targets.
 `make cap-kani`). Kani 0.67.0, CBMC backend. All seventeen verified, 0 failures. `any_cap()` is
 `parse(kani::any::<[u8; 191]>())`, which ranges over all `CapV1` (each field is an independent slice
 of a fully symbolic buffer).
+
+Not all seventeen carry equal weight, and the count should not be read as "seventeen independent
+theorems". The honest taxonomy:
+- Independent content: the format bijection/injectivity (`roundtrip_*`, `serialize_injective`), the
+  two-hop `chain_attenuates` (a real transitivity result), and `omitting_audience_breaks_binding`
+  (a mutation witness that a plausible bug would be caught).
+- Definition checks (marked below): each assumes a predicate `P` and asserts one conjunct of `P`, so
+  it confirms the definition contains the clause but is not an independent theorem.
+- `signed_message` is defined as `serialize`, so `signed_message_covers_all_fields` and
+  `signed_message_injective` are the format lemmas under the signing alias, not new results.
+- `*_reachable` are `kani::cover!` non-vacuity pings (SATISFIED), not properties.
 
 Format (bijection / no malleability):
 
@@ -93,36 +115,42 @@ Delegation (attenuation / chains terminate):
 
 - `link_reachable`: `valid_delegation(p, c)` is satisfiable (a `kani::cover!`, reported SATISFIED),
   so the delegation properties below are not vacuous.
-- `link_no_escalation`: `valid_delegation(p, c) => action_bits(c) & !action_bits(p) == 0`. A valid
-  re-delegation grants no action bit the parent lacks.
-- `link_depth_decreases`: `valid_delegation(p, c) => c.max_depth < p.max_depth`. Depth strictly
-  drops at every link, so any chain terminates.
-- `chain_attenuates` (two-hop composition): if `valid_delegation(a, b)` and `valid_delegation(b, c)`
-  then `c`'s action bits are a subset of `a`'s, `c.max_depth < a.max_depth`, `c`'s validity window
-  is inside `a`'s, and resource and audience are unchanged. The local link check composes into the
-  global invariant (authority only attenuates down the chain); two hops discharge the inductive step
-  for any length.
+- `link_no_escalation` (definition check): `valid_delegation(p, c) => action_bits(c) &
+  !action_bits(p) == 0`. This is a literal conjunct of `valid_delegation`.
+- `link_depth_decreases` (definition check): `valid_delegation(p, c) => c.max_depth < p.max_depth`.
+  Also a literal conjunct.
+- `chain_attenuates` (two-hop composition, independent content): if `valid_delegation(a, b)` and
+  `valid_delegation(b, c)` then `c`'s action bits are a subset of `a`'s, `c.max_depth < a.max_depth`,
+  `c`'s validity window is inside `a`'s, and resource and audience are unchanged. This composes the
+  local check across two links (subset, `<`, and interval-containment are transitive). It is a
+  two-hop lemma only: the general N-link invariant is **not** stated and no induction is run. The
+  transitive step is sound, so the extension is conjectured, not machine-checked.
 
 Accept gate (`accept_leaf(cap, verifier_id, now, sig_ok)`). `sig_ok` is the signature-check outcome,
 kept as an input so the guarantees hold for any correct verifier (Q-SEAL's uninterpreted-verifier
 device):
 
 - `accept_reachable`: `accept_leaf` is satisfiable (`kani::cover!`, SATISFIED).
-- `accept_requires_signature`: `!accept_leaf(cap, v, now, false)`. Nothing is accepted without a
-  valid signature; the check cannot be bypassed.
-- `accept_binds_audience`: `accept_leaf(cap, v, now, s) => cap.audience_id == v`. A capability
-  accepted by verifier `v` was issued for `v` (no cross-service replay).
-- `accept_within_window`: `accept_leaf(cap, v, now, s) => not_before <= now <= not_after`. No
-  expired or not-yet-valid capability is accepted.
+- `accept_requires_signature` (definition check): `!accept_leaf(cap, v, now, false)`. Short-circuits
+  on the `sig_ok &&` conjunct.
+- `accept_binds_audience` (definition check): `accept_leaf(cap, v, now, s) => cap.audience_id == v`.
+  A conjunct of `accept_leaf`.
+- `accept_within_window` (definition check): `accept_leaf(cap, v, now, s) => not_before <= now <=
+  not_after`. A conjunct of `accept_leaf`.
+
+These three confirm the accept predicate has the clauses we intend (audience, window, signature-gated)
+and nothing weaker slipped in. They are not independent theorems.
 
 Chain accept (`accept_chain2(root, leaf, verifier_id, now, root_sig_ok, leaf_sig_ok)`) composes the
 link check and the leaf gate: accept iff `root` is a root, both signatures verify, `leaf` is a valid
 re-delegation of `root`, and `leaf` passes the leaf gate.
 
 - `chain_accept_reachable`: satisfiable (`kani::cover!`, SATISFIED).
-- `chain_accept_requires_all_sigs`: `accept_chain2(..) => root_sig_ok && leaf_sig_ok`. Every link's
-  signature must verify; the post-quantum signature cannot be stripped from a link.
-- `chain_accept_attenuates`: if the chain is accepted then the leaf grants no more than the root:
+- `chain_accept_requires_all_sigs` (definition check): `accept_chain2(..) => root_sig_ok &&
+  leaf_sig_ok`. Both signature bits are conjuncts of `accept_chain2`; this confirms neither link's
+  signature bit can be cleared and still accept. It says nothing about what makes a bit true.
+- `chain_accept_attenuates` (independent content, composes the link check into the gate): if the
+  chain is accepted then the leaf grants no more than the root:
   `action_bits(leaf) ⊆ action_bits(root)`, `leaf.max_depth < root.max_depth`, `now` is inside the
   root's window, both name the presenting verifier as audience, and the resource is the same. So
   accepting a re-delegation can never exceed the root grant. This is the end-to-end statement the
@@ -131,11 +159,13 @@ re-delegation of `root`, and `leaf` passes the leaf gate.
 Signature binding (`signed_message(cap)` is the canonical byte string the signature covers, and in
 `accept_leaf` the `sig_ok` bit is the verifier's verdict over exactly those bytes):
 
-- `signed_message_covers_all_fields`: `parse(signed_message(cap)) == cap`. Every field of the
-  capability sits inside the signed bytes; nothing authorized is left unsigned.
-- `signed_message_injective`: distinct capabilities never share signed bytes, so one signature
-  cannot cover two capabilities.
-- `omitting_audience_breaks_binding`: the coverage property is not vacuous and is exactly what binds
+- `signed_message_covers_all_fields` (format lemma under the signing alias): `parse(signed_message(
+  cap)) == cap`. Because `signed_message == serialize`, this is `roundtrip_parse_serialize` renamed.
+  Every field sits inside the signed bytes; nothing authorized is left unsigned.
+- `signed_message_injective` (format lemma under the signing alias): distinct capabilities never
+  share signed bytes. This is `serialize_injective` renamed.
+- `omitting_audience_breaks_binding` (independent content): the coverage property is not vacuous and
+  is exactly what binds
   the audience. Two capabilities differing only in `audience_id` get different signed bytes under the
   correct serializer, but identical bytes under a signer that omitted `audience_id`. So the property
   catches the unsigned-field bug class (the Kani analogue of the repo's mutation checks). Concrete
@@ -149,21 +179,60 @@ assumption about the signature scheme, not a Kani result; the ML-DSA-44 primitiv
 elsewhere in this repo (SAW/Isabelle). What Cap-V1 owns and proves here is that the signed message is
 the canonical, complete, injective encoding, which is the precondition that reduction needs.
 
+## Related work
+
+Cap-V1's design is not novel as a capability model; it sits in a long line and should be read against
+it. SPKI/SDSI (RFC 2693) is the closest: authorization certificates with issuer/subject/delegation/
+authorization/validity tuples and *tuple reduction* down a chain, which is what `valid_delegation`
+composition is. Macaroons (Birgisson et al., 2014) and Biscuit are attenuation-only delegation tokens
+(Biscuit is public-key, offline-attenuable). UCAN and ZCAP-LD are capability chains with audience,
+expiry, and delegation depth; Cap-V1 is close to a fixed-binary UCAN. On the verification side,
+EverParse (Protzenko et al.) and Narcissus (Delaware et al.) already produce machine-checked
+non-malleable parsers/serializers for far harder, length-dependent formats, of which a fixed-length
+no-optional-field record is the easy subcase.
+
+The only axis where Cap-V1 is potentially new is "hybrid PQ-signed capability token with a
+machine-checked verifier in Rust". Per the scope below, that axis is not yet earned: no signature
+scheme runs in the verified path. Until it does, the honest description is "a Kani-verified
+fixed-format serializer plus a delegation-attenuation checker", which is a smaller and well-populated
+claim.
+
+## Domain separation
+
+Cap-V1 and Q-SEAL TBS-V1 both target the HYB-1 suite (ECDSA P-256 + ML-DSA-44), plausibly signed by
+the same secure-element key. That is a cross-protocol reuse risk. Separation currently rests only on
+the messages differing: Cap-V1 is 191 bytes with a `"CAPV1"` magic, TBS-V1 is 231 bytes with
+`"QSEAL"`, so no serialization of one can equal a serialization of the other (different length, and
+different 5-byte prefix at the same offset). That argument should be stated explicitly and, for
+ML-DSA-44, backed by a FIPS 204 context string (`ctx`, e.g. `"CAP-V1"`) so separation does not depend
+on message content alone. ECDSA has no context notion, so its separation rests on the message
+argument. None of this is specified in v0.1 yet; it is a required item before any shared-key
+deployment.
+
 ## Scope and limitations
 
-- The signature check is abstract (`sig_ok` / `root_sig_ok` / `leaf_sig_ok` are inputs), so nothing
-  here proves ECDSA/ML-DSA correctness. It proves that acceptance is gated on those signature bits
-  plus audience, window, and attenuation, and (signature-binding section) that the signed message is
-  the canonical, complete, injective encoding. What is not machine-checked is the reduction to
-  unforgeability and the run of an actual verifier over `serialize(cap)`; the ML-DSA-44 primitive
-  itself is verified elsewhere in this repo.
-- `accept_chain2` covers a two-link chain (root + one re-delegation). A general N-link chain accept
-  is not yet stated; `chain_attenuates` gives the inductive step, so the extension is mechanical but
-  unproven as written.
-- Freshness/replay beyond the validity window (nonce single-use, like Q-SEAL property 4) is not
-  modeled here.
-- The layout is frozen (the bijection depends on it); field *meanings* above are provisional and may
-  change without invalidating the proof technique.
-- `parse` is total and does not check `magic`; `well_formed` is the separate magic check. A
-  production verifier rejects a bad prefix before parsing. The byte round-trip is stated under
-  `well_formed`.
+- **No signature scheme runs in the verified path.** `sig_ok` / `root_sig_ok` / `leaf_sig_ok` are
+  free boolean inputs; no ECDSA or ML-DSA is executed in any harness, so nothing "post-quantum" is
+  machine-checked here. The accept/chain theorems say "acceptance is gated on a signature bit plus
+  audience, window, and attenuation", which holds for any scheme or none. The ML-DSA-44 primitive is
+  verified elsewhere in this repo; wiring a real verify over `serialize(cap)` into the accept path is
+  open, and until it is done the "post-quantum" framing is aspirational, not proved.
+- **No key binding.** `issuer_id` / `subject_id` are opaque 16-byte ids compared by byte equality;
+  nothing ties them to the public key that produced a signature. So the chain guarantees are
+  conditional on an unmodeled `issuer_id -> key -> signature` binding. Without it, a malicious
+  intermediate can set `issuer_id = parent.subject_id` (a public value) and sign with its own key.
+  Closing this is the main prerequisite for the "delegation" claim to be sound.
+- **The accept path validates no field values.** `accept_leaf` / `accept_chain2` / `valid_delegation`
+  do not call `well_formed` and do not check `version`, `suite_id`, or `cap_type` ranges. The object
+  the theorems are about is thus not a deployment verifier, which would reject unknown version/suite.
+  Q-SEAL has a dedicated property for this; Cap-V1 does not yet.
+- **No revocation, and replay within the window is allowed.** The `nonce` field is never consumed, so
+  a valid token replays freely to its audience for the whole validity window; there is no revocation
+  before `not_after`. For a capability layer these are headline properties, not footnotes.
+- `accept_chain2` covers a two-link chain only; the general N-link result is conjectured (see
+  `chain_attenuates`), not machine-checked.
+- Attenuation is proved for `action`, depth, and window; `flags`, `cap_type`, and `constraints_digest`
+  are not yet constrained across a link (so those fields can change or weaken).
+- The layout is frozen (the bijection depends on it); field *meanings* are provisional.
+- `parse` is total and does not check `magic`; `well_formed` is the separate magic check. The byte
+  round-trip is stated under `well_formed`.
