@@ -158,6 +158,41 @@ pub fn well_formed(b: &[u8; WIRE_LEN]) -> bool {
     b[0..O_VERSION] == MAGIC
 }
 
+/// The 4-byte action field read as a bitmask.
+pub fn action_bits(c: &CapV1) -> u32 {
+    u32::from_be_bytes(c.action)
+}
+
+/// The validity window `(not_before, not_after)` in unix seconds.
+pub fn window(c: &CapV1) -> (u64, u64) {
+    (u64::from_be_bytes(c.not_before), u64::from_be_bytes(c.not_after))
+}
+
+/// The verifier's chain-link check: is `child` a well-formed re-delegation of `parent`?
+///
+/// This is where a chain either attenuates or is rejected. It enforces, at one link: only the
+/// parent's delegate may re-delegate (`issuer == parent.subject`), the link is explicit
+/// (`parent_id == parent.cap_id`), the target does not change (same resource, audience, suite), the
+/// re-delegation budget strictly decreases (`max_depth` down, parent still had budget), authority
+/// only narrows (child action bits are a subset of the parent's), and the validity window narrows
+/// and stays non-empty. The Kani harnesses prove that this local check composes: down any chain,
+/// authority can only shrink and depth must reach zero (so chains terminate).
+pub fn valid_delegation(parent: &CapV1, child: &CapV1) -> bool {
+    let (p_nb, p_na) = window(parent);
+    let (c_nb, c_na) = window(child);
+    child.issuer_id == parent.subject_id
+        && child.parent_id == parent.cap_id
+        && child.resource_id == parent.resource_id
+        && child.audience_id == parent.audience_id
+        && child.suite_id == parent.suite_id
+        && parent.max_depth[0] > 0
+        && child.max_depth[0] < parent.max_depth[0]
+        && (action_bits(child) & !action_bits(parent)) == 0
+        && c_nb >= p_nb
+        && c_na <= p_na
+        && c_nb <= c_na
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,6 +222,47 @@ mod tests {
         assert_eq!(parse(&b), c);
         assert_eq!(&b[0..5], b"CAPV1");
     }
+
+    #[test]
+    fn concrete_valid_delegation() {
+        // A root capability with two action bits and depth budget 3.
+        let mut parent = CapV1::zeroed();
+        parent.subject_id = [0xAA; 16];
+        parent.cap_id = [0xBB; 16];
+        parent.resource_id = [0x44; 32];
+        parent.audience_id = [0x77; 16];
+        parent.suite_id = [0, 1];
+        parent.max_depth = [3];
+        parent.action = [0, 0, 0, 0b0000_0011];
+        parent.not_before = 100u64.to_be_bytes();
+        parent.not_after = 200u64.to_be_bytes();
+
+        // A valid re-delegation: issued by the parent's delegate, links back, drops one action bit,
+        // narrows the window, decrements depth.
+        let mut child = CapV1::zeroed();
+        child.issuer_id = parent.subject_id;
+        child.subject_id = [0xCC; 16];
+        child.parent_id = parent.cap_id;
+        child.resource_id = parent.resource_id;
+        child.audience_id = parent.audience_id;
+        child.suite_id = parent.suite_id;
+        child.max_depth = [2];
+        child.action = [0, 0, 0, 0b0000_0001];
+        child.not_before = 120u64.to_be_bytes();
+        child.not_after = 180u64.to_be_bytes();
+
+        assert!(valid_delegation(&parent, &child));
+
+        // Escalating the action back to a bit the parent lacks is rejected.
+        let mut escalate = child;
+        escalate.action = [0, 0, 0, 0b0000_0111];
+        assert!(!valid_delegation(&parent, &escalate));
+
+        // Not decreasing depth is rejected.
+        let mut same_depth = child;
+        same_depth.max_depth = [3];
+        assert!(!valid_delegation(&parent, &same_depth));
+    }
 }
 
 /// Kani proof harnesses. Run with `cargo kani`. These establish, by bounded symbolic execution over
@@ -195,6 +271,60 @@ mod tests {
 #[cfg(kani)]
 mod verification {
     use super::*;
+
+    /// An arbitrary capability: every field is an independent slice of a fully symbolic buffer, so
+    /// this ranges over all `CapV1` values.
+    fn any_cap() -> CapV1 {
+        parse(&kani::any::<[u8; WIRE_LEN]>())
+    }
+
+    /// The chain-link check is satisfiable (the delegation properties below are not vacuous).
+    #[kani::proof]
+    fn link_reachable() {
+        let p = any_cap();
+        let c = any_cap();
+        kani::cover!(valid_delegation(&p, &c));
+    }
+
+    /// No privilege escalation at a link: a valid re-delegation grants no action bit the parent
+    /// lacks.
+    #[kani::proof]
+    fn link_no_escalation() {
+        let p = any_cap();
+        let c = any_cap();
+        kani::assume(valid_delegation(&p, &c));
+        assert_eq!(action_bits(&c) & !action_bits(&p), 0);
+    }
+
+    /// Chains terminate: a valid re-delegation strictly decreases the re-delegation depth.
+    #[kani::proof]
+    fn link_depth_decreases() {
+        let p = any_cap();
+        let c = any_cap();
+        kani::assume(valid_delegation(&p, &c));
+        assert!(c.max_depth[0] < p.max_depth[0]);
+    }
+
+    /// Two-hop composition: if `a` delegates to `b` and `b` to `c`, then `c`'s authority is within
+    /// `a`'s (action subset, narrower window), its depth is strictly below `a`'s, and the resource
+    /// and audience are unchanged. The local link check composes into the global chain invariant:
+    /// authority only attenuates down the chain. Proving it at two hops discharges the inductive
+    /// step for any length.
+    #[kani::proof]
+    fn chain_attenuates() {
+        let a = any_cap();
+        let b = any_cap();
+        let c = any_cap();
+        kani::assume(valid_delegation(&a, &b));
+        kani::assume(valid_delegation(&b, &c));
+        assert_eq!(action_bits(&c) & !action_bits(&a), 0);
+        assert!(c.max_depth[0] < a.max_depth[0]);
+        let (a_nb, a_na) = window(&a);
+        let (c_nb, c_na) = window(&c);
+        assert!(c_nb >= a_nb && c_na <= a_na);
+        assert_eq!(c.resource_id, a.resource_id);
+        assert_eq!(c.audience_id, a.audience_id);
+    }
 
     /// Round-trip on records: parsing a serialized capability recovers it exactly, for every
     /// capability. `parse(any_bytes)` ranges over all `CapV1` values because every field is an

@@ -12,8 +12,10 @@ Cap-V1 is the "verified Rust" track, so the proof tool is Kani (CBMC), not SMT o
 
 ## Verified so far (Kani 0.67, this repo)
 
-`make cap-kani` (or `cargo kani` in this directory) checks three harnesses in `src/lib.rs`, all
-verified with 0 failures:
+`make cap-kani` (or `cargo kani` in this directory) checks seven harnesses in `src/lib.rs`, all
+verified with 0 failures.
+
+Format (bijection, no malleability):
 
 - `roundtrip_parse_serialize`: `parse(serialize(c)) == c` for every capability `c`.
 - `roundtrip_serialize_parse`: `well_formed(b) => serialize(parse(b)) == b` for every well-formed
@@ -23,10 +25,19 @@ verified with 0 failures:
 Together the serializer is a bijection between `CapV1` and well-formed 191-byte strings, hence
 injective: two distinct capabilities can never produce the same signed bytes, so there is no
 token-level malleability. Same shape as Q-SEAL's TBS-V1 property 1, but proved in Rust over real
-slice access (the parser reads fixed-offset slices; Kani also clears the bounds/panic checks).
+slice access (the parser reads fixed-offset slices; Kani also clears the bounds/panic checks). Kani
+unrolls the fixed-offset copies fully over the 191-byte buffer, so this is a complete proof for the
+format, not a bounded-depth approximation.
 
-Kani unrolls the fixed-offset, constant-size copies fully over the 191-byte buffer, so this is a
-complete proof for the format, not a bounded-depth approximation of an unbounded loop.
+Delegation (attenuation, chains terminate):
+
+- `link_reachable`: the `valid_delegation` link check is satisfiable (`kani::cover!`, SATISFIED), so
+  the properties below are not vacuous.
+- `link_no_escalation`: a valid re-delegation grants no action bit the parent lacks.
+- `link_depth_decreases`: a valid re-delegation strictly decreases depth, so chains terminate.
+- `chain_attenuates`: over two hops (`a -> b -> c`), authority only narrows: `c`'s actions are a
+  subset of `a`'s, depth strictly decreases, the validity window is contained, and resource and
+  audience are unchanged. The local link check composes into the global chain invariant.
 
 ## Layout
 
@@ -36,8 +47,9 @@ unverified third-party code.
 
 ## Scope
 
-Format only. Signature verification, freshness enforcement, and delegation-chain rules (attenuation,
-depth monotonicity, audience binding) are separate properties and the next Kani targets. See the
+Proved: the format bijection and the attenuation behavior of the `valid_delegation` link check.
+Not yet: signature verification, freshness/replay enforcement, and connecting `valid_delegation` to
+signature checking for a full end-to-end accept decision. Those are the next Kani targets. See the
 spec's scope section.
 
 ## Run

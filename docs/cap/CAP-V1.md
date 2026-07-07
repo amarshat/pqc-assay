@@ -65,31 +65,53 @@ format itself.
 - A verifier accepts a chain if every link's signature verifies, windows are current, the audience
   matches, depth is non-negative down the chain, and each link attenuates the previous.
 
-Only the format-level property below is proved so far. The chain rules (attenuation, depth
-monotonicity, audience binding) are the next Kani targets.
+The chain-link check `valid_delegation(parent, child)` (`cap/src/lib.rs`) is the non-signature part
+of this rule, and its attenuation properties are proved below. Signature verification and freshness
+enforcement are still separate, upcoming targets.
 
-## Machine-checked property (this session, Kani)
+## Machine-checked properties (this session, Kani)
 
 `cap/src/lib.rs`, harnesses under `#[cfg(kani)] mod verification`, run with `cargo kani` (or
-`make cap-kani`). Kani 0.67.0, CBMC backend. All three verified, 0 failures:
+`make cap-kani`). Kani 0.67.0, CBMC backend. All seven verified, 0 failures. `any_cap()` is
+`parse(kani::any::<[u8; 191]>())`, which ranges over all `CapV1` (each field is an independent slice
+of a fully symbolic buffer).
 
-- `roundtrip_parse_serialize` (record round-trip): `parse(serialize(c)) == c` for every capability
-  `c`. Quantified over all `CapV1` by letting `c = parse(b)` with `b` a fully symbolic 191-byte
-  buffer, so each field ranges freely.
-- `roundtrip_serialize_parse` (byte round-trip): `well_formed(b) => serialize(parse(b)) == b` for
-  every well-formed 191-byte string.
+Format (bijection / no malleability):
+
+- `roundtrip_parse_serialize`: `parse(serialize(c)) == c` for every capability `c`.
+- `roundtrip_serialize_parse`: `well_formed(b) => serialize(parse(b)) == b` for every well-formed
+  191-byte string.
 - `serialize_injective`: `serialize(c1) == serialize(c2) => c1 == c2`. No two distinct capabilities
   share signed bytes.
 
-Together: the serializer is a bijection between `CapV1` and well-formed 191-byte strings, hence
+Together the serializer is a bijection between `CapV1` and well-formed 191-byte strings, hence
 injective. The parser uses only fixed-offset, constant-size slice copies, so the harnesses also
 exercise real slice access under Kani (no panics, no out-of-bounds), which is the "verified Rust"
 claim made concrete.
 
+Delegation (attenuation / chains terminate):
+
+- `link_reachable`: `valid_delegation(p, c)` is satisfiable (a `kani::cover!`, reported SATISFIED),
+  so the delegation properties below are not vacuous.
+- `link_no_escalation`: `valid_delegation(p, c) => action_bits(c) & !action_bits(p) == 0`. A valid
+  re-delegation grants no action bit the parent lacks.
+- `link_depth_decreases`: `valid_delegation(p, c) => c.max_depth < p.max_depth`. Depth strictly
+  drops at every link, so any chain terminates.
+- `chain_attenuates` (two-hop composition): if `valid_delegation(a, b)` and `valid_delegation(b, c)`
+  then `c`'s action bits are a subset of `a`'s, `c.max_depth < a.max_depth`, `c`'s validity window
+  is inside `a`'s, and resource and audience are unchanged. The local link check composes into the
+  global invariant (authority only attenuates down the chain); two hops discharge the inductive step
+  for any length.
+
 ## Scope and limitations
 
-- Format only. This says nothing about signatures, freshness enforcement, chain attenuation, or
-  authorization decisions. Those are separate properties.
+- The proved properties are the format bijection and the attenuation behavior of the
+  `valid_delegation` link check. They say nothing about signature verification, freshness/replay
+  enforcement, or the full end-to-end authorization decision. Those are separate, upcoming
+  properties.
+- `valid_delegation` is proved to attenuate, but it is not yet connected to signature checking: a
+  chain the verifier accepts must also have every link's signature verify. That composition is not
+  done.
 - The layout is frozen (the bijection depends on it); field *meanings* above are provisional and may
   change without invalidating the proof technique.
 - `parse` is total and does not check `magic`; `well_formed` is the separate magic check. A

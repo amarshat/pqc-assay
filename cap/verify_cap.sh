@@ -13,9 +13,15 @@ OUT="$(cargo kani 2>&1)"
 echo "$OUT"
 
 # The final line reports "N successfully verified harnesses, M failures, T total".
-if printf '%s\n' "$OUT" | grep -qE '3 successfully verified harnesses, 0 failures, 3 total'; then
-  echo "OK: Cap-V1 TBS bijective + injective (3/3 Kani harnesses verified)"
+# Pass only if failures == 0 and every harness verified (verified == total, total > 0).
+LINE="$(printf '%s\n' "$OUT" | grep -E 'successfully verified harnesses' | tail -1)"
+VERIFIED="$(printf '%s\n' "$LINE" | sed -E 's/.* ([0-9]+) successfully verified harnesses.*/\1/')"
+FAILURES="$(printf '%s\n' "$LINE" | sed -E 's/.*harnesses, ([0-9]+) failures.*/\1/')"
+TOTAL="$(printf '%s\n' "$LINE" | sed -E 's/.*failures, ([0-9]+) total.*/\1/')"
+
+if [ -n "$LINE" ] && [ "$FAILURES" = "0" ] && [ "$VERIFIED" = "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
+  echo "OK: Cap-V1 Kani properties verified ($VERIFIED/$TOTAL harnesses, 0 failures)"
   exit 0
 fi
-echo "FAIL: expected 3 verified harnesses and 0 failures"
+echo "FAIL: expected all harnesses verified and 0 failures; got '$LINE'"
 exit 1
