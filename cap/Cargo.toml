@@ -16,3 +16,14 @@ path = "src/lib.rs"
 # `kani` cfg is set by cargo-kani, not by a Cargo feature; declare it so plain builds don't warn.
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+
+# Dev-only: the integration test runs real hybrid crypto over serialize(cap). These do NOT enter the
+# Kani-verified path (which is the lib's #[cfg(kani)] harnesses over pure byte layout).
+[dev-dependencies]
+# ML-DSA-44 from the RustCrypto crate this project also formally verifies.
+ml-dsa = "0.1.1"
+# Classical half of the hybrid.
+p256 = { version = "0.13", features = ["ecdsa"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+# Key-commitment hash (key_id = truncated SHA-256 of the encoded hybrid public key).
+sha2 = "0.10"

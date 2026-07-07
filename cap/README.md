@@ -2,10 +2,12 @@
 
 Cap-V1 is the to-be-signed core of an agent-delegation capability token: a fixed-length (191 byte)
 record where one agent delegates a specific action over a specific resource to another, bounded by
-validity window, audience, and re-delegation depth. It is designed to be signed with the HYB-1 hybrid
-suite (ECDSA P-256 + ML-DSA-44, the primitive this repo verifies), so the token is post-quantum by
-design. That "post-quantum" property is not yet machine-checked here: the signature check is an
-abstract bool in the proofs (see the spec's Scope). Format spec:
+validity window, audience, and re-delegation depth. It is signed under the HYB-1 hybrid suite (ECDSA
+P-256 + ML-DSA-44, the primitive this repo verifies). Kani proves the glue (the signature covers
+exactly `serialize(cap)`, both signatures are required, and the signer's key is the one the token
+names); the hybrid verify itself is an assumed spec in Kani (too large for CBMC) and runs for real in
+`cap/tests/hybrid.rs` (`make cap-hybrid`) with live ECDSA + ML-DSA-44 keys. So a post-quantum
+signature runs end to end; only unforgeability stays assumed. Format spec:
 [`../docs/cap/CAP-V1.md`](../docs/cap/CAP-V1.md).
 
 This directory is the Rust verifier and its first machine-checked property. The rest of the repo
@@ -14,9 +16,10 @@ Cap-V1 is the "verified Rust" track, so the proof tool is Kani (CBMC), not SMT o
 
 ## Verified so far (Kani 0.67, this repo)
 
-`make cap-kani` (or `cargo kani` in this directory) checks seventeen harnesses in `src/lib.rs`, all
+`make cap-kani` (or `cargo kani` in this directory) checks twenty harnesses in `src/lib.rs`, all
 verified with 0 failures. Read the count honestly: the independent-content harnesses are the format
-bijection/injectivity, the two-hop `chain_attenuates`, and `omitting_audience_breaks_binding`. Many
+bijection/injectivity, the two-hop `chain_attenuates`, `omitting_audience_breaks_binding`, and the
+key-binding pair (`chain_signing_key_is_delegate`, `confused_deputy_rejected`). Many
 of the rest are *definition checks* (they assert one clause of the predicate they assume) or
 `kani::cover!` non-vacuity pings; the `signed_message_*` pair restates the format lemmas under the
 `signed_message == serialize` alias. The spec's "Machine-checked properties" section tags each. And
@@ -70,23 +73,45 @@ Signature binding (`signed_message` = the canonical bytes the signature covers):
   unsigned-field bug class. The reduction to ML-DSA unforgeability is an argument (see the spec), not
   a Kani result.
 
+Key binding (`accept_*_signed` thread a `PublicKey`; `key_id(pk)` is the id a key commits to):
+
+- `signed_chain_reachable`: the key-bound chain accept is satisfiable (`kani::cover!`, SATISFIED).
+- `chain_signing_key_is_delegate`: if a chain is accepted, the key that signed the leaf is the key the
+  root delegated to (`key_id(leaf_pk) == root.subject_id`). Composes binding with the link check.
+- `confused_deputy_rejected`: a signature under a non-delegated key does not accept, even if valid.
+  Closes the key-substitution / confused-deputy hole.
+
+## Real crypto (integration test)
+
+`make cap-hybrid` (or `cargo test --test hybrid`) runs `cap/tests/hybrid.rs`: live ECDSA P-256 +
+ML-DSA-44 keys sign `serialize(cap)`, both are verified, and the outcomes plus real key commitments
+drive the *same* verified `accept_chain2_signed`. Valid accepts; tampered, downgrade (only the
+classical signature valid), confused-deputy (valid signature under a non-delegated key), and expired
+all reject. This discharges the assumed `sig_ok` bit with actual post-quantum crypto; only
+unforgeability stays assumed. The crypto crates are dev-dependencies, so they do not enter the
+Kani-verified core.
+
 ## Layout
 
 Byte-exact layout is in the spec. `src/lib.rs` is the single source: `CapV1`, `serialize`, `parse`,
-`well_formed`, plus the `#[cfg(kani)]` harnesses. No dependencies, so the trusted path pulls in no
-unverified third-party code.
+`well_formed`, the accept/delegation/key-binding functions, plus the `#[cfg(kani)]` harnesses. The
+library has no runtime dependencies, so the Kani-verified core pulls in no unverified third-party
+code; the crypto crates are dev-dependencies used only by the integration test.
 
 ## Scope
 
-Proved: the format bijection, `valid_delegation` attenuation, the leaf accept gate, a two-link chain
-accept that requires both signatures and never exceeds the root grant, and that the signed message is
-the canonical, complete, injective encoding. Not yet: the reduction to unforgeability is an argument
-(not machine-checked), no real ECDSA/ML-DSA verifier is run over `serialize(cap)`, and N-link (N > 2)
-chain accept and nonce single-use replay are not stated. Next Kani targets. See the spec's scope
+Proved (Kani): the format bijection, `valid_delegation` attenuation, the leaf accept gate, a two-link
+chain accept that requires both signatures and never exceeds the root grant, that the signed message
+is the canonical/complete/injective encoding, and that the signing key is bound to the token's named
+issuer (confused-deputy rejected). Real ECDSA + ML-DSA-44 runs in the integration test over
+`serialize(cap)`. Assumed: ML-DSA-44/ECDSA unforgeability (no test can prove it), and `key_id` is a
+placeholder truncated-hash commitment in the model. Not yet: N-link (N > 2) chain accept, nonce
+single-use replay, revocation, and field-value validation in the accept path. See the spec's scope
 section.
 
 ## Run
 
-    make cap-kani        # from repo root
+    make cap-kani        # from repo root: 20 Kani harnesses
+    make cap-hybrid      # from repo root: real ECDSA + ML-DSA-44 integration test
     cargo kani           # from this directory
-    cargo test           # concrete round-trip sanity, no proof toolchain needed
+    cargo test           # concrete tests incl. the hybrid crypto test

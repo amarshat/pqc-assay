@@ -83,7 +83,7 @@ of scope here (see Scope); without it the chain guarantees are conditional on th
 ## Machine-checked properties (this session, Kani)
 
 `cap/src/lib.rs`, harnesses under `#[cfg(kani)] mod verification`, run with `cargo kani` (or
-`make cap-kani`). Kani 0.67.0, CBMC backend. All seventeen verified, 0 failures. `any_cap()` is
+`make cap-kani`). Kani 0.67.0, CBMC backend. All twenty verified, 0 failures. `any_cap()` is
 `parse(kani::any::<[u8; 191]>())`, which ranges over all `CapV1` (each field is an independent slice
 of a fully symbolic buffer).
 
@@ -179,6 +179,28 @@ assumption about the signature scheme, not a Kani result; the ML-DSA-44 primitiv
 elsewhere in this repo (SAW/Isabelle). What Cap-V1 owns and proves here is that the signed message is
 the canonical, complete, injective encoding, which is the precondition that reduction needs.
 
+Key binding (`accept_leaf_signed` / `accept_chain2_signed` thread a `PublicKey` per link; `key_id(pk)`
+is the id a key commits to; acceptance requires `key_id(issuer_pk) == cap.issuer_id`, so the token
+names its signer). The `*_sig_ok` bits are the assumed outcome of the real hybrid verify over each
+link's `signed_message`; that verify is run for real in the integration test (see below), not in
+Kani.
+
+- `signed_chain_reachable`: the key-bound chain accept is satisfiable (`kani::cover!`, SATISFIED).
+- `chain_signing_key_is_delegate` (independent content): if a two-link chain is accepted, the key
+  that signed the leaf is exactly the key the root delegated to: `key_id(leaf_pk) == root.subject_id`.
+  This composes the binding (`key_id(leaf_pk) == leaf.issuer_id`) with the link check
+  (`leaf.issuer_id == root.subject_id`) through the id; not a single-clause restatement.
+- `confused_deputy_rejected` (independent content, stated as the attack): an intermediate that signs
+  the leaf with a key it was not delegated to (`key_id(leaf_pk) != root.subject_id`) cannot get the
+  chain accepted, whatever else it sets. This closes the key-substitution / confused-deputy hole: a
+  valid signature under the wrong key does not accept, because the token pins the key.
+
+Caveats on this layer: `key_id` here is the leading 16 bytes of the key (a stand-in for a truncated
+hash); the theorems hold for any `key_id`, but a real deployment needs a collision-resistant hash so
+`key_id(pk) == id` actually pins `pk`. And the hybrid verify is an assumed spec in Kani (ECDSA/ML-DSA
+are too large for CBMC); its soundness is ML-DSA-44/ECDSA unforgeability, exercised for real (with
+KATs) in the integration test, not proved here.
+
 ## Related work
 
 Cap-V1's design is not novel as a capability model; it sits in a long line and should be read against
@@ -211,17 +233,23 @@ deployment.
 
 ## Scope and limitations
 
-- **No signature scheme runs in the verified path.** `sig_ok` / `root_sig_ok` / `leaf_sig_ok` are
-  free boolean inputs; no ECDSA or ML-DSA is executed in any harness, so nothing "post-quantum" is
-  machine-checked here. The accept/chain theorems say "acceptance is gated on a signature bit plus
-  audience, window, and attenuation", which holds for any scheme or none. The ML-DSA-44 primitive is
-  verified elsewhere in this repo; wiring a real verify over `serialize(cap)` into the accept path is
-  open, and until it is done the "post-quantum" framing is aspirational, not proved.
-- **No key binding.** `issuer_id` / `subject_id` are opaque 16-byte ids compared by byte equality;
-  nothing ties them to the public key that produced a signature. So the chain guarantees are
-  conditional on an unmodeled `issuer_id -> key -> signature` binding. Without it, a malicious
-  intermediate can set `issuer_id = parent.subject_id` (a public value) and sign with its own key.
-  Closing this is the main prerequisite for the "delegation" claim to be sound.
+- **The signature scheme is an assumed spec inside Kani, run for real in an integration test.** In
+  the harnesses `sig_ok` / `root_sig_ok` / `leaf_sig_ok` are boolean inputs; ECDSA/ML-DSA are far too
+  large for CBMC, so Kani proves the glue (key commitment, message = `serialize(cap)`, both required)
+  and treats the verify itself as assumed. `cap/tests/hybrid.rs` (`make cap-hybrid`) discharges that
+  assumption with actual crypto: it generates real ECDSA P-256 and ML-DSA-44 keys, signs
+  `serialize(cap)`, verifies both, and feeds the outcomes and real key commitments into the same
+  verified `accept_chain2_signed`. Valid accepts; tampered, downgrade (only the classical signature
+  valid), confused-deputy (valid signature under a non-delegated key), and expired all reject. So a
+  real post-quantum signature runs end to end; what stays assumed is only ML-DSA-44/ECDSA
+  unforgeability (the ML-DSA-44 primitive itself is verified elsewhere in this repo), which no test
+  can establish.
+- **Key binding: modeled, with a placeholder commitment.** `accept_leaf_signed` /
+  `accept_chain2_signed` now require `key_id(issuer_pk) == cap.issuer_id`, and
+  `confused_deputy_rejected` proves a foreign-key signature does not accept. What remains assumed:
+  `key_id` is the leading 16 bytes of the key (a stand-in for a truncated collision-resistant hash),
+  and the hybrid verify itself is an assumed spec in Kani (run for real in the integration test). So
+  the confused-deputy hole is closed relative to those assumptions, not unconditionally.
 - **The accept path validates no field values.** `accept_leaf` / `accept_chain2` / `valid_delegation`
   do not call `well_formed` and do not check `version`, `suite_id`, or `cap_type` ranges. The object
   the theorems are about is thus not a deployment verifier, which would reject unknown version/suite.

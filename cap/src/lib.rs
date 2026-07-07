@@ -221,6 +221,68 @@ pub fn signed_message(cap: &CapV1) -> [u8; WIRE_LEN] {
     serialize(cap)
 }
 
+/// A hybrid public key. In HYB-1 this is an ECDSA P-256 point plus an ML-DSA-44 public key; here we
+/// keep only what the verified glue needs, its bytes, since the binding theorems are about the key's
+/// identity commitment, not its internal structure. The real key material is exercised in the
+/// integration test (`cap/tests/hybrid.rs`), which runs actual ECDSA + ML-DSA over `serialize(cap)`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct PublicKey {
+    pub bytes: [u8; 32],
+}
+
+/// The 16-byte id a public key commits to, i.e. how `issuer_id` / `subject_id` are derived from a
+/// key. In deployment this is a hash of the encoded hybrid key, truncated; here it is the leading 16
+/// bytes, a stand-in. The key-binding theorems hold for any `key_id` (they are about the commitment,
+/// not the hash), so the choice does not weaken them; a real deployment must use a collision-
+/// resistant hash so that `key_id(pk) == id` pins `pk`.
+pub fn key_id(pk: &PublicKey) -> [u8; 16] {
+    let mut id = [0u8; 16];
+    id.copy_from_slice(&pk.bytes[0..16]);
+    id
+}
+
+/// Accept a single capability, now with the signer's key bound to the token.
+///
+/// `sig_ok` is the outcome of the real hybrid verify over `signed_message(cap)` under `issuer_pk`
+/// (ECDSA P-256 and ML-DSA-44, both required). Kani does not run that check (ECDSA/ML-DSA are far too
+/// large for CBMC); it is an assumed spec here and is exercised for real in `cap/tests/hybrid.rs`.
+/// What this function adds over `accept_leaf` is the key commitment: the capability names its issuer
+/// (`issuer_id`), and acceptance requires the presented key to be exactly that named key
+/// (`key_id(issuer_pk) == cap.issuer_id`). So a signature under some other key does not accept, even
+/// if valid: the token says who must sign.
+pub fn accept_leaf_signed(
+    cap: &CapV1,
+    verifier_id: &[u8; 16],
+    now: u64,
+    issuer_pk: &PublicKey,
+    sig_ok: bool,
+) -> bool {
+    key_id(issuer_pk) == cap.issuer_id && accept_leaf(cap, verifier_id, now, sig_ok)
+}
+
+/// Accept a two-link chain with both signers' keys bound to the tokens. Each link's signature must
+/// verify under the key the link names as its issuer, and `leaf` must be a valid re-delegation of the
+/// `root`. As with `accept_leaf_signed`, the `*_sig_ok` bits are the assumed outcomes of the real
+/// hybrid verify over each link's `signed_message`, run for real in the integration test.
+pub fn accept_chain2_signed(
+    root: &CapV1,
+    leaf: &CapV1,
+    verifier_id: &[u8; 16],
+    now: u64,
+    root_pk: &PublicKey,
+    root_sig_ok: bool,
+    leaf_pk: &PublicKey,
+    leaf_sig_ok: bool,
+) -> bool {
+    is_root(root)
+        && key_id(root_pk) == root.issuer_id
+        && root_sig_ok
+        && valid_delegation(root, leaf)
+        && key_id(leaf_pk) == leaf.issuer_id
+        && leaf_sig_ok
+        && accept_leaf(leaf, verifier_id, now, leaf_sig_ok)
+}
+
 /// A deliberately broken signer that leaves `audience_id` out of the signed region (zeros it). Used
 /// only to witness that field coverage is not vacuous: under this version a capability's audience
 /// could be swapped after signing. Not part of the shipped API.
@@ -401,6 +463,46 @@ mod tests {
             signed_message_omitting_audience(&cap),
             signed_message_omitting_audience(&other)
         );
+    }
+
+    #[test]
+    fn concrete_key_binding() {
+        let owner = PublicKey { bytes: [0xAA; 32] };
+        let delegate = PublicKey { bytes: [0xCC; 32] };
+        let foreign = PublicKey { bytes: [0x99; 32] };
+
+        let mut root = CapV1::zeroed();
+        root.issuer_id = key_id(&owner);
+        root.subject_id = key_id(&delegate); // root delegates to `delegate`
+        root.cap_id = [0xBB; 16];
+        root.resource_id = [0x44; 32];
+        root.audience_id = [0x77; 16];
+        root.suite_id = [0, 1];
+        root.max_depth = [3];
+        root.action = [0, 0, 0, 0b0000_0011];
+        root.not_before = 100u64.to_be_bytes();
+        root.not_after = 200u64.to_be_bytes();
+
+        let mut leaf = CapV1::zeroed();
+        leaf.issuer_id = key_id(&delegate); // leaf issued by the delegate
+        leaf.subject_id = [0xEE; 16];
+        leaf.parent_id = root.cap_id;
+        leaf.resource_id = root.resource_id;
+        leaf.audience_id = root.audience_id;
+        leaf.suite_id = root.suite_id;
+        leaf.max_depth = [2];
+        leaf.action = [0, 0, 0, 0b0000_0001];
+        leaf.not_before = 120u64.to_be_bytes();
+        leaf.not_after = 180u64.to_be_bytes();
+
+        let v = [0x77; 16];
+        // Correct keys: accepted.
+        assert!(accept_chain2_signed(&root, &leaf, &v, 150, &owner, true, &delegate, true));
+        assert!(accept_leaf_signed(&leaf, &v, 150, &delegate, true));
+        // Confused deputy: leaf signed by a foreign key, not the delegate. Rejected even with a
+        // valid signature bit.
+        assert!(!accept_chain2_signed(&root, &leaf, &v, 150, &owner, true, &foreign, true));
+        assert!(!accept_leaf_signed(&leaf, &v, 150, &foreign, true));
     }
 }
 
@@ -588,6 +690,58 @@ mod verification {
             signed_message_omitting_audience(&c1),
             signed_message_omitting_audience(&c2)
         );
+    }
+
+    fn any_pk() -> PublicKey {
+        PublicKey { bytes: kani::any() }
+    }
+
+    /// The key-bound chain accept is reachable (the binding theorems below are not vacuous).
+    #[kani::proof]
+    fn signed_chain_reachable() {
+        let root = any_cap();
+        let leaf = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let rpk = any_pk();
+        let lpk = any_pk();
+        kani::cover!(accept_chain2_signed(&root, &leaf, &v, now, &rpk, true, &lpk, true));
+    }
+
+    /// Key binding composes with the link check: if a two-link chain is accepted, the key that
+    /// signed the leaf is exactly the key the root delegated authority to. `key_id(leaf_pk) ==
+    /// leaf.issuer_id` (binding) and `leaf.issuer_id == root.subject_id` (valid_delegation) compose to
+    /// `key_id(leaf_pk) == root.subject_id`. This is not a single-clause restatement; it joins two
+    /// facts through the id.
+    #[kani::proof]
+    fn chain_signing_key_is_delegate() {
+        let root = any_cap();
+        let leaf = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let rpk = any_pk();
+        let lpk = any_pk();
+        let rs: bool = kani::any();
+        let ls: bool = kani::any();
+        kani::assume(accept_chain2_signed(&root, &leaf, &v, now, &rpk, rs, &lpk, ls));
+        assert_eq!(key_id(&lpk), root.subject_id);
+    }
+
+    /// Confused deputy is rejected: an intermediate that signs the leaf with a key it was not
+    /// delegated to (its `key_id` differs from the root's delegate) cannot get the chain accepted,
+    /// whatever else it sets. This is the contrapositive of the binding theorem, stated as the attack.
+    #[kani::proof]
+    fn confused_deputy_rejected() {
+        let root = any_cap();
+        let leaf = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let rpk = any_pk();
+        let lpk = any_pk();
+        let rs: bool = kani::any();
+        let ls: bool = kani::any();
+        kani::assume(key_id(&lpk) != root.subject_id);
+        assert!(!accept_chain2_signed(&root, &leaf, &v, now, &rpk, rs, &lpk, ls));
     }
 
     /// Round-trip on records: parsing a serialized capability recovers it exactly, for every
