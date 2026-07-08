@@ -83,11 +83,11 @@ of scope here (see Scope); without it the chain guarantees are conditional on th
 ## Machine-checked properties (this session, Kani)
 
 `cap/src/lib.rs`, harnesses under `#[cfg(kani)] mod verification`, run with `cargo kani` (or
-`make cap-kani`). Kani 0.67.0, CBMC backend. All forty-nine verified, 0 failures. `any_cap()` is
+`make cap-kani`). Kani 0.67.0, CBMC backend. All fifty verified, 0 failures. `any_cap()` is
 `parse(kani::any::<[u8; 191]>())`, which ranges over all `CapV1` (each field is an independent slice
 of a fully symbolic buffer).
 
-Not all forty-nine carry equal weight, and the count should not be read as "forty-nine
+Not all fifty carry equal weight, and the count should not be read as "fifty
 independent theorems". The honest taxonomy:
 - Independent content: the format bijection/injectivity (`roundtrip_*`, `serialize_injective`), the
   multi-hop attenuation results (`chain_attenuates`, `chain3_attenuates`, `chain4_attenuates`),
@@ -363,12 +363,33 @@ Kani.
   the leaf with a key it was not delegated to (`key_id(leaf_pk) != root.subject_id`) cannot get the
   chain accepted, whatever else it sets. This closes the key-substitution / confused-deputy hole: a
   valid signature under the wrong key does not accept, because the token pins the key.
+- `committing_to_commits` (definition check): `key_id(PublicKey::committing_to(id)) == id` for every
+  16-byte id. This is the bridge from a deployment commitment to the model key the gates take, so
+  the id the gates compare is bit-for-bit the deployed one.
 
-Caveats on this layer: `key_id` here is the leading 16 bytes of the key (a stand-in for a truncated
-hash); the theorems hold for any `key_id`, but a real deployment needs a collision-resistant hash so
-`key_id(pk) == id` actually pins `pk`. And the hybrid verify is an assumed spec in Kani (ECDSA/ML-DSA
-are too large for CBMC); its soundness is ML-DSA-44/ECDSA unforgeability, exercised for real (with
-KATs) in the integration test, not proved here.
+The deployment commitment is now defined (feature `hyb1-keyid`, module `hyb1`): `hyb1_key_id` is the
+first 16 bytes of `SHA-256("CAPV1-KEYID-HYB1" || ec_compressed || mldsa_pk)`, the two key encodings
+being fixed length (33 and 1312 bytes), so the concatenation is unambiguous without length prefixes,
+and the domain prefix separates this hash from other SHA-256 uses that adopt a distinct prefix (it
+is not an absolute guarantee against a protocol hashing the same bytes). A KAT pins the definition
+and runs under `make cap-hybrid`. Inside Kani, `key_id` stays the abstract leading-16-bytes
+commitment (SHA-256 is far too large for CBMC); the round trip `key_id(committing_to(id)) == id` is
+machine-checked, while the wiring that feeds `hyb1_key_id` output through `committing_to` is
+convention, exercised in the integration test, not a harness.
+
+Caveats on this layer: what the hash must supply is collision resistance of a 128-bit truncation,
+and that splits unevenly. Substituting a different key for a GIVEN capability's `issuer_id` is a
+second-preimage problem, ~2^128 work single-target (an attacker content to hit any of N issued ids
+gains a factor N, still far above 2^64 for practical N); but a party generating two of ITS OWN keys
+that share an id is a birthday collision, ~2^64, within reach of a well-resourced attacker. The
+second case matters only for issuer equivocation (one id, two keys the issuer itself controls), not
+for third-party forgery; it is disclosed, not defended. SHA-256's collision resistance itself is
+assumed, and the `sha2` crate implementing it is unverified. `PublicKey::committing_to` is publicly
+constructible for any id and carries no key material; the binding check is meaningful only because
+`sig_ok` must be computed against the real key `hyb1_key_id` hashed (stated on the constructor).
+And the hybrid verify is an assumed spec in Kani (ECDSA/ML-DSA are too large for CBMC); its
+soundness is ML-DSA-44/ECDSA unforgeability, exercised for real (with KATs) in the integration
+test, not proved here.
 
 ## Related work
 
@@ -413,12 +434,15 @@ deployment.
   real post-quantum signature runs end to end; what stays assumed is only ML-DSA-44/ECDSA
   unforgeability (the ML-DSA-44 primitive itself is verified elsewhere in this repo), which no test
   can establish.
-- **Key binding: modeled, with a placeholder commitment.** `accept_leaf_signed` /
-  `accept_chain2_signed` now require `key_id(issuer_pk) == cap.issuer_id`, and
-  `confused_deputy_rejected` proves a foreign-key signature does not accept. What remains assumed:
-  `key_id` is the leading 16 bytes of the key (a stand-in for a truncated collision-resistant hash),
-  and the hybrid verify itself is an assumed spec in Kani (run for real in the integration test). So
-  the confused-deputy hole is closed relative to those assumptions, not unconditionally.
+- **Key binding: modeled, with the deployment commitment now defined.** `accept_leaf_signed` /
+  `accept_chain2_signed` require `key_id(issuer_pk) == cap.issuer_id`, and `confused_deputy_rejected`
+  proves a foreign-key signature does not accept. The deployed commitment is `hyb1::hyb1_key_id`
+  (truncated domain-separated SHA-256 over the encoded hybrid key, KAT-pinned), carried into the
+  gates by the machine-checked `committing_to` bridge; inside Kani the commitment stays abstract.
+  What remains assumed: collision resistance of the 128-bit truncation (~2^128 second preimage,
+  ~2^64 issuer-side birthday, both disclosed above), the unverified `sha2` implementation, and the
+  hybrid verify itself as an assumed spec in Kani (run for real in the integration test). So the
+  confused-deputy hole is closed relative to those assumptions, not unconditionally.
 - **Field-value validation covers `version` and `suite_id` only.** `accept_leaf_checked` /
   `accept_chain_checked` reject unknown versions and suites (machine-checked above), and the plain
   gates are proved over-permissive by a `kani::cover!` witness. `cap_type` and `flags` value sets

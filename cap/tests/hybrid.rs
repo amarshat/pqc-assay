@@ -5,8 +5,9 @@
 //! ML-DSA-44 keys, signs `serialize(cap)` (the exact bytes the Kani `signed_message` harnesses pin),
 //! verifies both, and feeds the outcomes plus the key commitments into the *same*
 //! `accept_chain2_signed` / `accept_leaf_signed` that Kani proved the glue for. So the assumed `sig_ok`
-//! bit in the proofs is discharged here by an actual hybrid verify, and the key-commitment bytes are a
-//! real truncated SHA-256 of the encoded hybrid key (not the model's leading-16-bytes stand-in).
+//! bit in the proofs is discharged here by an actual hybrid verify, and the key-commitment bytes come
+//! from the library's deployment definition (`hyb1::hyb1_key_id`, truncated domain-separated SHA-256
+//! of the encoded hybrid key), carried into the gates by the machine-checked `committing_to` bridge.
 //!
 //! Scenarios: valid accepts; tampered message rejects; downgrade (only the classical signature valid)
 //! rejects where accept-on-either would pass; confused deputy (leaf validly signed by a key that is
@@ -22,7 +23,6 @@ use ml_dsa::{
 use p256::ecdsa::signature::{Signer as EcSign, Verifier as EcVerify};
 use p256::ecdsa::{Signature as EcSig, SigningKey as EcSk, VerifyingKey as EcVk};
 use rand_core::OsRng;
-use sha2::{Digest, Sha256};
 
 struct Sk {
     ec: EcSk,
@@ -59,25 +59,25 @@ fn hybrid_verify(pk: &Pk, msg: &[u8], sig: &HSig) -> (bool, bool) {
     (ec_ok, ml_ok)
 }
 
-/// The real key commitment: truncated SHA-256 of the encoded hybrid public key. This is what
-/// `issuer_id` / `subject_id` bind to; `key_id` in the model is the leading-16-bytes stand-in for it.
+/// The real key commitment, computed by the library's deployment definition (`hyb1::hyb1_key_id`,
+/// truncated domain-separated SHA-256 over the encoded hybrid key). This is what `issuer_id` /
+/// `subject_id` bind to; the same definition, not a test-local copy, so the bytes the verified gates
+/// compare are the deployed ones.
 fn commit(pk: &Pk) -> [u8; 16] {
-    let mut h = Sha256::new();
-    h.update(pk.ec.to_encoded_point(true).as_bytes());
-    let enc = pk.ml.encode();
-    h.update(&enc[..]);
-    let d = h.finalize();
-    let mut id = [0u8; 16];
-    id.copy_from_slice(&d[0..16]);
-    id
+    let ec = pk.ec.to_encoded_point(true);
+    let ec_bytes: &[u8; hyb1::EC_P256_COMPRESSED_LEN] =
+        ec.as_bytes().try_into().expect("compressed P-256 point is 33 bytes");
+    let ml = pk.ml.encode();
+    let ml_bytes: &[u8; hyb1::ML_DSA_44_PK_LEN] =
+        (&ml[..]).try_into().expect("ML-DSA-44 public key encodes to 1312 bytes");
+    hyb1::hyb1_key_id(ec_bytes, ml_bytes)
 }
 
-/// The model `PublicKey` whose `key_id(..)` equals `id` (put the commitment in the leading bytes, so
-/// the verified `accept_*_signed` see exactly the deployment commitment `commit()` computes).
+/// The model `PublicKey` whose `key_id(..)` equals `id`: the library bridge, machine-checked by the
+/// `committing_to_commits` harness, so the verified `accept_*_signed` see exactly the deployment
+/// commitment `commit()` computes.
 fn model_pk(id: [u8; 16]) -> PublicKey {
-    let mut bytes = [0u8; 32];
-    bytes[0..16].copy_from_slice(&id);
-    PublicKey { bytes }
+    PublicKey::committing_to(id)
 }
 
 fn root_cap(owner_id: [u8; 16], delegate_id: [u8; 16]) -> CapV1 {

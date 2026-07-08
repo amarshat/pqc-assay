@@ -16,7 +16,7 @@ Cap-V1 is the "verified Rust" track, so the proof tool is Kani (CBMC), not SMT o
 
 ## Verified so far (Kani 0.67, this repo)
 
-`make cap-kani` (or `cargo kani` in this directory) checks forty-nine harnesses in `src/lib.rs`,
+`make cap-kani` (or `cargo kani` in this directory) checks fifty harnesses in `src/lib.rs`,
 all verified with 0 failures. Read the count honestly: the independent-content harnesses are the
 format bijection/injectivity, the multi-hop attenuation results (`chain_attenuates`,
 `chain3_attenuates`, `chain4_attenuates`), `omitting_audience_breaks_binding`, the key-binding
@@ -184,23 +184,36 @@ Key binding (`accept_*_signed` thread a `PublicKey`; `key_id(pk)` is the id a ke
   root delegated to (`key_id(leaf_pk) == root.subject_id`). Composes binding with the link check.
 - `confused_deputy_rejected`: a signature under a non-delegated key does not accept, even if valid.
   Closes the key-substitution / confused-deputy hole.
+- `committing_to_commits` (definition check): `key_id(PublicKey::committing_to(id)) == id` for every
+  id. The round trip is what's machine-checked; the wiring that feeds `hyb1::hyb1_key_id` output
+  (below) through `committing_to` is convention, exercised in the integration test, not a harness.
 
 ## Real crypto (integration test)
 
-`make cap-hybrid` (or `cargo test --test hybrid`) runs `cap/tests/hybrid.rs`: live ECDSA P-256 +
-ML-DSA-44 keys sign `serialize(cap)`, both are verified, and the outcomes plus real key commitments
-drive the *same* verified `accept_chain2_signed`. Valid accepts; tampered, downgrade (only the
-classical signature valid), confused-deputy (valid signature under a non-delegated key), and expired
-all reject. This discharges the assumed `sig_ok` bit with actual post-quantum crypto; only
-unforgeability stays assumed. The crypto crates are dev-dependencies, so they do not enter the
-Kani-verified core.
+`make cap-hybrid` (or `cargo test --features hyb1-keyid --test hybrid`) runs `cap/tests/hybrid.rs`:
+live ECDSA P-256 + ML-DSA-44 keys sign `serialize(cap)`, both are verified, and the outcomes plus
+real key commitments drive the *same* verified `accept_chain2_signed`. Valid accepts; tampered,
+downgrade (only the classical signature valid), confused-deputy (valid signature under a
+non-delegated key), and expired all reject. This discharges the assumed `sig_ok` bit with actual
+post-quantum crypto; only unforgeability stays assumed. The crypto crates are dev-dependencies, so
+they do not enter the Kani-verified core.
+
+The key commitment is the library's deployment definition, not a test-local copy: `hyb1::hyb1_key_id`
+(feature `hyb1-keyid`) is the first 16 bytes of SHA-256 over `"CAPV1-KEYID-HYB1" || ec_compressed ||
+mldsa_pk` (both inputs fixed length, so no length prefixes needed), and a KAT pins it against silent
+change (the KAT runs under `make cap-hybrid`, which runs the full feature-on test suite). The 128-bit
+truncation means ~2^128 against substituting a key for a given id (second preimage, single-target;
+hitting any of N ids gains a factor N) but only ~2^64 against a party colliding two of its own keys
+(birthday); the spec discloses both. The feature is off by default so the Kani build stays
+dependency-free; the hash itself is the `sha2` crate's, not verified here.
 
 ## Layout
 
 Byte-exact layout is in the spec. `src/lib.rs` is the single source: `CapV1`, `serialize`, `parse`,
 `well_formed`, the accept/delegation/key-binding functions, plus the `#[cfg(kani)]` harnesses. The
-library has no runtime dependencies, so the Kani-verified core pulls in no unverified third-party
-code; the crypto crates are dev-dependencies used only by the integration test.
+library has no default dependencies, so the Kani-verified core pulls in no unverified third-party
+code; `sha2` compiles only under the `hyb1-keyid` feature (deployment key commitment, outside every
+harness), and the crypto crates are dev-dependencies used only by the integration test.
 
 ## Scope
 
@@ -210,7 +223,9 @@ exceeds the root grant, that the signed message is the canonical/complete/inject
 each link's signing key is bound to the key its parent delegated to (confused-deputy rejected at
 any hop), and single-use acceptance (no replay, on a bounded store). Real ECDSA + ML-DSA-44 runs in
 the integration test over `serialize(cap)`. Assumed: ML-DSA-44/ECDSA unforgeability (no test can
-prove it), and `key_id` is a placeholder truncated-hash commitment in the model. Bounded: chain
+prove it), and collision resistance of the deployed key commitment (`hyb1_key_id`, truncated
+SHA-256: ~2^128 second preimage, ~2^64 birthday; the model's `key_id` stays an abstract commitment
+inside Kani, bridged by the machine-checked `committing_to`). Bounded: chain
 lengths beyond 4 rest on the link-local argument (no induction is machine-checked), and the replay
 store is fixed at capacity 8, sequential, fail-closed when full, with no expiry or eviction. Not
 yet: validation of `cap_type` / `flags` (their semantics are still provisional, so
@@ -219,7 +234,9 @@ eviction for either bounded store. See the spec's scope section.
 
 ## Run
 
-    make cap-kani        # from repo root: 49 Kani harnesses
+    make cap-kani        # from repo root: 50 Kani harnesses
     make cap-hybrid      # from repo root: real ECDSA + ML-DSA-44 integration test
     cargo kani           # from this directory
-    cargo test           # concrete tests incl. the hybrid crypto test
+    cargo test --features hyb1-keyid   # concrete tests incl. the hybrid crypto test
+                                       # (plain `cargo test` skips the hybrid test: it
+                                       # needs the feature, declared via required-features)

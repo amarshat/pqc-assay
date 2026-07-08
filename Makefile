@@ -168,15 +168,15 @@ qseal-demo:
 ## serializer is a bijection and injective (no token-level malleability), proved with Kani/CBMC over
 ## the full 191-byte buffer. Needs cargo + kani on PATH. Model + proof in cap/, spec in docs/cap/.
 cap-kani:
-	@echo ">> Kani: Cap-V1 format bijection + delegation attenuation + accept gate + signature/key binding (20 harnesses)"
+	@echo ">> Kani: Cap-V1 format bijection + delegation attenuation + accept gates + signature/key binding + single-use + revocation"
 	./cap/verify_cap.sh
 
 ## Cap-V1 real hybrid crypto: run actual ECDSA P-256 + ML-DSA-44 over serialize(cap), driving the
 ## verified accept_chain2_signed. Valid accepts; tampered, downgrade, confused-deputy (valid sig wrong
 ## key), and expired all reject. Needs cargo; no proof toolchain. This is the "PQ actually runs" check.
 cap-hybrid:
-	@echo ">> Cap-V1 hybrid crypto: real ECDSA + ML-DSA-44 over serialize(cap); valid accepts, tamper/downgrade/confused-deputy/expired reject"
-	cd cap && cargo test --test hybrid --quiet
+	@echo ">> Cap-V1 hybrid crypto: real ECDSA + ML-DSA-44 over serialize(cap); valid accepts, tamper/downgrade/confused-deputy/expired reject; plus the key-id KAT"
+	cd cap && cargo test --features hyb1-keyid --quiet
 
 ## The writeups: the NTT/SAW/Isabelle technical piece, and the Q-SEAL eSIM-attestation post
 ## (docs/writeup/verified-esim-attestation.{md,html}; the .html is self-contained for GitHub Pages).

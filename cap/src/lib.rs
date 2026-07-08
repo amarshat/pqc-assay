@@ -231,14 +231,78 @@ pub struct PublicKey {
 }
 
 /// The 16-byte id a public key commits to, i.e. how `issuer_id` / `subject_id` are derived from a
-/// key. In deployment this is a hash of the encoded hybrid key, truncated; here it is the leading 16
-/// bytes, a stand-in. The key-binding theorems hold for any `key_id` (they are about the commitment,
-/// not the hash), so the choice does not weaken them; a real deployment must use a collision-
-/// resistant hash so that `key_id(pk) == id` pins `pk`.
+/// key. In the model it is the leading 16 bytes of the model key; the key-binding theorems hold for
+/// any `key_id` (they are about the commitment, not the hash). The deployment definition is
+/// `hyb1::hyb1_key_id` (truncated SHA-256 over the encoded hybrid key, feature `hyb1-keyid`); the
+/// round trip `key_id(committing_to(id)) == id` is machine-checked (`committing_to_commits`), while
+/// the wiring that feeds `hyb1_key_id` output through `committing_to` is convention, exercised in
+/// the integration test, not a harness (SHA-256 is out of Kani's reach). What the hash must supply
+/// so `key_id(pk) == id` pins `pk` is collision resistance; see the quantified bounds on
+/// `hyb1::hyb1_key_id`.
 pub fn key_id(pk: &PublicKey) -> [u8; 16] {
     let mut id = [0u8; 16];
     id.copy_from_slice(&pk.bytes[0..16]);
     id
+}
+
+impl PublicKey {
+    /// The model key committing to `id`: `key_id(&PublicKey::committing_to(id)) == id`, for every
+    /// `id` (machine-checked, `committing_to_commits`). This is the bridge from a deployment
+    /// commitment (`hyb1::hyb1_key_id` over real key bytes) to the model `PublicKey` the verified
+    /// gates take: the model key carries only the commitment, not real key material, so the gates'
+    /// binding checks see exactly the deployed id.
+    ///
+    /// This is NOT a verification key, and anyone can construct it for any id; the binding check
+    /// `key_id(pk) == cap.issuer_id` is meaningful only because `sig_ok` must come from a real
+    /// hybrid verify under the actual key whose encoding `hyb1_key_id` hashed to `id`. A caller
+    /// that computes `sig_ok` against any other key has discarded the binding.
+    pub fn committing_to(id: [u8; 16]) -> PublicKey {
+        let mut bytes = [0u8; 32];
+        bytes[0..16].copy_from_slice(&id);
+        PublicKey { bytes }
+    }
+}
+
+/// The HYB-1 deployment key commitment. Behind the `hyb1-keyid` feature so the default (and Kani)
+/// build keeps zero dependencies; nothing in this module enters a Kani harness. The hash itself is
+/// not verified here (SHA-256 correctness is the `sha2` crate's), only pinned as the definition.
+#[cfg(feature = "hyb1-keyid")]
+pub mod hyb1 {
+    use sha2::{Digest, Sha256};
+
+    /// SEC1 compressed encoding length of an ECDSA P-256 public key.
+    pub const EC_P256_COMPRESSED_LEN: usize = 33;
+    /// FIPS 204 encoded length of an ML-DSA-44 public key (32 + 320 * 4).
+    pub const ML_DSA_44_PK_LEN: usize = 1312;
+    /// Domain-separation prefix for the key-id hash. It separates this hash from other SHA-256
+    /// uses that adopt a distinct prefix (the discipline this repo's formats follow); it is not an
+    /// absolute guarantee against a protocol that hashes the same bytes.
+    pub const KEY_ID_DOMAIN: &[u8; 16] = b"CAPV1-KEYID-HYB1";
+
+    /// `issuer_id` / `subject_id` for a HYB-1 key: the first 16 bytes of
+    /// `SHA-256(KEY_ID_DOMAIN || ec_compressed || mldsa_pk)`. Both inputs are fixed length, so the
+    /// concatenation is unambiguous without length prefixes.
+    ///
+    /// What the 128-bit truncation buys, quantified: substituting a different key for a GIVEN
+    /// capability's `issuer_id` needs a second preimage of the truncation, ~2^128 work
+    /// (single-target; an attacker content to hit ANY of N issued ids gains a factor N, still far
+    /// above 2^64 for practical N); a party generating two of ITS OWN keys that share an id needs
+    /// a collision, ~2^64 birthday work. Binding against third parties rests on the former; the
+    /// latter (an issuer equivocating between two of its own keys) is the disclosed weaker bound.
+    /// See docs/cap/CAP-V1.md.
+    pub fn hyb1_key_id(
+        ec_compressed: &[u8; EC_P256_COMPRESSED_LEN],
+        mldsa_pk: &[u8; ML_DSA_44_PK_LEN],
+    ) -> [u8; 16] {
+        let mut h = Sha256::new();
+        h.update(KEY_ID_DOMAIN);
+        h.update(ec_compressed);
+        h.update(mldsa_pk);
+        let d = h.finalize();
+        let mut id = [0u8; 16];
+        id.copy_from_slice(&d[0..16]);
+        id
+    }
 }
 
 /// Accept a single capability, now with the signer's key bound to the token.
@@ -674,6 +738,29 @@ pub fn accept_chain2(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Pins the deployment key-id definition to a known answer (SHA-256 computed independently, first
+    /// 16 bytes of SHA-256(b"CAPV1-KEYID-HYB1" || [0x02; 33] || [0xAB; 1312])), and checks a one-byte
+    /// change in either key half changes the id. Catches silent changes to the domain prefix, input
+    /// order, or truncation.
+    #[cfg(feature = "hyb1-keyid")]
+    #[test]
+    fn hyb1_key_id_kat() {
+        let ec = [0x02u8; hyb1::EC_P256_COMPRESSED_LEN];
+        let ml = [0xABu8; hyb1::ML_DSA_44_PK_LEN];
+        let expected = [
+            0x73, 0x7E, 0x95, 0xB6, 0xCD, 0x72, 0x0E, 0xFA, 0xF0, 0x15, 0x22, 0x6B, 0x40, 0x0A,
+            0x4F, 0x37,
+        ];
+        assert_eq!(hyb1::hyb1_key_id(&ec, &ml), expected);
+
+        let mut ec2 = ec;
+        ec2[32] ^= 1;
+        assert_ne!(hyb1::hyb1_key_id(&ec2, &ml), expected);
+        let mut ml2 = ml;
+        ml2[0] ^= 1;
+        assert_ne!(hyb1::hyb1_key_id(&ec, &ml2), expected);
+    }
 
     #[test]
     fn concrete_roundtrip() {
@@ -1296,6 +1383,16 @@ mod verification {
 
     fn any_pk() -> PublicKey {
         PublicKey { bytes: kani::any() }
+    }
+
+    /// Definition check: the bridge from a deployment commitment to a model key commits to exactly
+    /// that id, for every 16-byte id. This is the step that lets the integration test's real
+    /// truncated-SHA-256 commitment reach the verified gates unchanged: whatever `hyb1_key_id`
+    /// outputs, the gates' `key_id(pk) == cap.issuer_id` check compares that exact value.
+    #[kani::proof]
+    fn committing_to_commits() {
+        let id: [u8; 16] = kani::any();
+        assert_eq!(key_id(&PublicKey::committing_to(id)), id);
     }
 
     /// The key-bound chain accept is reachable (the binding theorems below are not vacuous).

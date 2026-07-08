@@ -9,9 +9,16 @@ license = "MIT"
 name = "cap_v1"
 path = "src/lib.rs"
 
-# No dependencies on purpose. The trusted parse/serialize path is pure byte layout,
-# so the Kani-verified core pulls in no unverified third-party code.
+# No default dependencies on purpose. The trusted parse/serialize path is pure byte layout, so the
+# Kani-verified core pulls in no unverified third-party code. sha2 is optional and only compiles
+# under the `hyb1-keyid` feature (deployment key commitment); it does not enter any Kani harness.
 [dependencies]
+sha2 = { version = "0.10", optional = true }
+
+[features]
+# HYB-1 deployment key_id: `hyb1::hyb1_key_id` = truncated SHA-256 over the encoded hybrid public
+# key. Off by default so `cargo kani` and plain builds stay dependency-free.
+hyb1-keyid = ["dep:sha2"]
 
 # `kani` cfg is set by cargo-kani, not by a Cargo feature; declare it so plain builds don't warn.
 [lints.rust]
@@ -25,5 +32,10 @@ ml-dsa = "0.1.1"
 # Classical half of the hybrid.
 p256 = { version = "0.13", features = ["ecdsa"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
-# Key-commitment hash (key_id = truncated SHA-256 of the encoded hybrid public key).
-sha2 = "0.10"
+
+# The hybrid test computes the real key commitment through the library's `hyb1-keyid` feature, so
+# it only builds (and runs) with that feature on: `cargo test --features hyb1-keyid`, or the
+# `make cap-hybrid` target. A plain `cargo test` skips it silently; use the make target.
+[[test]]
+name = "hybrid"
+required-features = ["hyb1-keyid"]
