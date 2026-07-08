@@ -75,7 +75,8 @@ N-link chain accept (`accept_chain<N>` / `accept_chain_signed<N>`; the two-link 
 - `chain3_requires_all_sigs`: a three-link accept requires all three signatures.
 - `chain3_attenuates` / `chain4_attenuates`: an accepted 3-link (resp. 4-link) chain's leaf grants
   no more than the root, and depth shrinks by at least one per hop
-  (`root.max_depth >= leaf.max_depth + N-1`), bounding chain length by the root's budget.
+  (`root.max_depth >= leaf.max_depth + N-1`, at these lengths; the for-all-N "length bounded by
+  budget" corollary would need the induction we do not run).
 - `chain3_signing_keys_are_delegates`: each non-root link is signed by exactly the key its parent
   delegated to, at both hops.
 - `chain3_confused_deputy_rejected`: a wrong key at either hop rejects the whole chain.
@@ -83,8 +84,9 @@ N-link chain accept (`accept_chain<N>` / `accept_chain_signed<N>`; the two-link 
 These are bounded results at concrete lengths (2, 3, 4), not an induction over all N; see the
 spec's scope section.
 
-Single use / no replay (`accept_leaf_once` = the leaf gate plus a bounded used-token store keyed on
-`cap_id || nonce`; Q-SEAL property 4's analogue in Rust):
+Single-use leaf presentation (`accept_leaf_once` = the leaf gate plus a bounded used-token store
+keyed on `cap_id || nonce`; Q-SEAL property 4's analogue in Rust. Leaf gate only: chains via
+`accept_chain` have no replay protection yet):
 
 - `once_reachable`: the single-use gate is satisfiable (`kani::cover!`, SATISFIED).
 - `no_replay`: an accepted token presented again to the successor store rejects, for any second
@@ -97,9 +99,11 @@ Single use / no replay (`accept_leaf_once` = the leaf gate plus a bounded used-t
   (`kani::cover!` finds the double accept), so `no_replay` has content.
 
 Store capacity is fixed at 8 (`STORE_CAP`, same device as Q-SEAL's CAP=8): the theorems are proved
-at that capacity, not for all capacities. Fail-closed-when-full is a disclosed denial-of-service
-footgun, not a feature; there is no expiry or eviction, and the analysis is sequential (no
-concurrent presentation modeled).
+at that capacity, not for all capacities. Only *accepted* tokens consume a slot (junk cannot fill
+the store), but with no eviction the verifier accepts at most 8 tokens for its lifetime, then
+rejects all further valid traffic. The analysis is sequential (no concurrent presentation modeled),
+and the no-replay theorem is per-store: it assumes each `audience_id` maps to exactly one store, so
+replicated verifier instances must share it (see the spec).
 
 Signature binding (`signed_message` = the canonical bytes the signature covers):
 

@@ -343,9 +343,13 @@ pub fn accept_chain_signed<const N: usize>(
 /// does not depend on the value; the theorems are proved at this capacity, not for all capacities.
 pub const STORE_CAP: usize = 8;
 
-/// The replay key of a capability: `cap_id || nonce` (32 bytes). One verifier owns one store, and
-/// audience binding (`accept_leaf`) already stops cross-verifier presentation, so the key does not
-/// need a verifier component the way Q-SEAL's challenge key does.
+/// The replay key of a capability: `cap_id || nonce` (32 bytes). The key carries no verifier
+/// component, so the no-replay theorem is per-store, and its deployment reading rests on an
+/// ASSUMPTION stated in the spec: each `audience_id` maps to exactly one store. A horizontally
+/// replicated verifier (N instances sharing one `audience_id`, each with its own store) violates
+/// it, and a token consumed at one instance replays cleanly at another; replicated instances must
+/// share the store. Audience binding (`accept_leaf`) stops presentation to a *different* audience,
+/// not to another store behind the same audience.
 pub fn replay_key(cap: &CapV1) -> [u8; 32] {
     let mut k = [0u8; 32];
     k[0..16].copy_from_slice(&cap.cap_id);
@@ -354,8 +358,11 @@ pub fn replay_key(cap: &CapV1) -> [u8; 32] {
 }
 
 /// A verifier's used-token store: an append-only log of consumed replay keys. Bounded at
-/// `STORE_CAP`; when full, acceptance fails closed (a denial-of-service footgun, disclosed in the
-/// spec's scope section, not a feature). `len` beyond `STORE_CAP` is treated as full.
+/// `STORE_CAP`; when full, acceptance fails closed. A slot is consumed only by an *accepted* token
+/// (rejects, including invalid signatures, do not append), so an attacker cannot fill it with
+/// junk; the footgun is that with no eviction the verifier accepts at most `STORE_CAP` tokens in
+/// its lifetime, then rejects all further valid traffic (disclosed in the spec's scope section).
+/// `len` beyond `STORE_CAP` is treated as full.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct NonceStore {
     pub used: [[u8; 32]; STORE_CAP],
@@ -1041,8 +1048,10 @@ mod verification {
 
     /// End-to-end attenuation at three links: an accepted leaf grants no action bit the root lacks,
     /// sits inside the root's window at `now`, keeps resource and audience, and has consumed at
-    /// least one unit of depth budget per hop (`root.max_depth >= leaf.max_depth + 2`), so the
-    /// chain's length is bounded by the root's budget.
+    /// least one unit of depth budget per hop (`root.max_depth >= leaf.max_depth + 2` at this
+    /// length). The "chain length is bounded by the root's budget" corollary is the for-all-N
+    /// statement, which is exactly the induction not run here; what is proved is the margin at the
+    /// instantiated lengths (2, 3, 4).
     #[kani::proof]
     fn chain3_attenuates() {
         let caps = [any_cap(), any_cap(), any_cap()];

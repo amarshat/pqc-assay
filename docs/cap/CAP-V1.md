@@ -83,15 +83,17 @@ of scope here (see Scope); without it the chain guarantees are conditional on th
 ## Machine-checked properties (this session, Kani)
 
 `cap/src/lib.rs`, harnesses under `#[cfg(kani)] mod verification`, run with `cargo kani` (or
-`make cap-kani`). Kani 0.67.0, CBMC backend. All twenty verified, 0 failures. `any_cap()` is
+`make cap-kani`). Kani 0.67.0, CBMC backend. All thirty-three verified, 0 failures. `any_cap()` is
 `parse(kani::any::<[u8; 191]>())`, which ranges over all `CapV1` (each field is an independent slice
 of a fully symbolic buffer).
 
-Not all seventeen carry equal weight, and the count should not be read as "seventeen independent
-theorems". The honest taxonomy:
+Not all thirty-three carry equal weight, and the count should not be read as "thirty-three
+independent theorems". The honest taxonomy:
 - Independent content: the format bijection/injectivity (`roundtrip_*`, `serialize_injective`), the
-  two-hop `chain_attenuates` (a real transitivity result), and `omitting_audience_breaks_binding`
-  (a mutation witness that a plausible bug would be caught).
+  multi-hop attenuation results (`chain_attenuates`, `chain3_attenuates`, `chain4_attenuates`),
+  `omitting_audience_breaks_binding` (a mutation witness that a plausible bug would be caught), the
+  key-binding results (`chain_signing_key_is_delegate`, `confused_deputy_rejected` and their
+  three-link counterparts), and the stateful replay results (`no_replay`, `accept_consumes`).
 - Definition checks (marked below): each assumes a predicate `P` and asserts one conjunct of `P`, so
   it confirms the definition contains the clause but is not an independent theorem.
 - `signed_message` is defined as `serialize`, so `signed_message_covers_all_fields` and
@@ -160,7 +162,9 @@ N-link chain accept (`accept_chain<N>(caps, verifier_id, now, sigs_ok)` generali
 `caps[0]` must be a root, every link's signature must verify, every adjacent pair must pass
 `valid_delegation`, and the leaf must pass the accept gate. `N` is a compile-time length, so the
 loops fully unroll under Kani; the harnesses instantiate concrete lengths, they do not quantify over
-`N`):
+`N`. Degenerate lengths: `N = 0` rejects, and `N = 1` is the intended root-presented-directly case
+(is_root + signature + leaf gate); no harness instantiates either, so their behavior is by
+inspection, not machine-checked):
 
 - `chain_n_agrees_with_chain2` (definitional bridge): `accept_chain::<2>` equals `accept_chain2`
   and `accept_chain_signed::<2>` equals `accept_chain2_signed`, on all inputs. So the two-link
@@ -170,7 +174,9 @@ loops fully unroll under Kani; the harnesses instantiate concrete lengths, they 
 - `chain3_attenuates` / `chain4_attenuates` (independent content): if a 3-link (resp. 4-link) chain
   is accepted, the leaf grants no action bit the root lacks, `now` is inside the root's window,
   resource and audience are unchanged, and the depth budget shrank by at least one per hop
-  (`root.max_depth >= leaf.max_depth + N-1`), which bounds chain length by the root's budget.
+  (`root.max_depth >= leaf.max_depth + N-1`, at these lengths). The "chain length is bounded by the
+  root's budget" corollary is a for-all-N statement, i.e. the induction disclaimed below; only the
+  instantiated margins are machine-checked.
 - `chain3_signing_keys_are_delegates` (independent content): in an accepted key-bound 3-link chain,
   each non-root link is signed by exactly the key its parent delegated to
   (`key_id(pks[i]) == caps[i-1].subject_id`), at both hops.
@@ -182,31 +188,39 @@ instantiation). There is still no machine-checked induction giving all N at once
 that the verifier code itself is now the general gate, and the composition has been re-checked at
 every length the harnesses instantiate rather than only at 2.
 
-Single use (`accept_leaf_once(cap, verifier_id, now, sig_ok, store)` = the leaf gate plus a bounded
-used-token store. The replay key is `cap_id || nonce` (32 bytes); one verifier owns one store, and
-audience binding already stops cross-verifier presentation, so the key carries no verifier
-component, unlike Q-SEAL's challenge key. The store is an append-only log of `STORE_CAP = 8` keys;
-acceptance appends, and a full store or an already-consumed key rejects):
+Single-use leaf presentation (`accept_leaf_once(cap, verifier_id, now, sig_ok, store)` = the leaf gate plus a bounded
+used-token store. The replay key is `cap_id || nonce` (32 bytes), with no verifier component,
+unlike Q-SEAL's challenge key. That is sound only under an assumption the harnesses do not check:
+**each `audience_id` corresponds to exactly one store**. Audience binding stops presentation to a
+different audience; it says nothing about two stores behind the same audience. A horizontally
+replicated verifier (N instances sharing one `audience_id`, each with a private store) breaks
+single-use: a token consumed at instance 1 replays cleanly at instance 2. Replicated instances must
+share the store (or a verifier/instance component must be added to the key). `no_replay` below is a
+per-store theorem. The store is an append-only log of `STORE_CAP = 8` keys; acceptance appends, and
+a full store or an already-consumed key rejects):
 
 - `once_reachable`: the gate is satisfiable (`kani::cover!`, SATISFIED).
 - `no_replay` (independent content, the stateful result): if a token is accepted, presenting the
   same token to the successor store rejects, for any second presentation time and signature bit.
   The mutation of the store is what blocks the second accept.
 - `consumed_never_accepts` (definition check): a key already in the store rejects.
-- `accept_consumes` (independent content): acceptance puts the key in the successor store;
-  rejection returns the store unchanged (no state change on failure).
+- `accept_consumes` (mixed): the accept half has content (the appended key is visible to the
+  membership scan, which is bounds reasoning); the reject half (store unchanged) is a definition
+  check.
 - `once_implies_leaf_gate` (definition check): the stateful gate does not weaken the stateless one;
   acceptance still implies `accept_leaf`, and `len >= STORE_CAP` fails closed.
 - `noconsume_mutant_replays` (non-vacuity, mutation-style): a no-consume variant of the gate accepts
   the same token twice (`kani::cover!` finds the double accept), so `no_replay` is not vacuous and
   the consume step is exactly what it checks.
 
-Disclosed limits, same as Q-SEAL property 4's: the capacity is fixed at 8 (the logic does not
-depend on it, but the theorems are proved at that capacity, not for all capacities);
-fail-closed-when-full is a denial-of-service footgun (8 junk presentations brick the verifier), not
-a feature; there is no expiry or eviction; the analysis is sequential and atomic (no concurrent
-presentation / TOCTOU window is modeled); and the property is stated on the leaf gate, not yet
-composed into the chain gate.
+Disclosed limits, mostly shared with Q-SEAL property 4: the capacity is fixed at 8 (the logic does
+not depend on it, but the theorems are proved at that capacity, not for all capacities).
+Fail-closed-when-full plus no eviction means the verifier accepts at most 8 tokens in its lifetime
+and then rejects all further valid traffic; note the fill is *not* attacker-triggerable with junk
+(a slot is consumed only on acceptance, so filling it takes 8 validly accepted tokens), unlike
+Q-SEAL's store, but exhaustion by legitimate traffic is guaranteed. The analysis is sequential and
+atomic (no concurrent presentation / TOCTOU window is modeled), and the property is stated on the
+leaf gate, not yet composed into the chain gate.
 
 Signature binding (`signed_message(cap)` is the canonical byte string the signature covers, and in
 `accept_leaf` the `sig_ok` bit is the verifier's verdict over exactly those bytes):
