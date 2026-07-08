@@ -16,12 +16,14 @@ Cap-V1 is the "verified Rust" track, so the proof tool is Kani (CBMC), not SMT o
 
 ## Verified so far (Kani 0.67, this repo)
 
-`make cap-kani` (or `cargo kani` in this directory) checks forty-one harnesses in `src/lib.rs`,
+`make cap-kani` (or `cargo kani` in this directory) checks forty-four harnesses in `src/lib.rs`,
 all verified with 0 failures. Read the count honestly: the independent-content harnesses are the
 format bijection/injectivity, the multi-hop attenuation results (`chain_attenuates`,
 `chain3_attenuates`, `chain4_attenuates`), `omitting_audience_breaks_binding`, the key-binding
 results (`chain_signing_key_is_delegate`, `confused_deputy_rejected`, and their three-link
-counterparts), and the stateful replay results (`no_replay`, `chain_once_no_replay`, `accept_consumes`, `chain_once_consumes`). Many
+counterparts), and the stateful replay results (`no_replay`, with `chain_once_no_replay` extending the same
+mechanism to the chain gate; `accept_consumes` and `chain_once_consumes` are mixed, their reject
+halves being definition checks). Many
 of the rest are *definition checks* (they assert one clause of the predicate they assume) or
 `kani::cover!` non-vacuity pings; the `signed_message_*` pair restates the format lemmas under the
 `signed_message == serialize` alias. The spec's "Machine-checked properties" section tags each. And
@@ -119,6 +121,22 @@ both = their stateless gate plus one shared bounded used-token store keyed on th
   gates share one store, a chain-consumed leaf cannot re-enter through `accept_leaf_once`;
   rejection leaves the store unchanged.
 
+Composed deployment gates (`accept_leaf_full` / `accept_chain_full<N>`; the individual gates do
+not compose themselves, and hand-stacking `_checked` + `_once` on a chain would drop key binding,
+since `accept_chain_once` wraps the unsigned `accept_chain`):
+
+- `full_implies_all_conjuncts`: `accept_chain_full` acceptance implies field validation on every
+  link, the key-bound `accept_chain_signed` (key binding kept on the single-use path), and
+  consumption of the leaf's key.
+- `full_no_replay`: after `accept_chain_full` accepts, the same leaf rejects on the successor store
+  through both composed gates (one shared store).
+- `full_reachable`: both composed gates satisfiable (`kani::cover!`, SATISFIED).
+
+What single-use means for a chain, honestly: it is per-presentation anti-replay (a captured
+presentation cannot be re-run). It is not a cap on authority exercise: a delegate with remaining
+depth can mint unlimited distinct single-use leaves, each accepted once, so no `_once` or `_full`
+gate rate-limits or contains a compromised intermediate.
+
 Store capacity is fixed at 8 (`STORE_CAP`, same device as Q-SEAL's CAP=8): the theorems are proved
 at that capacity, not for all capacities. Only *accepted* tokens consume a slot (junk cannot fill
 the store), but with no eviction the verifier accepts at most 8 tokens for its lifetime, then
@@ -176,7 +194,7 @@ yet: revocation, and validation of `cap_type` / `flags` (their semantics are sti
 
 ## Run
 
-    make cap-kani        # from repo root: 41 Kani harnesses
+    make cap-kani        # from repo root: 44 Kani harnesses
     make cap-hybrid      # from repo root: real ECDSA + ML-DSA-44 integration test
     cargo kani           # from this directory
     cargo test           # concrete tests incl. the hybrid crypto test

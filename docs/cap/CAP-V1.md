@@ -83,17 +83,18 @@ of scope here (see Scope); without it the chain guarantees are conditional on th
 ## Machine-checked properties (this session, Kani)
 
 `cap/src/lib.rs`, harnesses under `#[cfg(kani)] mod verification`, run with `cargo kani` (or
-`make cap-kani`). Kani 0.67.0, CBMC backend. All forty-one verified, 0 failures. `any_cap()` is
+`make cap-kani`). Kani 0.67.0, CBMC backend. All forty-four verified, 0 failures. `any_cap()` is
 `parse(kani::any::<[u8; 191]>())`, which ranges over all `CapV1` (each field is an independent slice
 of a fully symbolic buffer).
 
-Not all forty-one carry equal weight, and the count should not be read as "forty-one
+Not all forty-four carry equal weight, and the count should not be read as "forty-four
 independent theorems". The honest taxonomy:
 - Independent content: the format bijection/injectivity (`roundtrip_*`, `serialize_injective`), the
   multi-hop attenuation results (`chain_attenuates`, `chain3_attenuates`, `chain4_attenuates`),
   `omitting_audience_breaks_binding` (a mutation witness that a plausible bug would be caught), the
   key-binding results (`chain_signing_key_is_delegate`, `confused_deputy_rejected` and their
-  three-link counterparts), and the stateful replay results (`no_replay`, `chain_once_no_replay`, `accept_consumes`, `chain_once_consumes`).
+  three-link counterparts), and the stateful replay results (`no_replay`, with `chain_once_no_replay` extending the same
+  mechanism to the chain gate; `accept_consumes` / `chain_once_consumes` are mixed, see their tags).
 - Definition checks (marked below): each assumes a predicate `P` and asserts one conjunct of `P`, so
   it confirms the definition contains the clause but is not an independent theorem.
 - `signed_message` is defined as `serialize`, so `signed_message_covers_all_fields` and
@@ -218,9 +219,10 @@ SUITE_HYB1`, the only fields with defined value sets in v0.1; `accept_leaf_check
 `accept_chain_checked<N>` run it before the plain gates, on every link):
 
 - `checked_reachable`: both checked gates satisfiable (`kani::cover!`, SATISFIED).
-- `checked_rejects_unknown_values` (independent content at the chain gate): a token with an unknown
-  version or suite never accepts at the leaf gate, and rejects a 3-link chain at whichever position
-  it sits.
+- `checked_rejects_unknown_values` (definition check at the leaf gate, loop coverage at the chain
+  gate): a token with an unknown version or suite never accepts at the leaf gate (a short-circuit
+  of the conjunction), and rejects a 3-link chain at whichever position it sits (the validation
+  loop visits every link). Not an independent theorem.
 - `checked_implies_gate_and_pins_values` (definition check): checked acceptance implies the plain
   gate and pins `version` / `suite_id` to the defined values.
 - `unchecked_gate_accepts_unknown_values` (non-vacuity, the over-permissive-gate witness, Q-SEAL
@@ -235,8 +237,11 @@ the 191-byte buffer (transport framing) is out of scope.
 
 Chain composition (`accept_chain_once<N>` = `accept_chain` plus the same store, consuming the
 presented leaf's key; intermediates are not consumed, since the leaf pins its chain via `parent_id`
-and per-link signatures, re-presenting the chain means re-presenting the leaf key, and two distinct
-leaves from one root are distinct presentations by design):
+and per-link signatures, so re-presenting the chain means re-presenting the leaf key. Read the
+security consequence precisely: this is per-presentation anti-replay, not a cap on authority
+exercise. A delegate holding remaining depth can mint unlimited distinct single-use leaves (fresh
+`cap_id`/`nonce`, signed under its own delegated key), each accepted exactly once, so this gate
+does not rate-limit or contain a compromised intermediate):
 
 - `chain_once_reachable`: satisfiable at three links (`kani::cover!`, SATISFIED).
 - `chain_once_no_replay` (independent content): after any 3-link chain is accepted, any 2- or
@@ -250,6 +255,21 @@ leaves from one root are distinct presentations by design):
 
 Like the chain gate itself, these are instantiated at concrete lengths (3, with the cross-gate
 check against 2), not for all N.
+
+Composed deployment gates (`accept_leaf_full` = field validation + key binding + leaf gate +
+single-use; `accept_chain_full<N>` = field validation and key binding on every link + chain gate +
+single-use on the leaf. These exist because the individual gates do not compose themselves:
+`accept_chain_once` wraps the unsigned `accept_chain`, so stacking `_checked` + `_once` by hand
+would drop key binding on the chain path):
+
+- `full_reachable`: both composed gates satisfiable (`kani::cover!`, SATISFIED).
+- `full_implies_all_conjuncts` (definition check, but the one that makes the composition safe to
+  rely on): `accept_chain_full` acceptance implies `valid_field_values` on all three links, the
+  key-bound `accept_chain_signed`, and consumption of the leaf's key. Key binding is provably not
+  lost on the single-use path.
+- `full_no_replay` (independent content via `no_replay`'s mechanism): after `accept_chain_full`
+  accepts, the same leaf rejects on the successor store through both `accept_chain_full` and
+  `accept_leaf_full`, whatever key, time, or signature bits the second presentation uses.
 
 Disclosed limits, mostly shared with Q-SEAL property 4: the capacity is fixed at 8 (the logic does
 not depend on it, but the theorems are proved at that capacity, not for all capacities).
@@ -358,13 +378,17 @@ deployment.
   `accept_chain_checked` reject unknown versions and suites (machine-checked above), and the plain
   gates are proved over-permissive by a `kani::cover!` witness. `cap_type` and `flags` value sets
   are still provisional, so they remain unvalidated, and no gate calls `well_formed` (the magic is
-  a serialization concern; the gates take a parsed `CapV1`). A deployment runs the checked, `_once`
-  variants together.
+  a serialization concern; the gates take a parsed `CapV1`). A deployment runs the composed
+  `accept_leaf_full` / `accept_chain_full` gates, whose composition is itself machine-checked
+  (`full_implies_all_conjuncts`, `full_no_replay`); hand-stacking the `_checked` and `_once`
+  variants is not verified and, on the chain path, would drop key binding.
 - **Replay is closed on the stateful gates only, and there is still no revocation.**
   `accept_leaf_once` and `accept_chain_once` consume the presented leaf's `cap_id || nonce` on one
   shared bounded (capacity 8), sequential, fail-closed store (limits disclosed above); the plain
-  `accept_leaf` / `accept_chain` gates remain replayable, so a deployment must use the `_once`
-  variants. Nothing revokes a capability before `not_after`. For a capability layer revocation is a
+  `accept_leaf` / `accept_chain` gates remain replayable, so a deployment must use the composed
+  `_full` gates (verified composition; the bare `_once` gates lack field validation and, on the
+  chain path, key binding). Single-use is per-presentation anti-replay only: it does not bound how
+  many distinct single-use leaves a delegate with remaining depth can mint and have accepted. Nothing revokes a capability before `not_after`. For a capability layer revocation is a
   headline property, not a footnote.
 - Chain results are bounded: `accept_chain<N>` is verified at N = 2, 3, 4 (concrete
   instantiations). No machine-checked induction covers all N; longer chains rest on the link-local

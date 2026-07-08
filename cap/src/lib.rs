@@ -456,8 +456,12 @@ pub fn accept_leaf_once(
 /// consumed, because what replays is the presentation (the leaf), and the leaf pins its whole
 /// chain (`parent_id` links plus per-link signatures), so re-presenting the same chain means
 /// re-presenting the same leaf key. Two different leaves delegated from the same root are distinct
-/// presentations and both accept, by design. Same store, same assumption as `accept_leaf_once`:
-/// one store per `audience_id`.
+/// presentations and both accept. The security consequence must be read with that: this is
+/// per-presentation anti-replay (a captured presentation cannot be re-run), NOT a cap on how often
+/// the authority behind a delegation is exercised. A delegate holding remaining depth can mint
+/// unlimited distinct single-use leaves (fresh `cap_id`/`nonce`, signed with its own key), each
+/// accepted once, so this gate does not rate-limit or contain a compromised intermediate.
+/// Same store, same assumption as `accept_leaf_once`: one store per `audience_id`.
 pub fn accept_chain_once<const N: usize>(
     caps: &[CapV1; N],
     verifier_id: &[u8; 16],
@@ -479,6 +483,46 @@ pub fn accept_chain_once<const N: usize>(
     next.used[next.len] = key;
     next.len += 1;
     (true, next)
+}
+
+/// The deployment gate for a bare leaf: field-value validation, key binding, the leaf gate, and
+/// single-use, composed in one verified function. This exists because the individual gates do not
+/// compose themselves: `accept_leaf_checked` is stateless and `accept_leaf_once` validates neither
+/// fields nor keys. A deployment calls this (or `accept_chain_full`), not a hand-assembled stack.
+pub fn accept_leaf_full(
+    cap: &CapV1,
+    verifier_id: &[u8; 16],
+    now: u64,
+    issuer_pk: &PublicKey,
+    sig_ok: bool,
+    store: &NonceStore,
+) -> (bool, NonceStore) {
+    if !valid_field_values(cap) || !accept_leaf_signed(cap, verifier_id, now, issuer_pk, sig_ok) {
+        return (false, *store);
+    }
+    accept_leaf_once(cap, verifier_id, now, sig_ok, store)
+}
+
+/// The deployment gate for an N-link chain: field-value validation and key binding on every link,
+/// the chain gate, and single-use on the presented leaf, composed. Without this, combining the
+/// `_checked` and `_once` variants by hand would silently drop key binding on the chain path
+/// (`accept_chain_once` wraps `accept_chain`, not `accept_chain_signed`).
+pub fn accept_chain_full<const N: usize>(
+    caps: &[CapV1; N],
+    verifier_id: &[u8; 16],
+    now: u64,
+    pks: &[PublicKey; N],
+    sigs_ok: &[bool; N],
+    store: &NonceStore,
+) -> (bool, NonceStore) {
+    let mut i = 0;
+    while i < N {
+        if !valid_field_values(&caps[i]) || key_id(&pks[i]) != caps[i].issuer_id {
+            return (false, *store);
+        }
+        i += 1;
+    }
+    accept_chain_once(caps, verifier_id, now, sigs_ok, store)
 }
 
 /// A deliberately broken variant that forgets to consume: it checks the store but returns it
@@ -839,6 +883,62 @@ mod tests {
         let mut bad_suite = cap;
         bad_suite.suite_id = [0, 9];
         assert!(!accept_leaf_checked(&bad_suite, &v, 150, true));
+    }
+
+    #[test]
+    fn concrete_full_gate() {
+        let owner = PublicKey { bytes: [0xAB; 32] };
+        let delegate = PublicKey { bytes: [0xCD; 32] };
+
+        let mut root = CapV1::zeroed();
+        root.version = VERSION_V1;
+        root.suite_id = SUITE_HYB1;
+        root.issuer_id = key_id(&owner);
+        root.subject_id = key_id(&delegate);
+        root.cap_id = [0xB0; 16];
+        root.resource_id = [0x44; 32];
+        root.audience_id = [0x77; 16];
+        root.max_depth = [3];
+        root.action = [0, 0, 0, 0b0000_0011];
+        root.not_before = 100u64.to_be_bytes();
+        root.not_after = 200u64.to_be_bytes();
+
+        let mut leaf = CapV1::zeroed();
+        leaf.version = VERSION_V1;
+        leaf.suite_id = SUITE_HYB1;
+        leaf.issuer_id = key_id(&delegate);
+        leaf.subject_id = [0xEE; 16];
+        leaf.parent_id = root.cap_id;
+        leaf.cap_id = [0xB1; 16];
+        leaf.nonce = [0x61; 16];
+        leaf.resource_id = root.resource_id;
+        leaf.audience_id = root.audience_id;
+        leaf.max_depth = [2];
+        leaf.action = [0, 0, 0, 0b0000_0001];
+        leaf.not_before = 120u64.to_be_bytes();
+        leaf.not_after = 180u64.to_be_bytes();
+
+        let v = [0x77; 16];
+        let store = NonceStore::empty();
+        let pks = [owner, delegate];
+        let (ok, next) =
+            accept_chain_full(&[root, leaf], &v, 150, &pks, &[true, true], &store);
+        assert!(ok);
+        // Replay through either composed gate: rejected (shared store).
+        let (ok2, _) = accept_chain_full(&[root, leaf], &v, 160, &pks, &[true, true], &next);
+        assert!(!ok2);
+        let (ok3, _) = accept_leaf_full(&leaf, &v, 150, &delegate, true, &next);
+        assert!(!ok3);
+        // Unknown suite on a link: rejected.
+        let mut bad = leaf;
+        bad.suite_id = [0, 9];
+        let (ok4, _) = accept_chain_full(&[root, bad], &v, 150, &pks, &[true, true], &store);
+        assert!(!ok4);
+        // Foreign key on a link: rejected (key binding kept on the single-use path).
+        let foreign = PublicKey { bytes: [0x99; 32] };
+        let (ok5, _) =
+            accept_chain_full(&[root, leaf], &v, 150, &[owner, foreign], &[true, true], &store);
+        assert!(!ok5);
     }
 
     #[test]
@@ -1381,6 +1481,9 @@ mod verification {
         let now2: u64 = kani::any();
         let s2: [bool; 2] = kani::any();
         let s3: [bool; 3] = kani::any();
+        // The guards below are satisfiable (covers), so the guarded asserts are not vacuous.
+        kani::cover!(replay_key(&other2[1]) == replay_key(&caps[2]));
+        kani::cover!(replay_key(&other3[2]) == replay_key(&caps[2]));
         if replay_key(&other2[1]) == replay_key(&caps[2]) {
             let (ok2, _) = accept_chain_once(&other2, &v2, now2, &s2, &next);
             assert!(!ok2);
@@ -1488,6 +1591,67 @@ mod verification {
                 && cap.suite_id != SUITE_HYB1
                 && accept_leaf(&cap, &v, now, true)
         );
+    }
+
+    /// The composed deployment gates are reachable (composition did not make acceptance
+    /// unsatisfiable).
+    #[kani::proof]
+    fn full_reachable() {
+        let cap = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let pk = any_pk();
+        let store = any_store();
+        let (ok, _) = accept_leaf_full(&cap, &v, now, &pk, true, &store);
+        kani::cover!(ok);
+        let caps = [any_cap(), any_cap(), any_cap()];
+        let pks = [any_pk(), any_pk(), any_pk()];
+        let (ok3, _) = accept_chain_full(&caps, &v, now, &pks, &[true, true, true], &store);
+        kani::cover!(ok3);
+    }
+
+    /// The composed chain gate implies every conjunct it advertises: field validation on all
+    /// links, the key-bound chain gate (so key binding is NOT dropped on the single-use path), and
+    /// consumption of the leaf's key.
+    #[kani::proof]
+    fn full_implies_all_conjuncts() {
+        let caps = [any_cap(), any_cap(), any_cap()];
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let pks = [any_pk(), any_pk(), any_pk()];
+        let sigs: [bool; 3] = kani::any();
+        let store = any_store();
+        let (ok, next) = accept_chain_full(&caps, &v, now, &pks, &sigs, &store);
+        kani::assume(ok);
+        assert!(valid_field_values(&caps[0]));
+        assert!(valid_field_values(&caps[1]));
+        assert!(valid_field_values(&caps[2]));
+        assert!(accept_chain_signed(&caps, &v, now, &pks, &sigs));
+        assert!(store_contains(&next, &replay_key(&caps[2])));
+    }
+
+    /// No replay through the composed gates: after a chain is accepted by `accept_chain_full`, the
+    /// same leaf rejects on the successor store through both `accept_chain_full` and
+    /// `accept_leaf_full` (one shared store, whatever key/time/signature the second presentation
+    /// uses).
+    #[kani::proof]
+    fn full_no_replay() {
+        let caps = [any_cap(), any_cap(), any_cap()];
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let pks = [any_pk(), any_pk(), any_pk()];
+        let sigs: [bool; 3] = kani::any();
+        let store = any_store();
+        let (ok, next) = accept_chain_full(&caps, &v, now, &pks, &sigs, &store);
+        kani::assume(ok);
+        let now2: u64 = kani::any();
+        let s2: [bool; 3] = kani::any();
+        let (ok2, _) = accept_chain_full(&caps, &v, now2, &pks, &s2, &next);
+        assert!(!ok2);
+        let pk2 = any_pk();
+        let sig2: bool = kani::any();
+        let (ok3, _) = accept_leaf_full(&caps[2], &v, now2, &pk2, sig2, &next);
+        assert!(!ok3);
     }
 
     /// Round-trip on records: parsing a serialized capability recovers it exactly, for every
