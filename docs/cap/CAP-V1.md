@@ -63,15 +63,19 @@ Q-SEAL.
 - A re-delegation sets `parent_id` to the parent's `cap_id`, `issuer_id` to the re-delegating
   agent's key (which must equal the parent's `subject_id`), and `max_depth` strictly below the
   parent's. What the current `valid_delegation` check actually enforces: `issuer_id ==
-  parent.subject_id`, `parent_id == parent.cap_id`, `resource_id`/`audience_id`/`suite_id` **equal**
-  the parent's (not "subset"; `resource_id` is a digest with no subset order), `action` bits a subset
-  of the parent's, `max_depth` strictly decreasing with the parent still having budget, and the
-  validity window nested and non-empty.
-- Known gaps in that check (see Scope): it does **not** yet constrain `flags`, `cap_type`,
-  `constraints_digest`, or `version`. So the documented `flags` bit0 ("further delegation permitted")
-  is not consulted (re-delegation is gated only by `max_depth > 0`), and a child may point at a
-  different `constraints_digest` than its parent. "Authority only narrows" holds for `action`, depth,
-  and window; it does not yet hold for those fields.
+  parent.subject_id`, `parent_id == parent.cap_id`, `resource_id`/`audience_id`/`suite_id`/
+  `cap_type`/`constraints_digest` **equal** the parent's (not "subset"; `resource_id` and
+  `constraints_digest` are digests with no subset order, so equality is the only checkable rule:
+  a delegate can neither drop nor swap the digest bytes. Note what that does and does not buy:
+  the verifier pins the digest down the chain but never resolves it to a policy or enforces that
+  policy, a root issued with a zero digest has pinned no constraint set at all, and tightening
+  structured constraints is out of scope; the security value of the field rests on out-of-band
+  resolution), `action` bits and `flags` bits subsets of the parent's, the parent carrying
+  `FLAG_DELEGATE` (flags bit 0, so a terminal capability spawns no children), `max_depth` strictly
+  decreasing with the parent still having budget, and the validity window nested and non-empty.
+- Known gap in that check (see Scope): it does **not** constrain `version` at a link (the `_checked`
+  and `_full` gates validate `version`/`suite_id` per link separately), and flag bits other than
+  bit 0 have no assigned meaning yet (the subset rule already applies to them).
 - A verifier accepts a chain if every link's signature verifies, windows are current, the audience
   matches, depth decreases down the chain, and each link attenuates the previous.
 
@@ -83,14 +87,15 @@ of scope here (see Scope); without it the chain guarantees are conditional on th
 ## Machine-checked properties (this session, Kani)
 
 `cap/src/lib.rs`, harnesses under `#[cfg(kani)] mod verification`, run with `cargo kani` (or
-`make cap-kani`). Kani 0.67.0, CBMC backend. All fifty verified, 0 failures. `any_cap()` is
+`make cap-kani`). Kani 0.67.0, CBMC backend. All fifty-five verified, 0 failures. `any_cap()` is
 `parse(kani::any::<[u8; 191]>())`, which ranges over all `CapV1` (each field is an independent slice
 of a fully symbolic buffer).
 
-Not all fifty carry equal weight, and the count should not be read as "fifty
+Not all fifty-five carry equal weight, and the count should not be read as "fifty-five
 independent theorems". The honest taxonomy:
 - Independent content: the format bijection/injectivity (`roundtrip_*`, `serialize_injective`), the
-  multi-hop attenuation results (`chain_attenuates`, `chain3_attenuates`, `chain4_attenuates`),
+  multi-hop attenuation results (`chain_attenuates`, `chain_attenuates_flags_and_bindings`,
+  `chain3_attenuates`, `chain4_attenuates`),
   `omitting_audience_breaks_binding` (a mutation witness that a plausible bug would be caught), the
   key-binding results (`chain_signing_key_is_delegate`, `confused_deputy_rejected` and their
   three-link counterparts), the stateful replay results (`no_replay`, with `chain_once_no_replay`
@@ -130,6 +135,23 @@ Delegation (attenuation / chains terminate):
   local check across two links (subset, `<`, and interval-containment are transitive). No induction
   is run; the N-link accept gate below re-checks the composition at chain lengths 3 and 4, and
   lengths beyond those remain covered by the link-local argument only.
+- `link_requires_delegation_flag` (definition check, stated as the attack): a parent without
+  `FLAG_DELEGATE` (flags bit 0, "further delegation permitted") has no valid re-delegation. This
+  gives the documented bit its meaning in the verifier; before this rule, re-delegation was gated
+  by `max_depth` alone.
+- `link_flags_no_escalation` (definition check): `valid_delegation(p, c) => c.flags & !p.flags ==
+  0`. A delegate can clear flag bits (including going terminal) but never mint one.
+- `chain_attenuates_flags_and_bindings` (two-hop composition, same shape as `chain_attenuates`, so
+  additional field coverage of an established pattern rather than a new proof idea): down two
+  links, flags only shrink and `cap_type` / `constraints_digest` are still the root's. Subset and
+  equality compose through the middle link. `chain3_attenuates` / `chain4_attenuates` re-check the
+  same three facts at lengths 3 and 4.
+- `two_hop_link_reachable` (`kani::cover!`, SATISFIED): two consecutive valid links are jointly
+  satisfiable under the strengthened rules, the non-vacuity guard for the two-hop composition
+  harnesses above.
+- `terminal_leaf_accepted` (`kani::cover!`, SATISFIED): a two-link chain whose leaf cleared
+  `FLAG_DELEGATE` still passes the chain gate. Non-vacuity for the attenuation direction: the rule
+  forbids setting flags, not clearing them.
 
 Accept gate (`accept_leaf(cap, verifier_id, now, sig_ok)`). `sig_ok` is the signature-check outcome,
 kept as an input so the guarantees hold for any correct verifier (Q-SEAL's uninterpreted-verifier
@@ -232,8 +254,10 @@ SUITE_HYB1`, the only fields with defined value sets in v0.1; `accept_leaf_check
   unknown, which the checked gate provably rejects. So the validation is what stands between the
   verifier and tokens it cannot interpret.
 
-`cap_type` and `flags` are deliberately not constrained (semantics provisional, disclosed in
-Scope). Q-SEAL's property 7 lesson carries over: this gate covers enumerated field values only;
+`cap_type` and `flags` value SETS are deliberately not validated here (which values are legal is
+still provisional, disclosed in Scope); their cross-link RELATIONS are enforced by
+`valid_delegation` (type pinned, flags subset, `FLAG_DELEGATE` consulted — see Delegation).
+Q-SEAL's property 7 lesson carries over: this gate covers enumerated field values only;
 byte-level parsing of a hostile wire input is the format bijection's job, and anything upstream of
 the 191-byte buffer (transport framing) is out of scope.
 
@@ -446,7 +470,8 @@ deployment.
 - **Field-value validation covers `version` and `suite_id` only.** `accept_leaf_checked` /
   `accept_chain_checked` reject unknown versions and suites (machine-checked above), and the plain
   gates are proved over-permissive by a `kani::cover!` witness. `cap_type` and `flags` value sets
-  are still provisional, so they remain unvalidated, and no gate calls `well_formed` (the magic is
+  are still provisional, so they remain unvalidated as absolute values (their cross-link relations
+  are now enforced, see the delegation bullets below), and no gate calls `well_formed` (the magic is
   a serialization concern; the gates take a parsed `CapV1`). A deployment runs the composed
   `accept_leaf_full` / `accept_chain_full` gates, whose composition is itself machine-checked
   (`full_implies_all_conjuncts`, `full_no_replay`); hand-stacking the `_checked` and `_once`
@@ -465,8 +490,14 @@ deployment.
 - Chain results are bounded: `accept_chain<N>` is verified at N = 2, 3, 4 (concrete
   instantiations). No machine-checked induction covers all N; longer chains rest on the link-local
   argument.
-- Attenuation is proved for `action`, depth, and window; `flags`, `cap_type`, and `constraints_digest`
-  are not yet constrained across a link (so those fields can change or weaken).
+- Attenuation is proved for `action`, depth, window, and `flags` (subset, with `FLAG_DELEGATE`
+  required on every parent); `cap_type` and `constraints_digest` are pinned to the root's down the
+  chain (byte equality, the only checkable rule over opaque digests). Pinned is not enforced: the
+  verifier never resolves `constraints_digest` to a policy, a zero-digest root pins no constraint
+  set, and tightening structured constraints is out of scope. Flag bits other than bit 0 have no
+  assigned meaning yet. These link rules were TIGHTENED in this revision (semantics are
+  v0.1-provisional): chains valid under a prior build, whose parents lack `FLAG_DELEGATE` or whose
+  links change `cap_type`/`constraints_digest`/mint flag bits, now reject.
 - The layout is frozen (the bijection depends on it); field *meanings* are provisional.
 - `parse` is total and does not check `magic`; `well_formed` is the separate magic check. The byte
   round-trip is stated under `well_formed`.

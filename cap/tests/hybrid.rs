@@ -90,6 +90,7 @@ fn root_cap(owner_id: [u8; 16], delegate_id: [u8; 16]) -> CapV1 {
     c.resource_id = [0x44; 32];
     c.audience_id = [0x77; 16];
     c.max_depth = [3];
+    c.flags = [FLAG_DELEGATE]; // the root may re-delegate; the leaf below stays terminal
     c.action = [0, 0, 0, 0b0000_0011];
     c.not_before = 100u64.to_be_bytes();
     c.not_after = 200u64.to_be_bytes();

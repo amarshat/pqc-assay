@@ -163,6 +163,12 @@ pub fn action_bits(c: &CapV1) -> u32 {
     u32::from_be_bytes(c.action)
 }
 
+/// `flags` bit 0: the holder may re-delegate this capability. The only flag bit with defined
+/// meaning in v0.1; `valid_delegation` requires it on the parent of every link and lets a child
+/// only clear flag bits, never set them (so a delegate can mint a terminal leaf by clearing it,
+/// but can never grant a flag it does not hold).
+pub const FLAG_DELEGATE: u8 = 0x01;
+
 /// The validity window `(not_before, not_after)` in unix seconds.
 pub fn window(c: &CapV1) -> (u64, u64) {
     (u64::from_be_bytes(c.not_before), u64::from_be_bytes(c.not_after))
@@ -173,10 +179,17 @@ pub fn window(c: &CapV1) -> (u64, u64) {
 /// This is where a chain either attenuates or is rejected. It enforces, at one link: only the
 /// parent's delegate may re-delegate (`issuer == parent.subject`), the link is explicit
 /// (`parent_id == parent.cap_id`), the target does not change (same resource, audience, suite), the
-/// re-delegation budget strictly decreases (`max_depth` down, parent still had budget), authority
-/// only narrows (child action bits are a subset of the parent's), and the validity window narrows
-/// and stays non-empty. The Kani harnesses prove that this local check composes: down any chain,
-/// authority can only shrink and depth must reach zero (so chains terminate).
+/// re-delegation budget strictly decreases (`max_depth` down, parent still had budget), the parent
+/// carries the delegation flag (`FLAG_DELEGATE`, so a terminal capability cannot spawn children),
+/// authority only narrows (child action bits and flag bits are subsets of the parent's), the type
+/// and constraint binding are pinned (`cap_type` and `constraints_digest` equal; the digest is
+/// opaque here, so equality is the only checkable rule: a delegate can neither drop nor swap the
+/// digest bytes. Pinning is all this check provides: the verifier never resolves the digest to a
+/// policy or enforces that policy, and a root issued with a zero/empty digest has pinned no
+/// constraint set at all; the security value rests on out-of-band resolution, out of scope), and
+/// the validity window narrows and stays non-empty. The Kani
+/// harnesses prove that this local check composes: down any chain, authority can only shrink,
+/// depth must reach zero (so chains terminate), and type/constraints are the root's.
 pub fn valid_delegation(parent: &CapV1, child: &CapV1) -> bool {
     let (p_nb, p_na) = window(parent);
     let (c_nb, c_na) = window(child);
@@ -185,6 +198,10 @@ pub fn valid_delegation(parent: &CapV1, child: &CapV1) -> bool {
         && child.resource_id == parent.resource_id
         && child.audience_id == parent.audience_id
         && child.suite_id == parent.suite_id
+        && child.cap_type == parent.cap_type
+        && child.constraints_digest == parent.constraints_digest
+        && parent.flags[0] & FLAG_DELEGATE != 0
+        && (child.flags[0] & !parent.flags[0]) == 0
         && parent.max_depth[0] > 0
         && child.max_depth[0] < parent.max_depth[0]
         && (action_bits(child) & !action_bits(parent)) == 0
@@ -409,9 +426,11 @@ pub const VERSION_V1: [u8; 1] = [1];
 pub const SUITE_HYB1: [u8; 2] = [0, 1];
 
 /// Field-value validation: the capability carries a version and suite this verifier understands.
-/// Only these two fields have defined value sets in v0.1; `cap_type` and `flags` semantics are
-/// still provisional, so they are deliberately not constrained here (disclosed in the spec's
-/// scope). A deployment verifier rejects unknown versions and suites before doing anything else,
+/// Only these two fields have defined value sets in v0.1; which `cap_type` and `flags` values are
+/// legal is still provisional, so this check does not constrain them (disclosed in the spec's
+/// scope; their cross-link relations ARE enforced by `valid_delegation`: type pinned, flags
+/// subset, `FLAG_DELEGATE` consulted). A deployment verifier rejects unknown versions and suites
+/// before doing anything else,
 /// otherwise the acceptance theorems are about tokens it cannot actually interpret.
 pub fn valid_field_values(cap: &CapV1) -> bool {
     cap.version == VERSION_V1 && cap.suite_id == SUITE_HYB1
@@ -798,6 +817,7 @@ mod tests {
         parent.audience_id = [0x77; 16];
         parent.suite_id = [0, 1];
         parent.max_depth = [3];
+        parent.flags = [FLAG_DELEGATE];
         parent.action = [0, 0, 0, 0b0000_0011];
         parent.not_before = 100u64.to_be_bytes();
         parent.not_after = 200u64.to_be_bytes();
@@ -827,6 +847,24 @@ mod tests {
         let mut same_depth = child;
         same_depth.max_depth = [3];
         assert!(!valid_delegation(&parent, &same_depth));
+
+        // A parent without the delegation flag spawns no children.
+        let mut terminal_parent = parent;
+        terminal_parent.flags = [0];
+        assert!(!valid_delegation(&terminal_parent, &child));
+
+        // Minting a flag bit the parent lacks is rejected; clearing one is fine (child has [0]).
+        let mut mint_flag = child;
+        mint_flag.flags = [0x02];
+        assert!(!valid_delegation(&parent, &mint_flag));
+
+        // Changing the type or the constraint binding is rejected.
+        let mut swap_type = child;
+        swap_type.cap_type = [9];
+        assert!(!valid_delegation(&parent, &swap_type));
+        let mut swap_constraints = child;
+        swap_constraints.constraints_digest = [0xDD; 32];
+        assert!(!valid_delegation(&parent, &swap_constraints));
     }
 
     #[test]
@@ -857,6 +895,7 @@ mod tests {
         root.audience_id = [0x77; 16];
         root.suite_id = [0, 1];
         root.max_depth = [3];
+        root.flags = [FLAG_DELEGATE];
         root.action = [0, 0, 0, 0b0000_0011];
         root.not_before = 100u64.to_be_bytes();
         root.not_after = 200u64.to_be_bytes();
@@ -893,6 +932,7 @@ mod tests {
         root.audience_id = [0x77; 16];
         root.suite_id = [0, 1];
         root.max_depth = [3];
+        root.flags = [FLAG_DELEGATE];
         root.action = [0, 0, 0, 0b0000_0111];
         root.not_before = 100u64.to_be_bytes();
         root.not_after = 200u64.to_be_bytes();
@@ -906,6 +946,7 @@ mod tests {
         mid.audience_id = root.audience_id;
         mid.suite_id = root.suite_id;
         mid.max_depth = [2];
+        mid.flags = [FLAG_DELEGATE];
         mid.action = [0, 0, 0, 0b0000_0011];
         mid.not_before = 110u64.to_be_bytes();
         mid.not_after = 190u64.to_be_bytes();
@@ -1000,6 +1041,7 @@ mod tests {
         root.audience_id = [0x77; 16];
         root.suite_id = [0, 1];
         root.max_depth = [3];
+        root.flags = [FLAG_DELEGATE];
         root.action = [0, 0, 0, 0b0000_0011];
         root.not_before = 100u64.to_be_bytes();
         root.not_after = 200u64.to_be_bytes();
@@ -1072,6 +1114,7 @@ mod tests {
         root.resource_id = [0x44; 32];
         root.audience_id = [0x77; 16];
         root.max_depth = [3];
+        root.flags = [FLAG_DELEGATE];
         root.action = [0, 0, 0, 0b0000_0011];
         root.not_before = 100u64.to_be_bytes();
         root.not_after = 200u64.to_be_bytes();
@@ -1168,6 +1211,7 @@ mod tests {
         root.audience_id = [0x77; 16];
         root.suite_id = [0, 1];
         root.max_depth = [3];
+        root.flags = [FLAG_DELEGATE];
         root.action = [0, 0, 0, 0b0000_0011];
         root.not_before = 100u64.to_be_bytes();
         root.not_after = 200u64.to_be_bytes();
@@ -1254,6 +1298,71 @@ mod verification {
         assert!(c_nb >= a_nb && c_na <= a_na);
         assert_eq!(c.resource_id, a.resource_id);
         assert_eq!(c.audience_id, a.audience_id);
+    }
+
+    /// A two-hop delegation is satisfiable under the strengthened link rules (`kani::cover!`):
+    /// non-vacuity guard for the two-hop composition harnesses (`chain_attenuates`,
+    /// `chain_attenuates_flags_and_bindings`), whose assume-then-assert form would pass vacuously
+    /// if a future edit made two consecutive valid links contradictory.
+    #[kani::proof]
+    fn two_hop_link_reachable() {
+        let a = any_cap();
+        let b = any_cap();
+        let c = any_cap();
+        kani::cover!(valid_delegation(&a, &b) && valid_delegation(&b, &c));
+    }
+
+    /// Terminal capabilities spawn no children (definition check, stated as the attack): a parent
+    /// without `FLAG_DELEGATE` has no valid re-delegation, whatever the child sets. This is what
+    /// gives the documented flags bit 0 its meaning in the verifier.
+    #[kani::proof]
+    fn link_requires_delegation_flag() {
+        let p = any_cap();
+        let c = any_cap();
+        kani::assume(p.flags[0] & FLAG_DELEGATE == 0);
+        assert!(!valid_delegation(&p, &c));
+    }
+
+    /// No flag escalation at a link (definition check): a valid re-delegation grants no flag bit
+    /// the parent lacks. In particular a delegate that was given `FLAG_DELEGATE` can pass it on or
+    /// clear it, but a delegate without it can never mint it.
+    #[kani::proof]
+    fn link_flags_no_escalation() {
+        let p = any_cap();
+        let c = any_cap();
+        kani::assume(valid_delegation(&p, &c));
+        assert_eq!(c.flags[0] & !p.flags[0], 0);
+    }
+
+    /// Two-hop composition for the new link rules, same shape as `chain_attenuates`: down two
+    /// links, flags only shrink (subset composes through the middle link) and the type and
+    /// constraint binding are still the root's (equality composes). So no descendant can hold a
+    /// flag the root did not grant, change the token type, or shed the root's constraint set.
+    #[kani::proof]
+    fn chain_attenuates_flags_and_bindings() {
+        let a = any_cap();
+        let b = any_cap();
+        let c = any_cap();
+        kani::assume(valid_delegation(&a, &b));
+        kani::assume(valid_delegation(&b, &c));
+        assert_eq!(c.flags[0] & !a.flags[0], 0);
+        assert_eq!(c.cap_type, a.cap_type);
+        assert_eq!(c.constraints_digest, a.constraints_digest);
+    }
+
+    /// A terminal leaf is still acceptable (`kani::cover!`): a two-link chain whose leaf has
+    /// cleared `FLAG_DELEGATE` passes the chain gate. Non-vacuity for the subset rule's attenuation
+    /// direction: clearing a flag is allowed, the rules only forbid setting one.
+    #[kani::proof]
+    fn terminal_leaf_accepted() {
+        let root = any_cap();
+        let leaf = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        kani::cover!(
+            leaf.flags[0] & FLAG_DELEGATE == 0
+                && accept_chain2(&root, &leaf, &v, now, true, true)
+        );
     }
 
     /// The accept gate is reachable (its guarantees below are not vacuous).
@@ -1507,6 +1616,9 @@ mod verification {
         assert!(r_nb <= now && now <= r_na);
         assert_eq!(leaf.audience_id, v);
         assert_eq!(leaf.resource_id, root.resource_id);
+        assert_eq!(leaf.flags[0] & !root.flags[0], 0);
+        assert_eq!(leaf.cap_type, root.cap_type);
+        assert_eq!(leaf.constraints_digest, root.constraints_digest);
         assert!(is_root(root));
     }
 
@@ -1528,6 +1640,9 @@ mod verification {
         assert!(r_nb <= now && now <= r_na);
         assert_eq!(leaf.audience_id, v);
         assert_eq!(leaf.resource_id, root.resource_id);
+        assert_eq!(leaf.flags[0] & !root.flags[0], 0);
+        assert_eq!(leaf.cap_type, root.cap_type);
+        assert_eq!(leaf.constraints_digest, root.constraints_digest);
     }
 
     /// Key binding down a three-link chain: every non-root link is signed by exactly the key the

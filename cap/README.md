@@ -16,9 +16,10 @@ Cap-V1 is the "verified Rust" track, so the proof tool is Kani (CBMC), not SMT o
 
 ## Verified so far (Kani 0.67, this repo)
 
-`make cap-kani` (or `cargo kani` in this directory) checks fifty harnesses in `src/lib.rs`,
+`make cap-kani` (or `cargo kani` in this directory) checks fifty-five harnesses in `src/lib.rs`,
 all verified with 0 failures. Read the count honestly: the independent-content harnesses are the
 format bijection/injectivity, the multi-hop attenuation results (`chain_attenuates`,
+`chain_attenuates_flags_and_bindings`,
 `chain3_attenuates`, `chain4_attenuates`), `omitting_audience_breaks_binding`, the key-binding
 results (`chain_signing_key_is_delegate`, `confused_deputy_rejected`, and their three-link
 counterparts), the stateful replay results (`no_replay`, with `chain_once_no_replay` extending the same
@@ -54,6 +55,18 @@ Delegation (attenuation, chains terminate):
 - `chain_attenuates`: over two hops (`a -> b -> c`), authority only narrows: `c`'s actions are a
   subset of `a`'s, depth strictly decreases, the validity window is contained, and resource and
   audience are unchanged. The local link check composes into the global chain invariant.
+- `link_requires_delegation_flag`: a parent without `FLAG_DELEGATE` (flags bit 0) has no valid
+  re-delegation; terminal capabilities spawn no children.
+- `link_flags_no_escalation`: a valid re-delegation grants no flag bit the parent lacks (clearing
+  is allowed, minting is not).
+- `chain_attenuates_flags_and_bindings`: over two hops, flags only shrink and `cap_type` /
+  `constraints_digest` stay the root's (re-checked at lengths 3 and 4 by `chain3_attenuates` /
+  `chain4_attenuates`). Pinning the digest is byte equality only: the verifier never resolves or
+  enforces the referenced policy, and a zero-digest root pins no constraint set (see the spec).
+- `two_hop_link_reachable`: two consecutive valid links are jointly satisfiable
+  (`kani::cover!`, SATISFIED), the non-vacuity guard for the two-hop composition harnesses.
+- `terminal_leaf_accepted`: a chain whose leaf cleared `FLAG_DELEGATE` still accepts
+  (`kani::cover!`, SATISFIED); the rules forbid setting flags, not clearing them.
 
 Accept gate (`accept_leaf`, signature check abstract):
 
@@ -97,7 +110,9 @@ plain gates):
   accepted token provably carries version 1 and HYB-1.
 - `unchecked_gate_accepts_unknown_values`: the plain gate really is over-permissive
   (`kani::cover!` finds it accepting an unknown version and suite), so the validation is not
-  vacuous. `cap_type` and `flags` are deliberately not constrained (semantics provisional).
+  vacuous. `cap_type` and `flags` value sets are not validated by `valid_field_values` (which
+  values are legal is provisional); their cross-link relations ARE enforced by `valid_delegation`
+  (type pinned, flags subset, `FLAG_DELEGATE` consulted, see Delegation above).
 - `checked_reachable`: both checked gates satisfiable (`kani::cover!`, SATISFIED).
 
 Single-use presentation (`accept_leaf_once` for a bare leaf, `accept_chain_once<N>` for a chain;
@@ -217,7 +232,9 @@ harness), and the crypto crates are dev-dependencies used only by the integratio
 
 ## Scope
 
-Proved (Kani): the format bijection, `valid_delegation` attenuation, the leaf accept gate, an
+Proved (Kani): the format bijection, `valid_delegation` attenuation (action, depth, window, and
+flags narrow; `FLAG_DELEGATE` required on every parent, so terminal capabilities spawn no
+children; `cap_type` and `constraints_digest` pinned to the root's), the leaf accept gate, an
 N-link chain accept (verified at lengths 2, 3, 4) that requires every link's signature and never
 exceeds the root grant, that the signed message is the canonical/complete/injective encoding, that
 each link's signing key is bound to the key its parent delegated to (confused-deputy rejected at
@@ -228,13 +245,15 @@ SHA-256: ~2^128 second preimage, ~2^64 birthday; the model's `key_id` stays an a
 inside Kani, bridged by the machine-checked `committing_to`). Bounded: chain
 lengths beyond 4 rest on the link-local argument (no induction is machine-checked), and the replay
 store is fixed at capacity 8, sequential, fail-closed when full, with no expiry or eviction. Not
-yet: validation of `cap_type` / `flags` (their semantics are still provisional, so
-`valid_field_values` pins only `version` and `suite_id`), revocation-list distribution, and expiry/
-eviction for either bounded store. See the spec's scope section.
+yet: absolute value sets for `cap_type` / flag bits beyond bit 0 (still provisional, so
+`valid_field_values` pins only `version` and `suite_id`; cross-link relations for those fields ARE
+enforced), structured constraint tightening (the digest is opaque, so links require equality),
+revocation-list distribution, and expiry/eviction for either bounded store. See the spec's scope
+section.
 
 ## Run
 
-    make cap-kani        # from repo root: 50 Kani harnesses
+    make cap-kani        # from repo root: 55 Kani harnesses
     make cap-hybrid      # from repo root: real ECDSA + ML-DSA-44 integration test
     cargo kani           # from this directory
     cargo test --features hyb1-keyid   # concrete tests incl. the hybrid crypto test
