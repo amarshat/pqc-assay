@@ -16,7 +16,7 @@ Cap-V1 is the "verified Rust" track, so the proof tool is Kani (CBMC), not SMT o
 
 ## Verified so far (Kani 0.67, this repo)
 
-`make cap-kani` (or `cargo kani` in this directory) checks thirty-seven harnesses in `src/lib.rs`,
+`make cap-kani` (or `cargo kani` in this directory) checks forty-one harnesses in `src/lib.rs`,
 all verified with 0 failures. Read the count honestly: the independent-content harnesses are the
 format bijection/injectivity, the multi-hop attenuation results (`chain_attenuates`,
 `chain3_attenuates`, `chain4_attenuates`), `omitting_audience_breaks_binding`, the key-binding
@@ -83,6 +83,19 @@ N-link chain accept (`accept_chain<N>` / `accept_chain_signed<N>`; the two-link 
 
 These are bounded results at concrete lengths (2, 3, 4), not an induction over all N; see the
 spec's scope section.
+
+Field-value validation (`valid_field_values` pins `version == 1` and `suite_id == HYB-1`, the only
+defined value sets in v0.1; `accept_leaf_checked` / `accept_chain_checked<N>` run it before the
+plain gates):
+
+- `checked_rejects_unknown_values`: an unknown version or suite never accepts, at the leaf gate and
+  at every position of a 3-link chain.
+- `checked_implies_gate_and_pins_values`: the checked gates do not weaken the plain ones, and an
+  accepted token provably carries version 1 and HYB-1.
+- `unchecked_gate_accepts_unknown_values`: the plain gate really is over-permissive
+  (`kani::cover!` finds it accepting an unknown version and suite), so the validation is not
+  vacuous. `cap_type` and `flags` are deliberately not constrained (semantics provisional).
+- `checked_reachable`: both checked gates satisfiable (`kani::cover!`, SATISFIED).
 
 Single-use presentation (`accept_leaf_once` for a bare leaf, `accept_chain_once<N>` for a chain;
 both = their stateless gate plus one shared bounded used-token store keyed on the presented leaf's
@@ -158,11 +171,12 @@ the integration test over `serialize(cap)`. Assumed: ML-DSA-44/ECDSA unforgeabil
 prove it), and `key_id` is a placeholder truncated-hash commitment in the model. Bounded: chain
 lengths beyond 4 rest on the link-local argument (no induction is machine-checked), and the replay
 store is fixed at capacity 8, sequential, fail-closed when full, with no expiry or eviction. Not
-yet: revocation and field-value validation in the accept path. See the spec's scope section.
+yet: revocation, and validation of `cap_type` / `flags` (their semantics are still provisional, so
+`valid_field_values` pins only `version` and `suite_id`). See the spec's scope section.
 
 ## Run
 
-    make cap-kani        # from repo root: 37 Kani harnesses
+    make cap-kani        # from repo root: 41 Kani harnesses
     make cap-hybrid      # from repo root: real ECDSA + ML-DSA-44 integration test
     cargo kani           # from this directory
     cargo test           # concrete tests incl. the hybrid crypto test

@@ -83,11 +83,11 @@ of scope here (see Scope); without it the chain guarantees are conditional on th
 ## Machine-checked properties (this session, Kani)
 
 `cap/src/lib.rs`, harnesses under `#[cfg(kani)] mod verification`, run with `cargo kani` (or
-`make cap-kani`). Kani 0.67.0, CBMC backend. All thirty-seven verified, 0 failures. `any_cap()` is
+`make cap-kani`). Kani 0.67.0, CBMC backend. All forty-one verified, 0 failures. `any_cap()` is
 `parse(kani::any::<[u8; 191]>())`, which ranges over all `CapV1` (each field is an independent slice
 of a fully symbolic buffer).
 
-Not all thirty-seven carry equal weight, and the count should not be read as "thirty-seven
+Not all forty-one carry equal weight, and the count should not be read as "forty-one
 independent theorems". The honest taxonomy:
 - Independent content: the format bijection/injectivity (`roundtrip_*`, `serialize_injective`), the
   multi-hop attenuation results (`chain_attenuates`, `chain3_attenuates`, `chain4_attenuates`),
@@ -213,6 +213,26 @@ a full store or an already-consumed key rejects):
   the same token twice (`kani::cover!` finds the double accept), so `no_replay` is not vacuous and
   the consume step is exactly what it checks.
 
+Field-value validation (`valid_field_values(cap)` = `version == VERSION_V1 && suite_id ==
+SUITE_HYB1`, the only fields with defined value sets in v0.1; `accept_leaf_checked` /
+`accept_chain_checked<N>` run it before the plain gates, on every link):
+
+- `checked_reachable`: both checked gates satisfiable (`kani::cover!`, SATISFIED).
+- `checked_rejects_unknown_values` (independent content at the chain gate): a token with an unknown
+  version or suite never accepts at the leaf gate, and rejects a 3-link chain at whichever position
+  it sits.
+- `checked_implies_gate_and_pins_values` (definition check): checked acceptance implies the plain
+  gate and pins `version` / `suite_id` to the defined values.
+- `unchecked_gate_accepts_unknown_values` (non-vacuity, the over-permissive-gate witness, Q-SEAL
+  property 7's device): the plain `accept_leaf` accepts a token whose version and suite are both
+  unknown, which the checked gate provably rejects. So the validation is what stands between the
+  verifier and tokens it cannot interpret.
+
+`cap_type` and `flags` are deliberately not constrained (semantics provisional, disclosed in
+Scope). Q-SEAL's property 7 lesson carries over: this gate covers enumerated field values only;
+byte-level parsing of a hostile wire input is the format bijection's job, and anything upstream of
+the 191-byte buffer (transport framing) is out of scope.
+
 Chain composition (`accept_chain_once<N>` = `accept_chain` plus the same store, consuming the
 presented leaf's key; intermediates are not consumed, since the leaf pins its chain via `parent_id`
 and per-link signatures, re-presenting the chain means re-presenting the leaf key, and two distinct
@@ -334,10 +354,12 @@ deployment.
   `key_id` is the leading 16 bytes of the key (a stand-in for a truncated collision-resistant hash),
   and the hybrid verify itself is an assumed spec in Kani (run for real in the integration test). So
   the confused-deputy hole is closed relative to those assumptions, not unconditionally.
-- **The accept path validates no field values.** `accept_leaf` / `accept_chain2` / `valid_delegation`
-  do not call `well_formed` and do not check `version`, `suite_id`, or `cap_type` ranges. The object
-  the theorems are about is thus not a deployment verifier, which would reject unknown version/suite.
-  Q-SEAL has a dedicated property for this; Cap-V1 does not yet.
+- **Field-value validation covers `version` and `suite_id` only.** `accept_leaf_checked` /
+  `accept_chain_checked` reject unknown versions and suites (machine-checked above), and the plain
+  gates are proved over-permissive by a `kani::cover!` witness. `cap_type` and `flags` value sets
+  are still provisional, so they remain unvalidated, and no gate calls `well_formed` (the magic is
+  a serialization concern; the gates take a parsed `CapV1`). A deployment runs the checked, `_once`
+  variants together.
 - **Replay is closed on the stateful gates only, and there is still no revocation.**
   `accept_leaf_once` and `accept_chain_once` consume the presented leaf's `cap_id || nonce` on one
   shared bounded (capacity 8), sequential, fail-closed store (limits disclosed above); the plain

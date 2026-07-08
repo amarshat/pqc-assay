@@ -338,6 +338,44 @@ pub fn accept_chain_signed<const N: usize>(
     accept_chain(caps, verifier_id, now, sigs_ok)
 }
 
+/// The one version this layout defines.
+pub const VERSION_V1: [u8; 1] = [1];
+
+/// HYB-1: ECDSA P-256 + ML-DSA-44, both required. The only suite defined so far.
+pub const SUITE_HYB1: [u8; 2] = [0, 1];
+
+/// Field-value validation: the capability carries a version and suite this verifier understands.
+/// Only these two fields have defined value sets in v0.1; `cap_type` and `flags` semantics are
+/// still provisional, so they are deliberately not constrained here (disclosed in the spec's
+/// scope). A deployment verifier rejects unknown versions and suites before doing anything else,
+/// otherwise the acceptance theorems are about tokens it cannot actually interpret.
+pub fn valid_field_values(cap: &CapV1) -> bool {
+    cap.version == VERSION_V1 && cap.suite_id == SUITE_HYB1
+}
+
+/// The leaf gate plus field-value validation: what a deployment verifier runs for a bare leaf
+/// (stateless part).
+pub fn accept_leaf_checked(cap: &CapV1, verifier_id: &[u8; 16], now: u64, sig_ok: bool) -> bool {
+    valid_field_values(cap) && accept_leaf(cap, verifier_id, now, sig_ok)
+}
+
+/// The chain gate plus field-value validation on every link.
+pub fn accept_chain_checked<const N: usize>(
+    caps: &[CapV1; N],
+    verifier_id: &[u8; 16],
+    now: u64,
+    sigs_ok: &[bool; N],
+) -> bool {
+    let mut i = 0;
+    while i < N {
+        if !valid_field_values(&caps[i]) {
+            return false;
+        }
+        i += 1;
+    }
+    accept_chain(caps, verifier_id, now, sigs_ok)
+}
+
 /// Capacity of the bounded used-token store. Fixed so the replay properties are checkable by
 /// bounded symbolic execution (the same device as Q-SEAL's CAP=8 challenge store). The store logic
 /// does not depend on the value; the theorems are proved at this capacity, not for all capacities.
@@ -779,6 +817,28 @@ mod tests {
         leaf2.nonce = [0x52; 16];
         let (ok4, _) = accept_chain_once(&[root, leaf2], &v, 150, &[true, true], &next);
         assert!(ok4);
+    }
+
+    #[test]
+    fn concrete_field_validation() {
+        let mut cap = CapV1::zeroed();
+        cap.version = VERSION_V1;
+        cap.suite_id = SUITE_HYB1;
+        cap.audience_id = [0x77; 16];
+        cap.not_before = 100u64.to_be_bytes();
+        cap.not_after = 200u64.to_be_bytes();
+        let v = [0x77; 16];
+
+        assert!(accept_leaf_checked(&cap, &v, 150, true));
+        // Unknown version: rejected by the checked gate, accepted by the plain one.
+        let mut bad_version = cap;
+        bad_version.version = [2];
+        assert!(!accept_leaf_checked(&bad_version, &v, 150, true));
+        assert!(accept_leaf(&bad_version, &v, 150, true));
+        // Unknown suite: rejected.
+        let mut bad_suite = cap;
+        bad_suite.suite_id = [0, 9];
+        assert!(!accept_leaf_checked(&bad_suite, &v, 150, true));
     }
 
     #[test]
@@ -1368,6 +1428,66 @@ mod verification {
         } else {
             assert_eq!(next, store);
         }
+    }
+
+    /// The checked gates are reachable (validation does not make acceptance unsatisfiable).
+    #[kani::proof]
+    fn checked_reachable() {
+        let cap = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        kani::cover!(accept_leaf_checked(&cap, &v, now, true));
+        let caps = [any_cap(), any_cap(), any_cap()];
+        kani::cover!(accept_chain_checked(&caps, &v, now, &[true, true, true]));
+    }
+
+    /// Unknown version or suite never accepts, at the leaf gate and at every link of the chain
+    /// gate: a token the verifier cannot interpret is rejected before the acceptance logic applies.
+    #[kani::proof]
+    fn checked_rejects_unknown_values() {
+        let cap = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let s: bool = kani::any();
+        kani::assume(cap.version != VERSION_V1 || cap.suite_id != SUITE_HYB1);
+        assert!(!accept_leaf_checked(&cap, &v, now, s));
+        let good1 = any_cap();
+        let good2 = any_cap();
+        let sigs: [bool; 3] = kani::any();
+        // The bad link rejects the chain wherever it sits.
+        assert!(!accept_chain_checked(&[cap, good1, good2], &v, now, &sigs));
+        assert!(!accept_chain_checked(&[good1, cap, good2], &v, now, &sigs));
+        assert!(!accept_chain_checked(&[good1, good2, cap], &v, now, &sigs));
+    }
+
+    /// The checked gates do not weaken the unchecked ones (acceptance still implies the plain
+    /// gate), and validation is exactly the version/suite pin: an accepted link carries VERSION_V1
+    /// and SUITE_HYB1.
+    #[kani::proof]
+    fn checked_implies_gate_and_pins_values() {
+        let cap = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let s: bool = kani::any();
+        kani::assume(accept_leaf_checked(&cap, &v, now, s));
+        assert!(accept_leaf(&cap, &v, now, s));
+        assert_eq!(cap.version, VERSION_V1);
+        assert_eq!(cap.suite_id, SUITE_HYB1);
+    }
+
+    /// The unchecked gate really is over-permissive (the validation is not vacuous): the plain
+    /// leaf gate accepts a token with an unknown version and suite, which the checked gate provably
+    /// rejects above. This is the Kani analogue of Q-SEAL's over-permissive-gate witness.
+    #[kani::proof]
+    fn unchecked_gate_accepts_unknown_values() {
+        let cap = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        kani::cover!(
+            cap.version != VERSION_V1
+                && cap.suite_id != SUITE_HYB1
+                && accept_leaf(&cap, &v, now, true)
+        );
     }
 
     /// Round-trip on records: parsing a serialized capability recovers it exactly, for every
