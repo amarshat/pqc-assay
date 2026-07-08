@@ -16,12 +16,12 @@ Cap-V1 is the "verified Rust" track, so the proof tool is Kani (CBMC), not SMT o
 
 ## Verified so far (Kani 0.67, this repo)
 
-`make cap-kani` (or `cargo kani` in this directory) checks thirty-three harnesses in `src/lib.rs`,
+`make cap-kani` (or `cargo kani` in this directory) checks thirty-seven harnesses in `src/lib.rs`,
 all verified with 0 failures. Read the count honestly: the independent-content harnesses are the
 format bijection/injectivity, the multi-hop attenuation results (`chain_attenuates`,
 `chain3_attenuates`, `chain4_attenuates`), `omitting_audience_breaks_binding`, the key-binding
 results (`chain_signing_key_is_delegate`, `confused_deputy_rejected`, and their three-link
-counterparts), and the stateful replay results (`no_replay`, `accept_consumes`). Many
+counterparts), and the stateful replay results (`no_replay`, `chain_once_no_replay`, `accept_consumes`, `chain_once_consumes`). Many
 of the rest are *definition checks* (they assert one clause of the predicate they assume) or
 `kani::cover!` non-vacuity pings; the `signed_message_*` pair restates the format lemmas under the
 `signed_message == serialize` alias. The spec's "Machine-checked properties" section tags each. And
@@ -84,9 +84,9 @@ N-link chain accept (`accept_chain<N>` / `accept_chain_signed<N>`; the two-link 
 These are bounded results at concrete lengths (2, 3, 4), not an induction over all N; see the
 spec's scope section.
 
-Single-use leaf presentation (`accept_leaf_once` = the leaf gate plus a bounded used-token store
-keyed on `cap_id || nonce`; Q-SEAL property 4's analogue in Rust. Leaf gate only: chains via
-`accept_chain` have no replay protection yet):
+Single-use presentation (`accept_leaf_once` for a bare leaf, `accept_chain_once<N>` for a chain;
+both = their stateless gate plus one shared bounded used-token store keyed on the presented leaf's
+`cap_id || nonce`; Q-SEAL property 4's analogue in Rust):
 
 - `once_reachable`: the single-use gate is satisfiable (`kani::cover!`, SATISFIED).
 - `no_replay`: an accepted token presented again to the successor store rejects, for any second
@@ -97,6 +97,14 @@ keyed on `cap_id || nonce`; Q-SEAL property 4's analogue in Rust. Leaf gate only
   audience, window), and a full store fails closed.
 - `noconsume_mutant_replays`: under a no-consume mutant the same token accepts twice
   (`kani::cover!` finds the double accept), so `no_replay` has content.
+- `chain_once_no_replay`: after a 3-link chain is accepted, any 2- or 3-link chain whose leaf
+  carries the same replay key rejects against the successor store (re-presenting the identical
+  chain is the special case).
+- `chain_once_implies_chain_gate` / `chain_once_reachable`: the stateful chain gate does not weaken
+  `accept_chain`, fails closed when full, and is satisfiable.
+- `chain_once_consumes`: chain acceptance consumes the leaf's key, and because the leaf and chain
+  gates share one store, a chain-consumed leaf cannot re-enter through `accept_leaf_once`;
+  rejection leaves the store unchanged.
 
 Store capacity is fixed at 8 (`STORE_CAP`, same device as Q-SEAL's CAP=8): the theorems are proved
 at that capacity, not for all capacities. Only *accepted* tokens consume a slot (junk cannot fill
@@ -150,12 +158,11 @@ the integration test over `serialize(cap)`. Assumed: ML-DSA-44/ECDSA unforgeabil
 prove it), and `key_id` is a placeholder truncated-hash commitment in the model. Bounded: chain
 lengths beyond 4 rest on the link-local argument (no induction is machine-checked), and the replay
 store is fixed at capacity 8, sequential, fail-closed when full, with no expiry or eviction. Not
-yet: revocation, field-value validation in the accept path, and single-use composed into the chain
-gate (it is stated on the leaf gate). See the spec's scope section.
+yet: revocation and field-value validation in the accept path. See the spec's scope section.
 
 ## Run
 
-    make cap-kani        # from repo root: 33 Kani harnesses
+    make cap-kani        # from repo root: 37 Kani harnesses
     make cap-hybrid      # from repo root: real ECDSA + ML-DSA-44 integration test
     cargo kani           # from this directory
     cargo test           # concrete tests incl. the hybrid crypto test

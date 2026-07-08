@@ -413,6 +413,36 @@ pub fn accept_leaf_once(
     (true, next)
 }
 
+/// Accept an N-link chain at most once: the chain gate (`accept_chain`) plus single-use on the
+/// presented leaf. The consumed key is the leaf's `replay_key` only; the intermediate links are not
+/// consumed, because what replays is the presentation (the leaf), and the leaf pins its whole
+/// chain (`parent_id` links plus per-link signatures), so re-presenting the same chain means
+/// re-presenting the same leaf key. Two different leaves delegated from the same root are distinct
+/// presentations and both accept, by design. Same store, same assumption as `accept_leaf_once`:
+/// one store per `audience_id`.
+pub fn accept_chain_once<const N: usize>(
+    caps: &[CapV1; N],
+    verifier_id: &[u8; 16],
+    now: u64,
+    sigs_ok: &[bool; N],
+    store: &NonceStore,
+) -> (bool, NonceStore) {
+    if N == 0 {
+        return (false, *store);
+    }
+    let key = replay_key(&caps[N - 1]);
+    if !accept_chain(caps, verifier_id, now, sigs_ok)
+        || store_contains(store, &key)
+        || store.len >= STORE_CAP
+    {
+        return (false, *store);
+    }
+    let mut next = *store;
+    next.used[next.len] = key;
+    next.len += 1;
+    (true, next)
+}
+
 /// A deliberately broken variant that forgets to consume: it checks the store but returns it
 /// unchanged, so a replayed token accepts again. Used only to witness that the no-replay theorem
 /// has content (the mutation device of the repo's other tracks). Not part of the shipped API.
@@ -704,6 +734,51 @@ mod tests {
         let full = NonceStore { used: [[0xFF; 32]; STORE_CAP], len: STORE_CAP };
         let (ok4, _) = accept_leaf_once(&cap, &v, 150, true, &full);
         assert!(!ok4);
+    }
+
+    #[test]
+    fn concrete_accept_chain_once() {
+        let mut root = CapV1::zeroed();
+        root.subject_id = [0xAA; 16];
+        root.cap_id = [0xB0; 16];
+        root.resource_id = [0x44; 32];
+        root.audience_id = [0x77; 16];
+        root.suite_id = [0, 1];
+        root.max_depth = [3];
+        root.action = [0, 0, 0, 0b0000_0011];
+        root.not_before = 100u64.to_be_bytes();
+        root.not_after = 200u64.to_be_bytes();
+
+        let mut leaf = CapV1::zeroed();
+        leaf.issuer_id = root.subject_id;
+        leaf.subject_id = [0xCC; 16];
+        leaf.parent_id = root.cap_id;
+        leaf.cap_id = [0xB1; 16];
+        leaf.nonce = [0x51; 16];
+        leaf.resource_id = root.resource_id;
+        leaf.audience_id = root.audience_id;
+        leaf.suite_id = root.suite_id;
+        leaf.max_depth = [2];
+        leaf.action = [0, 0, 0, 0b0000_0001];
+        leaf.not_before = 120u64.to_be_bytes();
+        leaf.not_after = 180u64.to_be_bytes();
+
+        let v = [0x77; 16];
+        let store = NonceStore::empty();
+        let (ok, next) = accept_chain_once(&[root, leaf], &v, 150, &[true, true], &store);
+        assert!(ok);
+        // Same chain again: rejected.
+        let (ok2, _) = accept_chain_once(&[root, leaf], &v, 160, &[true, true], &next);
+        assert!(!ok2);
+        // The consumed leaf cannot re-enter through the leaf gate either (shared store).
+        let (ok3, _) = accept_leaf_once(&leaf, &v, 150, true, &next);
+        assert!(!ok3);
+        // A different leaf from the same root is a distinct presentation and accepts.
+        let mut leaf2 = leaf;
+        leaf2.cap_id = [0xB2; 16];
+        leaf2.nonce = [0x52; 16];
+        let (ok4, _) = accept_chain_once(&[root, leaf2], &v, 150, &[true, true], &next);
+        assert!(ok4);
     }
 
     #[test]
@@ -1214,6 +1289,85 @@ mod verification {
         let (ok, next) = accept_leaf_once_noconsume(&cap, &v, now1, true, &store);
         let (ok2, _) = accept_leaf_once_noconsume(&cap, &v, now2, true, &next);
         kani::cover!(ok && ok2);
+    }
+
+    /// The single-use chain gate is reachable at three links (the theorems below are not vacuous).
+    #[kani::proof]
+    fn chain_once_reachable() {
+        let caps = [any_cap(), any_cap(), any_cap()];
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let store = any_store();
+        let (ok, _) = accept_chain_once(&caps, &v, now, &[true, true, true], &store);
+        kani::cover!(ok);
+    }
+
+    /// No chain replay, stated stronger than re-presenting the same chain: after any 3-link chain
+    /// is accepted, ANY 2- or 3-link chain whose leaf carries the same replay key (`cap_id ||
+    /// nonce`) rejects against the successor store, whatever its other links, time, or signature
+    /// bits. Re-presenting the identical chain is the special case.
+    #[kani::proof]
+    fn chain_once_no_replay() {
+        let caps = [any_cap(), any_cap(), any_cap()];
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let sigs: [bool; 3] = kani::any();
+        let store = any_store();
+        let (ok, next) = accept_chain_once(&caps, &v, now, &sigs, &store);
+        kani::assume(ok);
+        let other2 = [any_cap(), any_cap()];
+        let other3 = [any_cap(), any_cap(), any_cap()];
+        let v2: [u8; 16] = kani::any();
+        let now2: u64 = kani::any();
+        let s2: [bool; 2] = kani::any();
+        let s3: [bool; 3] = kani::any();
+        if replay_key(&other2[1]) == replay_key(&caps[2]) {
+            let (ok2, _) = accept_chain_once(&other2, &v2, now2, &s2, &next);
+            assert!(!ok2);
+        }
+        if replay_key(&other3[2]) == replay_key(&caps[2]) {
+            let (ok3, _) = accept_chain_once(&other3, &v2, now2, &s3, &next);
+            assert!(!ok3);
+        }
+    }
+
+    /// The single-use chain gate does not weaken the chain gate: acceptance implies `accept_chain`
+    /// (root, all signatures, every link, leaf gate all still required), and a full store fails
+    /// closed.
+    #[kani::proof]
+    fn chain_once_implies_chain_gate() {
+        let caps = [any_cap(), any_cap(), any_cap()];
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let sigs: [bool; 3] = kani::any();
+        let store = any_store();
+        let (ok, _) = accept_chain_once(&caps, &v, now, &sigs, &store);
+        if store.len >= STORE_CAP {
+            assert!(!ok);
+        }
+        if ok {
+            assert!(accept_chain(&caps, &v, now, &sigs));
+        }
+    }
+
+    /// Chain acceptance consumes the leaf's key; rejection leaves the store unchanged. The leaf
+    /// and chain gates share one store, so a chain-consumed leaf also cannot re-enter through
+    /// `accept_leaf_once` (both go through `store_contains` on the same key).
+    #[kani::proof]
+    fn chain_once_consumes() {
+        let caps = [any_cap(), any_cap(), any_cap()];
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let sigs: [bool; 3] = kani::any();
+        let store = any_store();
+        let (ok, next) = accept_chain_once(&caps, &v, now, &sigs, &store);
+        if ok {
+            assert!(store_contains(&next, &replay_key(&caps[2])));
+            let (leaf_ok, _) = accept_leaf_once(&caps[2], &v, now, true, &next);
+            assert!(!leaf_ok);
+        } else {
+            assert_eq!(next, store);
+        }
     }
 
     /// Round-trip on records: parsing a serialized capability recovers it exactly, for every
