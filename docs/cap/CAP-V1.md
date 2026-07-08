@@ -95,8 +95,8 @@ independent theorems". The honest taxonomy:
   key-binding results (`chain_signing_key_is_delegate`, `confused_deputy_rejected` and their
   three-link counterparts), the stateful replay results (`no_replay`, with `chain_once_no_replay`
   extending the same mechanism to the chain gate; `accept_consumes` / `chain_once_consumes` are
-  mixed, see their tags), and the revocation results (`revoke_root_then_chain_rejects` plus its
-  leaf-only-mutant witness).
+  mixed, see their tags), and the revocation composition (`revoke_root_then_chain_rejects`; its
+  leaf-only mutant is a non-vacuity cover, not independent content).
 - Definition checks (marked below): each assumes a predicate `P` and asserts one conjunct of `P`, so
   it confirms the definition contains the clause but is not an independent theorem.
 - `signed_message` is defined as `serialize`, so `signed_message_covers_all_fields` and
@@ -278,12 +278,28 @@ is entirely out of scope; these theorems are about what an up-to-date list enfor
   (`kani::cover!` finds it), which the shipped per-link gate provably rejects. Per-link checking is
   exactly what the ancestor theorem needs.
 
-The fail direction is the opposite of the nonce store's and is the key disclosed limit: a full
-revocation list FAILS OPEN. `revoke` is refused and the capability stays live, so a capacity-8
-list can only ever kill 8 delegations, and there is no eviction. The nonce store fails closed
-(availability risk); the revocation list fails open (authority-containment risk). A deployment
-sizing these stores is choosing between those two failure modes, and this model makes the choice
-visible rather than solving it.
+Two load-bearing assumptions and the fail direction, all disclosed:
+
+First, revocation keys on `cap_id` ALONE (not issuer + cap_id), and its soundness rests on an
+assumption nothing in this model enforces: that `cap_id` is globally unique and assigned by the
+issuer, not forged. `cap_id` is an attacker-writable field of the token; two capabilities sharing
+a `cap_id` are revoked together, and in one verifier's list a revoked id from delegation tree A
+also kills an unrelated chain in tree B that happens to carry the same id. The signature layer is
+what stops an attacker from minting a cap that collides with a victim's id AND verifies (the
+forged cap fails key binding), but id uniqueness among legitimately issued caps is the issuer's
+burden, exactly like the single-use section's one-store-per-audience assumption.
+
+Second, revocation cuts a specific `cap_id`, not an agent: revoking one cap does not touch the
+delegate's sibling caps (other still-valid delegations to the same subject) or its key, and there
+is no key- or subject-level revocation. Like single-use, this does not contain a compromised
+delegate; it kills authority presented through the revoked cap only.
+
+Third, the fail direction is the opposite of the nonce store's: a full revocation list FAILS
+OPEN. `revoke` is refused and the capability stays live, so a capacity-8 list holds at most 8
+distinct cap_ids and there is no eviction. The nonce store fails closed (availability risk); the
+revocation list fails open (authority-containment risk). A deployment sizing these stores is
+choosing between those two failure modes, and this model makes the choice visible rather than
+solving it.
 
 Composed deployment gates (`accept_leaf_full` = field validation + key binding + leaf gate +
 single-use; `accept_chain_full<N>` = field validation and key binding on every link + chain gate +
@@ -411,14 +427,17 @@ deployment.
   `accept_leaf_full` / `accept_chain_full` gates, whose composition is itself machine-checked
   (`full_implies_all_conjuncts`, `full_no_replay`); hand-stacking the `_checked` and `_once`
   variants is not verified and, on the chain path, would drop key binding.
-- **Replay is closed on the stateful gates only, and there is still no revocation.**
+- **Replay and revocation live on the composed gates only, with disclosed limits.**
   `accept_leaf_once` and `accept_chain_once` consume the presented leaf's `cap_id || nonce` on one
   shared bounded (capacity 8), sequential, fail-closed store (limits disclosed above); the plain
-  `accept_leaf` / `accept_chain` gates remain replayable, so a deployment must use the composed
-  `_full` gates (verified composition; the bare `_once` gates lack field validation and, on the
-  chain path, key binding). Single-use is per-presentation anti-replay only: it does not bound how
-  many distinct single-use leaves a delegate with remaining depth can mint and have accepted. Nothing revokes a capability before `not_after`. For a capability layer revocation is a
-  headline property, not a footnote.
+  `accept_leaf` / `accept_chain` gates remain replayable and consult no revocation list, so a
+  deployment must use the composed `_full` gates (verified composition; the bare `_once` gates
+  lack field validation, key binding on the chain path, and revocation). Single-use is
+  per-presentation anti-replay only: it does not bound how many distinct single-use leaves a
+  delegate with remaining depth can mint and have accepted. Revocation is modeled per-link in the
+  `_full` gates (ancestor revocation kills descendants' chains) but is per-`cap_id`, bounded at 8
+  ids, FAILS OPEN when full, and rests on the cap_id-uniqueness assumption stated in the
+  Revocation section; list distribution and expiry/eviction for either store remain out of scope.
 - Chain results are bounded: `accept_chain<N>` is verified at N = 2, 3, 4 (concrete
   instantiations). No machine-checked induction covers all N; longer chains rest on the link-local
   argument.

@@ -23,8 +23,8 @@ format bijection/injectivity, the multi-hop attenuation results (`chain_attenuat
 results (`chain_signing_key_is_delegate`, `confused_deputy_rejected`, and their three-link
 counterparts), the stateful replay results (`no_replay`, with `chain_once_no_replay` extending the same
 mechanism to the chain gate; `accept_consumes` and `chain_once_consumes` are mixed, their reject
-halves being definition checks), and the revocation pair (`revoke_root_then_chain_rejects`,
-`leafonly_revocation_mutant_accepts_revoked_root`). Many
+halves being definition checks), and the revocation composition
+(`revoke_root_then_chain_rejects`; its leaf-only mutant is a non-vacuity cover). Many
 of the rest are *definition checks* (they assert one clause of the predicate they assume) or
 `kani::cover!` non-vacuity pings; the `signed_message_*` pair restates the format lemmas under the
 `signed_message == serialize` alias. The spec's "Machine-checked properties" section tags each. And
@@ -137,10 +137,13 @@ Revocation (`RevocationStore` = a bounded append-only list of revoked `cap_id`s;
   with a revoked ROOT still accepts (`kani::cover!` finds it), so per-link checking is exactly what
   the ancestor-revocation theorem needs.
 
-Read the fail direction carefully: the revocation list FAILS OPEN when full. `revoke` on a full
-list is refused and the capability stays live, the opposite direction from the nonce store. A
-capacity-8 list can only ever kill 8 delegations; revocation-list distribution (issuer to
-verifier) is out of scope entirely.
+Read the limits carefully. Revocation keys on `cap_id` alone and assumes issuers keep cap_ids
+globally unique (two caps sharing an id are revoked together, even across unrelated delegation
+trees at one verifier). It cuts a specific cap, not an agent: sibling caps and the delegate's key
+survive, so like single-use it does not contain a compromised delegate. And the list FAILS OPEN
+when full: `revoke` is refused and the capability stays live, the opposite direction from the
+nonce store; capacity 8 means at most 8 distinct revoked cap_ids, no eviction. Revocation-list
+distribution (issuer to verifier) is out of scope entirely.
 
 Composed deployment gates (`accept_leaf_full` / `accept_chain_full<N>`; the individual gates do
 not compose themselves, and hand-stacking `_checked` + `_once` on a chain would drop key binding,
