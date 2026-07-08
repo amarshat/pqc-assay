@@ -83,18 +83,20 @@ of scope here (see Scope); without it the chain guarantees are conditional on th
 ## Machine-checked properties (this session, Kani)
 
 `cap/src/lib.rs`, harnesses under `#[cfg(kani)] mod verification`, run with `cargo kani` (or
-`make cap-kani`). Kani 0.67.0, CBMC backend. All forty-four verified, 0 failures. `any_cap()` is
+`make cap-kani`). Kani 0.67.0, CBMC backend. All forty-nine verified, 0 failures. `any_cap()` is
 `parse(kani::any::<[u8; 191]>())`, which ranges over all `CapV1` (each field is an independent slice
 of a fully symbolic buffer).
 
-Not all forty-four carry equal weight, and the count should not be read as "forty-four
+Not all forty-nine carry equal weight, and the count should not be read as "forty-nine
 independent theorems". The honest taxonomy:
 - Independent content: the format bijection/injectivity (`roundtrip_*`, `serialize_injective`), the
   multi-hop attenuation results (`chain_attenuates`, `chain3_attenuates`, `chain4_attenuates`),
   `omitting_audience_breaks_binding` (a mutation witness that a plausible bug would be caught), the
   key-binding results (`chain_signing_key_is_delegate`, `confused_deputy_rejected` and their
-  three-link counterparts), and the stateful replay results (`no_replay`, with `chain_once_no_replay` extending the same
-  mechanism to the chain gate; `accept_consumes` / `chain_once_consumes` are mixed, see their tags).
+  three-link counterparts), the stateful replay results (`no_replay`, with `chain_once_no_replay`
+  extending the same mechanism to the chain gate; `accept_consumes` / `chain_once_consumes` are
+  mixed, see their tags), and the revocation results (`revoke_root_then_chain_rejects` plus its
+  leaf-only-mutant witness).
 - Definition checks (marked below): each assumes a predicate `P` and asserts one conjunct of `P`, so
   it confirms the definition contains the clause but is not an independent theorem.
 - `signed_message` is defined as `serialize`, so `signed_message_covers_all_fields` and
@@ -256,6 +258,33 @@ does not rate-limit or contain a compromised intermediate):
 Like the chain gate itself, these are instantiated at concrete lengths (3, with the cross-gate
 check against 2), not for all N.
 
+Revocation (`RevocationStore` = a bounded append-only list of revoked `cap_id`s, capacity
+`STORE_CAP = 8`, one per verifier; `revoke(rs, cap_id)` returns the verdict and successor list;
+`is_revoked` scans the live prefix. How a verifier learns what to revoke, i.e. list distribution,
+is entirely out of scope; these theorems are about what an up-to-date list enforces):
+
+- `revoked_leaf_never_accepts` (definition check): a revoked leaf rejects through
+  `accept_leaf_full`, whatever key, time, or signature is presented, store unchanged.
+- `revoked_any_link_kills_chain` (definition check at each position, the composed statement): if
+  any link of a 3-link chain is revoked, `accept_chain_full` rejects. Revocation is checked per
+  link, so revoking an ancestor kills every chain presented through it.
+- `revoke_root_then_chain_rejects` (independent content, `no_replay`'s shape for revocation): a
+  chain the gate accepts is rejected after its root's `cap_id` is revoked; `revoke`'s append is
+  visible to `is_revoked`'s scan at the root position.
+- `revoke_marks_revoked_or_fails_open` (mixed): a successful revoke marks the id (idempotently); a
+  refused revoke (full list) leaves the list unchanged and the id unrevoked.
+- `leafonly_revocation_mutant_accepts_revoked_root` (non-vacuity, mutation-style): a variant that
+  checks revocation on the presented leaf only accepts a chain whose root is revoked
+  (`kani::cover!` finds it), which the shipped per-link gate provably rejects. Per-link checking is
+  exactly what the ancestor theorem needs.
+
+The fail direction is the opposite of the nonce store's and is the key disclosed limit: a full
+revocation list FAILS OPEN. `revoke` is refused and the capability stays live, so a capacity-8
+list can only ever kill 8 delegations, and there is no eviction. The nonce store fails closed
+(availability risk); the revocation list fails open (authority-containment risk). A deployment
+sizing these stores is choosing between those two failure modes, and this model makes the choice
+visible rather than solving it.
+
 Composed deployment gates (`accept_leaf_full` = field validation + key binding + leaf gate +
 single-use; `accept_chain_full<N>` = field validation and key binding on every link + chain gate +
 single-use on the leaf. These exist because the individual gates do not compose themselves:
@@ -264,9 +293,9 @@ would drop key binding on the chain path):
 
 - `full_reachable`: both composed gates satisfiable (`kani::cover!`, SATISFIED).
 - `full_implies_all_conjuncts` (definition check, but the one that makes the composition safe to
-  rely on): `accept_chain_full` acceptance implies `valid_field_values` on all three links, the
-  key-bound `accept_chain_signed`, and consumption of the leaf's key. Key binding is provably not
-  lost on the single-use path.
+  rely on): `accept_chain_full` acceptance implies `valid_field_values` and non-revocation on all
+  three links, the key-bound `accept_chain_signed`, and consumption of the leaf's key. Key binding
+  is provably not lost on the single-use path.
 - `full_no_replay` (independent content via `no_replay`'s mechanism): after `accept_chain_full`
   accepts, the same leaf rejects on the successor store through both `accept_chain_full` and
   `accept_leaf_full`, whatever key, time, or signature bits the second presentation uses.

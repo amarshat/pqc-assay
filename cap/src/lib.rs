@@ -485,10 +485,60 @@ pub fn accept_chain_once<const N: usize>(
     (true, next)
 }
 
-/// The deployment gate for a bare leaf: field-value validation, key binding, the leaf gate, and
-/// single-use, composed in one verified function. This exists because the individual gates do not
-/// compose themselves: `accept_leaf_checked` is stateless and `accept_leaf_once` validates neither
-/// fields nor keys. A deployment calls this (or `accept_chain_full`), not a hand-assembled stack.
+/// A verifier's revocation list: an append-only log of revoked `cap_id`s, bounded at `STORE_CAP`
+/// (the same bounded-store device as `NonceStore`). One list per verifier, maintained out of band
+/// (the issuer tells the verifier what it revoked; distribution is out of scope here).
+///
+/// The fail direction is the OPPOSITE of the nonce store's and must be read as such: when this
+/// list is full, `revoke` FAILS OPEN, i.e. the revocation is refused and the capability stays
+/// live. A bounded revocation list can therefore only ever kill `STORE_CAP` delegations; see the
+/// spec's scope section.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct RevocationStore {
+    pub revoked: [[u8; 16]; STORE_CAP],
+    pub len: usize,
+}
+
+impl RevocationStore {
+    pub const fn empty() -> Self {
+        RevocationStore { revoked: [[0u8; 16]; STORE_CAP], len: 0 }
+    }
+}
+
+/// Is `cap_id` revoked? Scans the live prefix `revoked[0..len]`.
+pub fn is_revoked(rs: &RevocationStore, cap_id: &[u8; 16]) -> bool {
+    let n = if rs.len > STORE_CAP { STORE_CAP } else { rs.len };
+    let mut i = 0;
+    while i < n {
+        if rs.revoked[i] == *cap_id {
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
+/// Revoke a capability by `cap_id`. Returns the verdict and the successor list: `true` if the id
+/// is now revoked (idempotent if it already was), `false` with the list unchanged if the list is
+/// full (revocation refused, the capability STAYS LIVE; fail-open, disclosed).
+pub fn revoke(rs: &RevocationStore, cap_id: &[u8; 16]) -> (bool, RevocationStore) {
+    if is_revoked(rs, cap_id) {
+        return (true, *rs);
+    }
+    if rs.len >= STORE_CAP {
+        return (false, *rs);
+    }
+    let mut next = *rs;
+    next.revoked[next.len] = *cap_id;
+    next.len += 1;
+    (true, next)
+}
+
+/// The deployment gate for a bare leaf: not revoked, field-value validation, key binding, the leaf
+/// gate, and single-use, composed in one verified function. This exists because the individual
+/// gates do not compose themselves: `accept_leaf_checked` is stateless and `accept_leaf_once`
+/// validates neither fields nor keys. A deployment calls this (or `accept_chain_full`), not a
+/// hand-assembled stack.
 pub fn accept_leaf_full(
     cap: &CapV1,
     verifier_id: &[u8; 16],
@@ -496,17 +546,23 @@ pub fn accept_leaf_full(
     issuer_pk: &PublicKey,
     sig_ok: bool,
     store: &NonceStore,
+    revoked: &RevocationStore,
 ) -> (bool, NonceStore) {
-    if !valid_field_values(cap) || !accept_leaf_signed(cap, verifier_id, now, issuer_pk, sig_ok) {
+    if is_revoked(revoked, &cap.cap_id)
+        || !valid_field_values(cap)
+        || !accept_leaf_signed(cap, verifier_id, now, issuer_pk, sig_ok)
+    {
         return (false, *store);
     }
     accept_leaf_once(cap, verifier_id, now, sig_ok, store)
 }
 
-/// The deployment gate for an N-link chain: field-value validation and key binding on every link,
-/// the chain gate, and single-use on the presented leaf, composed. Without this, combining the
-/// `_checked` and `_once` variants by hand would silently drop key binding on the chain path
-/// (`accept_chain_once` wraps `accept_chain`, not `accept_chain_signed`).
+/// The deployment gate for an N-link chain: on every link, not revoked, field-value validation,
+/// and key binding; then the chain gate and single-use on the presented leaf. Revocation is
+/// checked per link so that revoking an ancestor kills every chain presented through it, not just
+/// chains whose leaf was revoked (machine-checked below, with a leaf-only mutant as the witness).
+/// Without this composed gate, stacking the `_checked` and `_once` variants by hand would silently
+/// drop key binding (`accept_chain_once` wraps `accept_chain`, not `accept_chain_signed`).
 pub fn accept_chain_full<const N: usize>(
     caps: &[CapV1; N],
     verifier_id: &[u8; 16],
@@ -514,7 +570,37 @@ pub fn accept_chain_full<const N: usize>(
     pks: &[PublicKey; N],
     sigs_ok: &[bool; N],
     store: &NonceStore,
+    revoked: &RevocationStore,
 ) -> (bool, NonceStore) {
+    let mut i = 0;
+    while i < N {
+        if is_revoked(revoked, &caps[i].cap_id)
+            || !valid_field_values(&caps[i])
+            || key_id(&pks[i]) != caps[i].issuer_id
+        {
+            return (false, *store);
+        }
+        i += 1;
+    }
+    accept_chain_once(caps, verifier_id, now, sigs_ok, store)
+}
+
+/// A deliberately broken variant that checks revocation on the presented leaf only. Used to
+/// witness that per-link checking is what makes ancestor revocation effective: under this variant
+/// a chain whose root is revoked still accepts. Not part of the shipped API.
+#[cfg(any(test, kani))]
+fn accept_chain_full_leafonly_revocation<const N: usize>(
+    caps: &[CapV1; N],
+    verifier_id: &[u8; 16],
+    now: u64,
+    pks: &[PublicKey; N],
+    sigs_ok: &[bool; N],
+    store: &NonceStore,
+    revoked: &RevocationStore,
+) -> (bool, NonceStore) {
+    if N == 0 || is_revoked(revoked, &caps[N - 1].cap_id) {
+        return (false, *store);
+    }
     let mut i = 0;
     while i < N {
         if !valid_field_values(&caps[i]) || key_id(&pks[i]) != caps[i].issuer_id {
@@ -920,25 +1006,48 @@ mod tests {
 
         let v = [0x77; 16];
         let store = NonceStore::empty();
+        let no_revocations = RevocationStore::empty();
         let pks = [owner, delegate];
         let (ok, next) =
-            accept_chain_full(&[root, leaf], &v, 150, &pks, &[true, true], &store);
+            accept_chain_full(&[root, leaf], &v, 150, &pks, &[true, true], &store, &no_revocations);
         assert!(ok);
         // Replay through either composed gate: rejected (shared store).
-        let (ok2, _) = accept_chain_full(&[root, leaf], &v, 160, &pks, &[true, true], &next);
+        let (ok2, _) =
+            accept_chain_full(&[root, leaf], &v, 160, &pks, &[true, true], &next, &no_revocations);
         assert!(!ok2);
-        let (ok3, _) = accept_leaf_full(&leaf, &v, 150, &delegate, true, &next);
+        let (ok3, _) = accept_leaf_full(&leaf, &v, 150, &delegate, true, &next, &no_revocations);
         assert!(!ok3);
         // Unknown suite on a link: rejected.
         let mut bad = leaf;
         bad.suite_id = [0, 9];
-        let (ok4, _) = accept_chain_full(&[root, bad], &v, 150, &pks, &[true, true], &store);
+        let (ok4, _) =
+            accept_chain_full(&[root, bad], &v, 150, &pks, &[true, true], &store, &no_revocations);
         assert!(!ok4);
         // Foreign key on a link: rejected (key binding kept on the single-use path).
         let foreign = PublicKey { bytes: [0x99; 32] };
-        let (ok5, _) =
-            accept_chain_full(&[root, leaf], &v, 150, &[owner, foreign], &[true, true], &store);
+        let (ok5, _) = accept_chain_full(
+            &[root, leaf], &v, 150, &[owner, foreign], &[true, true], &store, &no_revocations,
+        );
         assert!(!ok5);
+        // Revoke the ROOT: the whole chain dies, and the leaf-only mutant shows why the
+        // per-link check matters (it would still accept).
+        let (rok, revoked) = revoke(&no_revocations, &root.cap_id);
+        assert!(rok);
+        let (ok6, _) =
+            accept_chain_full(&[root, leaf], &v, 150, &pks, &[true, true], &store, &revoked);
+        assert!(!ok6);
+        let (mok, _) = accept_chain_full_leafonly_revocation(
+            &[root, leaf], &v, 150, &pks, &[true, true], &store, &revoked,
+        );
+        assert!(mok);
+        // Revoking just the leaf also kills it, through both gates.
+        let (rok2, leaf_revoked) = revoke(&no_revocations, &leaf.cap_id);
+        assert!(rok2);
+        let (ok7, _) =
+            accept_chain_full(&[root, leaf], &v, 150, &pks, &[true, true], &store, &leaf_revoked);
+        assert!(!ok7);
+        let (ok8, _) = accept_leaf_full(&leaf, &v, 150, &delegate, true, &store, &leaf_revoked);
+        assert!(!ok8);
     }
 
     #[test]
@@ -1593,6 +1702,109 @@ mod verification {
         );
     }
 
+    fn any_revocations() -> RevocationStore {
+        RevocationStore { revoked: kani::any(), len: kani::any() }
+    }
+
+    /// A revoked leaf never accepts through the composed leaf gate, whatever key, time, or
+    /// signature is presented.
+    #[kani::proof]
+    fn revoked_leaf_never_accepts() {
+        let cap = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let pk = any_pk();
+        let s: bool = kani::any();
+        let store = any_store();
+        let rs = any_revocations();
+        kani::assume(is_revoked(&rs, &cap.cap_id));
+        let (ok, next) = accept_leaf_full(&cap, &v, now, &pk, s, &store, &rs);
+        assert!(!ok);
+        assert_eq!(next, store);
+    }
+
+    /// Revoking an ancestor kills the chain: if ANY link of a 3-link chain is revoked (root,
+    /// intermediate, or leaf), the composed chain gate rejects, whatever else is set. Cutting one
+    /// delegation cuts all authority presented through it.
+    #[kani::proof]
+    fn revoked_any_link_kills_chain() {
+        let caps = [any_cap(), any_cap(), any_cap()];
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let pks = [any_pk(), any_pk(), any_pk()];
+        let sigs: [bool; 3] = kani::any();
+        let store = any_store();
+        let rs = any_revocations();
+        kani::assume(
+            is_revoked(&rs, &caps[0].cap_id)
+                || is_revoked(&rs, &caps[1].cap_id)
+                || is_revoked(&rs, &caps[2].cap_id),
+        );
+        let (ok, next) = accept_chain_full(&caps, &v, now, &pks, &sigs, &store, &rs);
+        assert!(!ok);
+        assert_eq!(next, store);
+    }
+
+    /// The stateful composition (independent content, `no_replay`'s shape for revocation): a chain
+    /// the gate accepts is rejected after its root is revoked. `revoke`'s append is visible to
+    /// `is_revoked`'s scan, and the gate consults it at the root position.
+    #[kani::proof]
+    fn revoke_root_then_chain_rejects() {
+        let caps = [any_cap(), any_cap(), any_cap()];
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let pks = [any_pk(), any_pk(), any_pk()];
+        let sigs: [bool; 3] = kani::any();
+        let store = any_store();
+        let rs = any_revocations();
+        let (ok, _) = accept_chain_full(&caps, &v, now, &pks, &sigs, &store, &rs);
+        kani::assume(ok);
+        let (revoked_ok, rs2) = revoke(&rs, &caps[0].cap_id);
+        kani::assume(revoked_ok);
+        let now2: u64 = kani::any();
+        let s2: [bool; 3] = kani::any();
+        let (ok2, _) = accept_chain_full(&caps, &v, now2, &pks, &s2, &store, &rs2);
+        assert!(!ok2);
+    }
+
+    /// Revocation bookkeeping: a successful revoke marks the id revoked (and is idempotent); a
+    /// refused revoke (full list) leaves the list unchanged, which is the disclosed FAIL-OPEN
+    /// direction: the capability stays live.
+    #[kani::proof]
+    fn revoke_marks_revoked_or_fails_open() {
+        let rs = any_revocations();
+        let id: [u8; 16] = kani::any();
+        let (ok, next) = revoke(&rs, &id);
+        if ok {
+            assert!(is_revoked(&next, &id));
+            let (ok2, next2) = revoke(&next, &id);
+            assert!(ok2);
+            assert_eq!(next2, next);
+        } else {
+            assert_eq!(next, rs);
+            assert!(!is_revoked(&rs, &id));
+            assert!(rs.len >= STORE_CAP);
+        }
+    }
+
+    /// Per-link checking is what makes ancestor revocation work: under a leaf-only-revocation
+    /// mutant, a chain whose ROOT is revoked still accepts (`kani::cover!` finds it), while
+    /// `revoked_any_link_kills_chain` proves the shipped gate rejects it. The mutation witness for
+    /// the revocation theorem.
+    #[kani::proof]
+    fn leafonly_revocation_mutant_accepts_revoked_root() {
+        let caps = [any_cap(), any_cap(), any_cap()];
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let pks = [any_pk(), any_pk(), any_pk()];
+        let store = any_store();
+        let rs = any_revocations();
+        let (ok, _) = accept_chain_full_leafonly_revocation(
+            &caps, &v, now, &pks, &[true, true, true], &store, &rs,
+        );
+        kani::cover!(ok && is_revoked(&rs, &caps[0].cap_id));
+    }
+
     /// The composed deployment gates are reachable (composition did not make acceptance
     /// unsatisfiable).
     #[kani::proof]
@@ -1602,12 +1814,13 @@ mod verification {
         let now: u64 = kani::any();
         let pk = any_pk();
         let store = any_store();
-        let (ok, _) = accept_leaf_full(&cap, &v, now, &pk, true, &store);
-        kani::cover!(ok);
+        let rs = any_revocations();
+        let (ok, _) = accept_leaf_full(&cap, &v, now, &pk, true, &store, &rs);
+        kani::cover!(ok && rs.len > 0);
         let caps = [any_cap(), any_cap(), any_cap()];
         let pks = [any_pk(), any_pk(), any_pk()];
-        let (ok3, _) = accept_chain_full(&caps, &v, now, &pks, &[true, true, true], &store);
-        kani::cover!(ok3);
+        let (ok3, _) = accept_chain_full(&caps, &v, now, &pks, &[true, true, true], &store, &rs);
+        kani::cover!(ok3 && rs.len > 0);
     }
 
     /// The composed chain gate implies every conjunct it advertises: field validation on all
@@ -1621,11 +1834,15 @@ mod verification {
         let pks = [any_pk(), any_pk(), any_pk()];
         let sigs: [bool; 3] = kani::any();
         let store = any_store();
-        let (ok, next) = accept_chain_full(&caps, &v, now, &pks, &sigs, &store);
+        let rs = any_revocations();
+        let (ok, next) = accept_chain_full(&caps, &v, now, &pks, &sigs, &store, &rs);
         kani::assume(ok);
         assert!(valid_field_values(&caps[0]));
         assert!(valid_field_values(&caps[1]));
         assert!(valid_field_values(&caps[2]));
+        assert!(!is_revoked(&rs, &caps[0].cap_id));
+        assert!(!is_revoked(&rs, &caps[1].cap_id));
+        assert!(!is_revoked(&rs, &caps[2].cap_id));
         assert!(accept_chain_signed(&caps, &v, now, &pks, &sigs));
         assert!(store_contains(&next, &replay_key(&caps[2])));
     }
@@ -1642,15 +1859,17 @@ mod verification {
         let pks = [any_pk(), any_pk(), any_pk()];
         let sigs: [bool; 3] = kani::any();
         let store = any_store();
-        let (ok, next) = accept_chain_full(&caps, &v, now, &pks, &sigs, &store);
+        let rs = any_revocations();
+        let (ok, next) = accept_chain_full(&caps, &v, now, &pks, &sigs, &store, &rs);
         kani::assume(ok);
         let now2: u64 = kani::any();
         let s2: [bool; 3] = kani::any();
-        let (ok2, _) = accept_chain_full(&caps, &v, now2, &pks, &s2, &next);
+        let rs2 = any_revocations();
+        let (ok2, _) = accept_chain_full(&caps, &v, now2, &pks, &s2, &next, &rs2);
         assert!(!ok2);
         let pk2 = any_pk();
         let sig2: bool = kani::any();
-        let (ok3, _) = accept_leaf_full(&caps[2], &v, now2, &pk2, sig2, &next);
+        let (ok3, _) = accept_leaf_full(&caps[2], &v, now2, &pk2, sig2, &next, &rs2);
         assert!(!ok3);
     }
 

@@ -16,14 +16,15 @@ Cap-V1 is the "verified Rust" track, so the proof tool is Kani (CBMC), not SMT o
 
 ## Verified so far (Kani 0.67, this repo)
 
-`make cap-kani` (or `cargo kani` in this directory) checks forty-four harnesses in `src/lib.rs`,
+`make cap-kani` (or `cargo kani` in this directory) checks forty-nine harnesses in `src/lib.rs`,
 all verified with 0 failures. Read the count honestly: the independent-content harnesses are the
 format bijection/injectivity, the multi-hop attenuation results (`chain_attenuates`,
 `chain3_attenuates`, `chain4_attenuates`), `omitting_audience_breaks_binding`, the key-binding
 results (`chain_signing_key_is_delegate`, `confused_deputy_rejected`, and their three-link
-counterparts), and the stateful replay results (`no_replay`, with `chain_once_no_replay` extending the same
+counterparts), the stateful replay results (`no_replay`, with `chain_once_no_replay` extending the same
 mechanism to the chain gate; `accept_consumes` and `chain_once_consumes` are mixed, their reject
-halves being definition checks). Many
+halves being definition checks), and the revocation pair (`revoke_root_then_chain_rejects`,
+`leafonly_revocation_mutant_accepts_revoked_root`). Many
 of the rest are *definition checks* (they assert one clause of the predicate they assume) or
 `kani::cover!` non-vacuity pings; the `signed_message_*` pair restates the format lemmas under the
 `signed_message == serialize` alias. The spec's "Machine-checked properties" section tags each. And
@@ -121,13 +122,33 @@ both = their stateless gate plus one shared bounded used-token store keyed on th
   gates share one store, a chain-consumed leaf cannot re-enter through `accept_leaf_once`;
   rejection leaves the store unchanged.
 
+Revocation (`RevocationStore` = a bounded append-only list of revoked `cap_id`s; `revoke` adds,
+`is_revoked` scans, and the composed gates below check it on EVERY link):
+
+- `revoked_any_link_kills_chain`: if any link of a 3-link chain (root, intermediate, or leaf) is
+  revoked, the composed chain gate rejects. Cutting one delegation cuts all authority presented
+  through it.
+- `revoke_root_then_chain_rejects`: the stateful composition; a chain the gate accepts is rejected
+  after `revoke(root.cap_id)`.
+- `revoked_leaf_never_accepts` / `revoke_marks_revoked_or_fails_open`: the leaf gate rejects a
+  revoked leaf; a successful revoke marks and is idempotent, a refused revoke (full list) changes
+  nothing.
+- `leafonly_revocation_mutant_accepts_revoked_root`: under a leaf-only-revocation mutant a chain
+  with a revoked ROOT still accepts (`kani::cover!` finds it), so per-link checking is exactly what
+  the ancestor-revocation theorem needs.
+
+Read the fail direction carefully: the revocation list FAILS OPEN when full. `revoke` on a full
+list is refused and the capability stays live, the opposite direction from the nonce store. A
+capacity-8 list can only ever kill 8 delegations; revocation-list distribution (issuer to
+verifier) is out of scope entirely.
+
 Composed deployment gates (`accept_leaf_full` / `accept_chain_full<N>`; the individual gates do
 not compose themselves, and hand-stacking `_checked` + `_once` on a chain would drop key binding,
 since `accept_chain_once` wraps the unsigned `accept_chain`):
 
-- `full_implies_all_conjuncts`: `accept_chain_full` acceptance implies field validation on every
-  link, the key-bound `accept_chain_signed` (key binding kept on the single-use path), and
-  consumption of the leaf's key.
+- `full_implies_all_conjuncts`: `accept_chain_full` acceptance implies field validation and
+  non-revocation on every link, the key-bound `accept_chain_signed` (key binding kept on the
+  single-use path), and consumption of the leaf's key.
 - `full_no_replay`: after `accept_chain_full` accepts, the same leaf rejects on the successor store
   through both composed gates (one shared store).
 - `full_reachable`: both composed gates satisfiable (`kani::cover!`, SATISFIED).
@@ -189,12 +210,13 @@ the integration test over `serialize(cap)`. Assumed: ML-DSA-44/ECDSA unforgeabil
 prove it), and `key_id` is a placeholder truncated-hash commitment in the model. Bounded: chain
 lengths beyond 4 rest on the link-local argument (no induction is machine-checked), and the replay
 store is fixed at capacity 8, sequential, fail-closed when full, with no expiry or eviction. Not
-yet: revocation, and validation of `cap_type` / `flags` (their semantics are still provisional, so
-`valid_field_values` pins only `version` and `suite_id`). See the spec's scope section.
+yet: validation of `cap_type` / `flags` (their semantics are still provisional, so
+`valid_field_values` pins only `version` and `suite_id`), revocation-list distribution, and expiry/
+eviction for either bounded store. See the spec's scope section.
 
 ## Run
 
-    make cap-kani        # from repo root: 44 Kani harnesses
+    make cap-kani        # from repo root: 49 Kani harnesses
     make cap-hybrid      # from repo root: real ECDSA + ML-DSA-44 integration test
     cargo kani           # from this directory
     cargo test           # concrete tests incl. the hybrid crypto test
