@@ -338,6 +338,95 @@ pub fn accept_chain_signed<const N: usize>(
     accept_chain(caps, verifier_id, now, sigs_ok)
 }
 
+/// Capacity of the bounded used-token store. Fixed so the replay properties are checkable by
+/// bounded symbolic execution (the same device as Q-SEAL's CAP=8 challenge store). The store logic
+/// does not depend on the value; the theorems are proved at this capacity, not for all capacities.
+pub const STORE_CAP: usize = 8;
+
+/// The replay key of a capability: `cap_id || nonce` (32 bytes). One verifier owns one store, and
+/// audience binding (`accept_leaf`) already stops cross-verifier presentation, so the key does not
+/// need a verifier component the way Q-SEAL's challenge key does.
+pub fn replay_key(cap: &CapV1) -> [u8; 32] {
+    let mut k = [0u8; 32];
+    k[0..16].copy_from_slice(&cap.cap_id);
+    k[16..32].copy_from_slice(&cap.nonce);
+    k
+}
+
+/// A verifier's used-token store: an append-only log of consumed replay keys. Bounded at
+/// `STORE_CAP`; when full, acceptance fails closed (a denial-of-service footgun, disclosed in the
+/// spec's scope section, not a feature). `len` beyond `STORE_CAP` is treated as full.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct NonceStore {
+    pub used: [[u8; 32]; STORE_CAP],
+    pub len: usize,
+}
+
+impl NonceStore {
+    pub const fn empty() -> Self {
+        NonceStore { used: [[0u8; 32]; STORE_CAP], len: 0 }
+    }
+}
+
+/// Is `key` already consumed? Scans only the live prefix `used[0..len]`.
+pub fn store_contains(store: &NonceStore, key: &[u8; 32]) -> bool {
+    let n = if store.len > STORE_CAP { STORE_CAP } else { store.len };
+    let mut i = 0;
+    while i < n {
+        if store.used[i] == *key {
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
+/// Accept a leaf capability at most once: the leaf gate (`accept_leaf`) plus single-use. Returns
+/// the verdict and the successor store; on acceptance the capability's replay key is appended, so
+/// presenting the same token again rejects. Rejects (fail closed) if the key is already consumed or
+/// the store is full. This is the stateful gate; `accept_leaf` alone allows unlimited replay to the
+/// same audience inside the window.
+pub fn accept_leaf_once(
+    cap: &CapV1,
+    verifier_id: &[u8; 16],
+    now: u64,
+    sig_ok: bool,
+    store: &NonceStore,
+) -> (bool, NonceStore) {
+    let key = replay_key(cap);
+    if !accept_leaf(cap, verifier_id, now, sig_ok)
+        || store_contains(store, &key)
+        || store.len >= STORE_CAP
+    {
+        return (false, *store);
+    }
+    let mut next = *store;
+    next.used[next.len] = key;
+    next.len += 1;
+    (true, next)
+}
+
+/// A deliberately broken variant that forgets to consume: it checks the store but returns it
+/// unchanged, so a replayed token accepts again. Used only to witness that the no-replay theorem
+/// has content (the mutation device of the repo's other tracks). Not part of the shipped API.
+#[cfg(any(test, kani))]
+fn accept_leaf_once_noconsume(
+    cap: &CapV1,
+    verifier_id: &[u8; 16],
+    now: u64,
+    sig_ok: bool,
+    store: &NonceStore,
+) -> (bool, NonceStore) {
+    let key = replay_key(cap);
+    if !accept_leaf(cap, verifier_id, now, sig_ok)
+        || store_contains(store, &key)
+        || store.len >= STORE_CAP
+    {
+        return (false, *store);
+    }
+    (true, *store)
+}
+
 /// A deliberately broken signer that leaves `audience_id` out of the signed region (zeros it). Used
 /// only to witness that field coverage is not vacuous: under this version a capability's audience
 /// could be swapped after signing. Not part of the shipped API.
@@ -574,6 +663,40 @@ mod tests {
         // Foreign key at the last hop: rejected even with a valid signature bit.
         let foreign = PublicKey { bytes: [0x99; 32] };
         assert!(!accept_chain_signed(&caps2, &v, 150, &[owner, mid_k, foreign], &[true; 3]));
+    }
+
+    #[test]
+    fn concrete_accept_once() {
+        let mut cap = CapV1::zeroed();
+        cap.cap_id = [0x31; 16];
+        cap.nonce = [0x42; 16];
+        cap.audience_id = [0x77; 16];
+        cap.not_before = 100u64.to_be_bytes();
+        cap.not_after = 200u64.to_be_bytes();
+        let v = [0x77; 16];
+
+        let store = NonceStore::empty();
+        let (ok, next) = accept_leaf_once(&cap, &v, 150, true, &store);
+        assert!(ok);
+        assert!(store_contains(&next, &replay_key(&cap)));
+        // Replay: rejected, even later in the window.
+        let (ok2, next2) = accept_leaf_once(&cap, &v, 160, true, &next);
+        assert!(!ok2);
+        assert_eq!(next2, next);
+        // A different token (fresh cap_id + nonce) still accepts.
+        let mut other = cap;
+        other.cap_id = [0x32; 16];
+        other.nonce = [0x43; 16];
+        let (ok3, _) = accept_leaf_once(&other, &v, 150, true, &next);
+        assert!(ok3);
+        // The no-consume mutant accepts the replay.
+        let (m1, mnext) = accept_leaf_once_noconsume(&cap, &v, 150, true, &store);
+        let (m2, _) = accept_leaf_once_noconsume(&cap, &v, 160, true, &mnext);
+        assert!(m1 && m2);
+        // Full store fails closed.
+        let full = NonceStore { used: [[0xFF; 32]; STORE_CAP], len: STORE_CAP };
+        let (ok4, _) = accept_leaf_once(&cap, &v, 150, true, &full);
+        assert!(!ok4);
     }
 
     #[test]
@@ -985,6 +1108,103 @@ mod verification {
             key_id(&pks[1]) != caps[0].subject_id || key_id(&pks[2]) != caps[1].subject_id,
         );
         assert!(!accept_chain_signed(&caps, &v, now, &pks, &sigs));
+    }
+
+    fn any_store() -> NonceStore {
+        NonceStore { used: kani::any(), len: kani::any() }
+    }
+
+    /// The single-use gate is reachable (the replay theorems below are not vacuous).
+    #[kani::proof]
+    fn once_reachable() {
+        let cap = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let store = any_store();
+        let (ok, _) = accept_leaf_once(&cap, &v, now, true, &store);
+        kani::cover!(ok);
+    }
+
+    /// No replay: after a token is accepted, presenting the same token to the successor store
+    /// rejects, whatever `now` the second presentation uses. This is the substantive stateful
+    /// result (accept mutates the store, and the mutation is what blocks the second accept).
+    #[kani::proof]
+    fn no_replay() {
+        let cap = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now1: u64 = kani::any();
+        let now2: u64 = kani::any();
+        let s1: bool = kani::any();
+        let s2: bool = kani::any();
+        let store = any_store();
+        let (ok, next) = accept_leaf_once(&cap, &v, now1, s1, &store);
+        kani::assume(ok);
+        let (ok2, _) = accept_leaf_once(&cap, &v, now2, s2, &next);
+        assert!(!ok2);
+    }
+
+    /// A consumed key never accepts: if the capability's replay key is already in the store, the
+    /// gate rejects.
+    #[kani::proof]
+    fn consumed_never_accepts() {
+        let cap = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let s: bool = kani::any();
+        let store = any_store();
+        kani::assume(store_contains(&store, &replay_key(&cap)));
+        let (ok, _) = accept_leaf_once(&cap, &v, now, s, &store);
+        assert!(!ok);
+    }
+
+    /// Acceptance consumes: an accepted token's replay key is in the successor store, and rejection
+    /// leaves the store unchanged.
+    #[kani::proof]
+    fn accept_consumes() {
+        let cap = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let s: bool = kani::any();
+        let store = any_store();
+        let (ok, next) = accept_leaf_once(&cap, &v, now, s, &store);
+        if ok {
+            assert!(store_contains(&next, &replay_key(&cap)));
+        } else {
+            assert_eq!(next, store);
+        }
+    }
+
+    /// The stateful gate does not weaken the stateless one: single-use acceptance implies the plain
+    /// leaf gate (signature, audience, window all still required), and a full store fails closed.
+    #[kani::proof]
+    fn once_implies_leaf_gate() {
+        let cap = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let s: bool = kani::any();
+        let store = any_store();
+        let (ok, _) = accept_leaf_once(&cap, &v, now, s, &store);
+        if store.len >= STORE_CAP {
+            assert!(!ok);
+        }
+        if ok {
+            assert!(accept_leaf(&cap, &v, now, s));
+        }
+    }
+
+    /// The no-replay theorem has content: under the no-consume mutant the same token CAN accept
+    /// twice (a `kani::cover!` finds a double accept), while `no_replay` proves the correct gate
+    /// never does. The mutation device of the repo's other tracks, stated inside Kani.
+    #[kani::proof]
+    fn noconsume_mutant_replays() {
+        let cap = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now1: u64 = kani::any();
+        let now2: u64 = kani::any();
+        let store = any_store();
+        let (ok, next) = accept_leaf_once_noconsume(&cap, &v, now1, true, &store);
+        let (ok2, _) = accept_leaf_once_noconsume(&cap, &v, now2, true, &next);
+        kani::cover!(ok && ok2);
     }
 
     /// Round-trip on records: parsing a serialized capability recovers it exactly, for every

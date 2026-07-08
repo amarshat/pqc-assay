@@ -182,6 +182,32 @@ instantiation). There is still no machine-checked induction giving all N at once
 that the verifier code itself is now the general gate, and the composition has been re-checked at
 every length the harnesses instantiate rather than only at 2.
 
+Single use (`accept_leaf_once(cap, verifier_id, now, sig_ok, store)` = the leaf gate plus a bounded
+used-token store. The replay key is `cap_id || nonce` (32 bytes); one verifier owns one store, and
+audience binding already stops cross-verifier presentation, so the key carries no verifier
+component, unlike Q-SEAL's challenge key. The store is an append-only log of `STORE_CAP = 8` keys;
+acceptance appends, and a full store or an already-consumed key rejects):
+
+- `once_reachable`: the gate is satisfiable (`kani::cover!`, SATISFIED).
+- `no_replay` (independent content, the stateful result): if a token is accepted, presenting the
+  same token to the successor store rejects, for any second presentation time and signature bit.
+  The mutation of the store is what blocks the second accept.
+- `consumed_never_accepts` (definition check): a key already in the store rejects.
+- `accept_consumes` (independent content): acceptance puts the key in the successor store;
+  rejection returns the store unchanged (no state change on failure).
+- `once_implies_leaf_gate` (definition check): the stateful gate does not weaken the stateless one;
+  acceptance still implies `accept_leaf`, and `len >= STORE_CAP` fails closed.
+- `noconsume_mutant_replays` (non-vacuity, mutation-style): a no-consume variant of the gate accepts
+  the same token twice (`kani::cover!` finds the double accept), so `no_replay` is not vacuous and
+  the consume step is exactly what it checks.
+
+Disclosed limits, same as Q-SEAL property 4's: the capacity is fixed at 8 (the logic does not
+depend on it, but the theorems are proved at that capacity, not for all capacities);
+fail-closed-when-full is a denial-of-service footgun (8 junk presentations brick the verifier), not
+a feature; there is no expiry or eviction; the analysis is sequential and atomic (no concurrent
+presentation / TOCTOU window is modeled); and the property is stated on the leaf gate, not yet
+composed into the chain gate.
+
 Signature binding (`signed_message(cap)` is the canonical byte string the signature covers, and in
 `accept_leaf` the `sig_ok` bit is the verifier's verdict over exactly those bytes):
 
@@ -280,9 +306,11 @@ deployment.
   do not call `well_formed` and do not check `version`, `suite_id`, or `cap_type` ranges. The object
   the theorems are about is thus not a deployment verifier, which would reject unknown version/suite.
   Q-SEAL has a dedicated property for this; Cap-V1 does not yet.
-- **No revocation, and replay within the window is allowed.** The `nonce` field is never consumed, so
-  a valid token replays freely to its audience for the whole validity window; there is no revocation
-  before `not_after`. For a capability layer these are headline properties, not footnotes.
+- **Replay is closed at the leaf gate only, and there is still no revocation.** `accept_leaf_once`
+  consumes `cap_id || nonce` on a bounded (capacity 8), sequential, fail-closed store (limits
+  disclosed above); the plain `accept_leaf` / chain gates remain replayable, and single-use is not
+  yet composed into `accept_chain`. Nothing revokes a capability before `not_after`. For a
+  capability layer revocation is a headline property, not a footnote.
 - Chain results are bounded: `accept_chain<N>` is verified at N = 2, 3, 4 (concrete
   instantiations). No machine-checked induction covers all N; longer chains rest on the link-local
   argument.

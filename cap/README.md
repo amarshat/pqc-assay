@@ -16,12 +16,12 @@ Cap-V1 is the "verified Rust" track, so the proof tool is Kani (CBMC), not SMT o
 
 ## Verified so far (Kani 0.67, this repo)
 
-`make cap-kani` (or `cargo kani` in this directory) checks twenty-seven harnesses in `src/lib.rs`,
+`make cap-kani` (or `cargo kani` in this directory) checks thirty-three harnesses in `src/lib.rs`,
 all verified with 0 failures. Read the count honestly: the independent-content harnesses are the
 format bijection/injectivity, the multi-hop attenuation results (`chain_attenuates`,
-`chain3_attenuates`, `chain4_attenuates`), `omitting_audience_breaks_binding`, and the key-binding
+`chain3_attenuates`, `chain4_attenuates`), `omitting_audience_breaks_binding`, the key-binding
 results (`chain_signing_key_is_delegate`, `confused_deputy_rejected`, and their three-link
-counterparts). Many
+counterparts), and the stateful replay results (`no_replay`, `accept_consumes`). Many
 of the rest are *definition checks* (they assert one clause of the predicate they assume) or
 `kani::cover!` non-vacuity pings; the `signed_message_*` pair restates the format lemmas under the
 `signed_message == serialize` alias. The spec's "Machine-checked properties" section tags each. And
@@ -83,6 +83,24 @@ N-link chain accept (`accept_chain<N>` / `accept_chain_signed<N>`; the two-link 
 These are bounded results at concrete lengths (2, 3, 4), not an induction over all N; see the
 spec's scope section.
 
+Single use / no replay (`accept_leaf_once` = the leaf gate plus a bounded used-token store keyed on
+`cap_id || nonce`; Q-SEAL property 4's analogue in Rust):
+
+- `once_reachable`: the single-use gate is satisfiable (`kani::cover!`, SATISFIED).
+- `no_replay`: an accepted token presented again to the successor store rejects, for any second
+  presentation time. The substantive stateful result.
+- `consumed_never_accepts`: a key already in the store never accepts.
+- `accept_consumes`: acceptance appends the key; rejection leaves the store unchanged.
+- `once_implies_leaf_gate`: single-use acceptance still requires the plain leaf gate (signature,
+  audience, window), and a full store fails closed.
+- `noconsume_mutant_replays`: under a no-consume mutant the same token accepts twice
+  (`kani::cover!` finds the double accept), so `no_replay` has content.
+
+Store capacity is fixed at 8 (`STORE_CAP`, same device as Q-SEAL's CAP=8): the theorems are proved
+at that capacity, not for all capacities. Fail-closed-when-full is a disclosed denial-of-service
+footgun, not a feature; there is no expiry or eviction, and the analysis is sequential (no
+concurrent presentation modeled).
+
 Signature binding (`signed_message` = the canonical bytes the signature covers):
 
 - `signed_message_covers_all_fields`: `parse(signed_message(cap)) == cap`; no field is left unsigned.
@@ -121,17 +139,19 @@ code; the crypto crates are dev-dependencies used only by the integration test.
 
 Proved (Kani): the format bijection, `valid_delegation` attenuation, the leaf accept gate, an
 N-link chain accept (verified at lengths 2, 3, 4) that requires every link's signature and never
-exceeds the root grant, that the signed message is the canonical/complete/injective encoding, and
-that each link's signing key is bound to the key its parent delegated to (confused-deputy rejected
-at any hop). Real ECDSA + ML-DSA-44 runs in the integration test over `serialize(cap)`. Assumed:
-ML-DSA-44/ECDSA unforgeability (no test can prove it), and `key_id` is a placeholder truncated-hash
-commitment in the model. Bounded: chain lengths beyond 4 rest on the link-local argument, no
-induction is machine-checked. Not yet: nonce single-use replay, revocation, and field-value
-validation in the accept path. See the spec's scope section.
+exceeds the root grant, that the signed message is the canonical/complete/injective encoding, that
+each link's signing key is bound to the key its parent delegated to (confused-deputy rejected at
+any hop), and single-use acceptance (no replay, on a bounded store). Real ECDSA + ML-DSA-44 runs in
+the integration test over `serialize(cap)`. Assumed: ML-DSA-44/ECDSA unforgeability (no test can
+prove it), and `key_id` is a placeholder truncated-hash commitment in the model. Bounded: chain
+lengths beyond 4 rest on the link-local argument (no induction is machine-checked), and the replay
+store is fixed at capacity 8, sequential, fail-closed when full, with no expiry or eviction. Not
+yet: revocation, field-value validation in the accept path, and single-use composed into the chain
+gate (it is stated on the leaf gate). See the spec's scope section.
 
 ## Run
 
-    make cap-kani        # from repo root: 27 Kani harnesses
+    make cap-kani        # from repo root: 33 Kani harnesses
     make cap-hybrid      # from repo root: real ECDSA + ML-DSA-44 integration test
     cargo kani           # from this directory
     cargo test           # concrete tests incl. the hybrid crypto test
