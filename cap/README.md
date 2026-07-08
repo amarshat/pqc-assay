@@ -16,10 +16,12 @@ Cap-V1 is the "verified Rust" track, so the proof tool is Kani (CBMC), not SMT o
 
 ## Verified so far (Kani 0.67, this repo)
 
-`make cap-kani` (or `cargo kani` in this directory) checks twenty harnesses in `src/lib.rs`, all
-verified with 0 failures. Read the count honestly: the independent-content harnesses are the format
-bijection/injectivity, the two-hop `chain_attenuates`, `omitting_audience_breaks_binding`, and the
-key-binding pair (`chain_signing_key_is_delegate`, `confused_deputy_rejected`). Many
+`make cap-kani` (or `cargo kani` in this directory) checks twenty-seven harnesses in `src/lib.rs`,
+all verified with 0 failures. Read the count honestly: the independent-content harnesses are the
+format bijection/injectivity, the multi-hop attenuation results (`chain_attenuates`,
+`chain3_attenuates`, `chain4_attenuates`), `omitting_audience_breaks_binding`, and the key-binding
+results (`chain_signing_key_is_delegate`, `confused_deputy_rejected`, and their three-link
+counterparts). Many
 of the rest are *definition checks* (they assert one clause of the predicate they assume) or
 `kani::cover!` non-vacuity pings; the `signed_message_*` pair restates the format lemmas under the
 `signed_message == serialize` alias. The spec's "Machine-checked properties" section tags each. And
@@ -64,6 +66,23 @@ Chain accept (`accept_chain2`, composes the link check and the leaf gate):
 - `chain_accept_attenuates`: an accepted re-delegation grants no more than the root (action subset,
   lower depth, `now` inside the root window, same audience and resource). End-to-end statement.
 
+N-link chain accept (`accept_chain<N>` / `accept_chain_signed<N>`; the two-link functions are the
+`N = 2` instance, and the deployed gate is now the general one):
+
+- `chain_n_agrees_with_chain2`: `accept_chain::<2>` equals `accept_chain2` (and the signed variants
+  agree) on all inputs, so the two-link theorems transfer and nothing changed at length 2.
+- `chain3_reachable`: a three-link accept is satisfiable (`kani::cover!`, SATISFIED).
+- `chain3_requires_all_sigs`: a three-link accept requires all three signatures.
+- `chain3_attenuates` / `chain4_attenuates`: an accepted 3-link (resp. 4-link) chain's leaf grants
+  no more than the root, and depth shrinks by at least one per hop
+  (`root.max_depth >= leaf.max_depth + N-1`), bounding chain length by the root's budget.
+- `chain3_signing_keys_are_delegates`: each non-root link is signed by exactly the key its parent
+  delegated to, at both hops.
+- `chain3_confused_deputy_rejected`: a wrong key at either hop rejects the whole chain.
+
+These are bounded results at concrete lengths (2, 3, 4), not an induction over all N; see the
+spec's scope section.
+
 Signature binding (`signed_message` = the canonical bytes the signature covers):
 
 - `signed_message_covers_all_fields`: `parse(signed_message(cap)) == cap`; no field is left unsigned.
@@ -100,18 +119,19 @@ code; the crypto crates are dev-dependencies used only by the integration test.
 
 ## Scope
 
-Proved (Kani): the format bijection, `valid_delegation` attenuation, the leaf accept gate, a two-link
-chain accept that requires both signatures and never exceeds the root grant, that the signed message
-is the canonical/complete/injective encoding, and that the signing key is bound to the token's named
-issuer (confused-deputy rejected). Real ECDSA + ML-DSA-44 runs in the integration test over
-`serialize(cap)`. Assumed: ML-DSA-44/ECDSA unforgeability (no test can prove it), and `key_id` is a
-placeholder truncated-hash commitment in the model. Not yet: N-link (N > 2) chain accept, nonce
-single-use replay, revocation, and field-value validation in the accept path. See the spec's scope
-section.
+Proved (Kani): the format bijection, `valid_delegation` attenuation, the leaf accept gate, an
+N-link chain accept (verified at lengths 2, 3, 4) that requires every link's signature and never
+exceeds the root grant, that the signed message is the canonical/complete/injective encoding, and
+that each link's signing key is bound to the key its parent delegated to (confused-deputy rejected
+at any hop). Real ECDSA + ML-DSA-44 runs in the integration test over `serialize(cap)`. Assumed:
+ML-DSA-44/ECDSA unforgeability (no test can prove it), and `key_id` is a placeholder truncated-hash
+commitment in the model. Bounded: chain lengths beyond 4 rest on the link-local argument, no
+induction is machine-checked. Not yet: nonce single-use replay, revocation, and field-value
+validation in the accept path. See the spec's scope section.
 
 ## Run
 
-    make cap-kani        # from repo root: 20 Kani harnesses
+    make cap-kani        # from repo root: 27 Kani harnesses
     make cap-hybrid      # from repo root: real ECDSA + ML-DSA-44 integration test
     cargo kani           # from this directory
     cargo test           # concrete tests incl. the hybrid crypto test

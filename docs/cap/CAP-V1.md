@@ -122,9 +122,9 @@ Delegation (attenuation / chains terminate):
 - `chain_attenuates` (two-hop composition, independent content): if `valid_delegation(a, b)` and
   `valid_delegation(b, c)` then `c`'s action bits are a subset of `a`'s, `c.max_depth < a.max_depth`,
   `c`'s validity window is inside `a`'s, and resource and audience are unchanged. This composes the
-  local check across two links (subset, `<`, and interval-containment are transitive). It is a
-  two-hop lemma only: the general N-link invariant is **not** stated and no induction is run. The
-  transitive step is sound, so the extension is conjectured, not machine-checked.
+  local check across two links (subset, `<`, and interval-containment are transitive). No induction
+  is run; the N-link accept gate below re-checks the composition at chain lengths 3 and 4, and
+  lengths beyond those remain covered by the link-local argument only.
 
 Accept gate (`accept_leaf(cap, verifier_id, now, sig_ok)`). `sig_ok` is the signature-check outcome,
 kept as an input so the guarantees hold for any correct verifier (Q-SEAL's uninterpreted-verifier
@@ -155,6 +155,32 @@ re-delegation of `root`, and `leaf` passes the leaf gate.
   root's window, both name the presenting verifier as audience, and the resource is the same. So
   accepting a re-delegation can never exceed the root grant. This is the end-to-end statement the
   earlier link/gate lemmas build up to.
+
+N-link chain accept (`accept_chain<N>(caps, verifier_id, now, sigs_ok)` generalizes `accept_chain2`:
+`caps[0]` must be a root, every link's signature must verify, every adjacent pair must pass
+`valid_delegation`, and the leaf must pass the accept gate. `N` is a compile-time length, so the
+loops fully unroll under Kani; the harnesses instantiate concrete lengths, they do not quantify over
+`N`):
+
+- `chain_n_agrees_with_chain2` (definitional bridge): `accept_chain::<2>` equals `accept_chain2`
+  and `accept_chain_signed::<2>` equals `accept_chain2_signed`, on all inputs. So the two-link
+  theorems transfer to the generalized gate, and the generalization changed nothing at length 2.
+- `chain3_reachable`: a three-link accept is satisfiable (`kani::cover!`, SATISFIED).
+- `chain3_requires_all_sigs` (definition check): acceptance implies all three signature bits.
+- `chain3_attenuates` / `chain4_attenuates` (independent content): if a 3-link (resp. 4-link) chain
+  is accepted, the leaf grants no action bit the root lacks, `now` is inside the root's window,
+  resource and audience are unchanged, and the depth budget shrank by at least one per hop
+  (`root.max_depth >= leaf.max_depth + N-1`), which bounds chain length by the root's budget.
+- `chain3_signing_keys_are_delegates` (independent content): in an accepted key-bound 3-link chain,
+  each non-root link is signed by exactly the key its parent delegated to
+  (`key_id(pks[i]) == caps[i-1].subject_id`), at both hops.
+- `chain3_confused_deputy_rejected` (independent content, stated as the attack): a wrong key at
+  *either* hop makes the chain reject, whatever else is set.
+
+Read the length honestly: these are bounded results at N = 2, 3, 4 (each harness a fixed
+instantiation). There is still no machine-checked induction giving all N at once; what changed is
+that the verifier code itself is now the general gate, and the composition has been re-checked at
+every length the harnesses instantiate rather than only at 2.
 
 Signature binding (`signed_message(cap)` is the canonical byte string the signature covers, and in
 `accept_leaf` the `sig_ok` bit is the verifier's verdict over exactly those bytes):
@@ -257,8 +283,9 @@ deployment.
 - **No revocation, and replay within the window is allowed.** The `nonce` field is never consumed, so
   a valid token replays freely to its audience for the whole validity window; there is no revocation
   before `not_after`. For a capability layer these are headline properties, not footnotes.
-- `accept_chain2` covers a two-link chain only; the general N-link result is conjectured (see
-  `chain_attenuates`), not machine-checked.
+- Chain results are bounded: `accept_chain<N>` is verified at N = 2, 3, 4 (concrete
+  instantiations). No machine-checked induction covers all N; longer chains rest on the link-local
+  argument.
 - Attenuation is proved for `action`, depth, and window; `flags`, `cap_type`, and `constraints_digest`
   are not yet constrained across a link (so those fields can change or weaken).
 - The layout is frozen (the bijection depends on it); field *meanings* are provisional.

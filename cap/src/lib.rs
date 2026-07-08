@@ -283,6 +283,61 @@ pub fn accept_chain2_signed(
         && accept_leaf(leaf, verifier_id, now, leaf_sig_ok)
 }
 
+/// Accept an N-link delegation chain: `caps[0]` is the root, each `caps[i]` is a re-delegation of
+/// `caps[i-1]`, and `caps[N-1]` is the leaf actually presented. `sigs_ok[i]` is the signature-check
+/// outcome for link `i` (abstract, as in `accept_leaf`). Acceptance requires: the first link is a
+/// root, every link's signature verifies, every adjacent pair passes `valid_delegation`, and the
+/// leaf passes the accept gate. `accept_chain2` is exactly the `N = 2` instance (machine-checked
+/// below). `N` is a compile-time length, so the loops fully unroll; the Kani harnesses verify the
+/// chain properties at concrete lengths (currently up to 4), not for all `N` at once.
+pub fn accept_chain<const N: usize>(
+    caps: &[CapV1; N],
+    verifier_id: &[u8; 16],
+    now: u64,
+    sigs_ok: &[bool; N],
+) -> bool {
+    if N == 0 || !is_root(&caps[0]) {
+        return false;
+    }
+    let mut i = 0;
+    while i < N {
+        if !sigs_ok[i] {
+            return false;
+        }
+        i += 1;
+    }
+    let mut i = 1;
+    while i < N {
+        if !valid_delegation(&caps[i - 1], &caps[i]) {
+            return false;
+        }
+        i += 1;
+    }
+    accept_leaf(&caps[N - 1], verifier_id, now, sigs_ok[N - 1])
+}
+
+/// Accept an N-link chain with every signer's key bound to its token: link `i`'s signature must
+/// verify under `pks[i]`, and `pks[i]` must be the key the token names as issuer
+/// (`key_id(pks[i]) == caps[i].issuer_id`). Combined with `valid_delegation`'s
+/// `issuer == parent.subject`, this pins each link's signer to the agent the previous link delegated
+/// to. `accept_chain2_signed` is exactly the `N = 2` instance (machine-checked below).
+pub fn accept_chain_signed<const N: usize>(
+    caps: &[CapV1; N],
+    verifier_id: &[u8; 16],
+    now: u64,
+    pks: &[PublicKey; N],
+    sigs_ok: &[bool; N],
+) -> bool {
+    let mut i = 0;
+    while i < N {
+        if key_id(&pks[i]) != caps[i].issuer_id {
+            return false;
+        }
+        i += 1;
+    }
+    accept_chain(caps, verifier_id, now, sigs_ok)
+}
+
 /// A deliberately broken signer that leaves `audience_id` out of the signed region (zeros it). Used
 /// only to witness that field coverage is not vacuous: under this version a capability's audience
 /// could be swapped after signing. Not part of the shipped API.
@@ -446,6 +501,79 @@ mod tests {
         let mut not_root = root;
         not_root.parent_id = [0x01; 16];
         assert!(!accept_chain2(&not_root, &leaf, &v, 150, true, true));
+    }
+
+    #[test]
+    fn concrete_accept_chain3() {
+        let mut root = CapV1::zeroed();
+        root.subject_id = [0xAA; 16];
+        root.cap_id = [0xB0; 16];
+        root.resource_id = [0x44; 32];
+        root.audience_id = [0x77; 16];
+        root.suite_id = [0, 1];
+        root.max_depth = [3];
+        root.action = [0, 0, 0, 0b0000_0111];
+        root.not_before = 100u64.to_be_bytes();
+        root.not_after = 200u64.to_be_bytes();
+
+        let mut mid = CapV1::zeroed();
+        mid.issuer_id = root.subject_id;
+        mid.subject_id = [0xCC; 16];
+        mid.parent_id = root.cap_id;
+        mid.cap_id = [0xB1; 16];
+        mid.resource_id = root.resource_id;
+        mid.audience_id = root.audience_id;
+        mid.suite_id = root.suite_id;
+        mid.max_depth = [2];
+        mid.action = [0, 0, 0, 0b0000_0011];
+        mid.not_before = 110u64.to_be_bytes();
+        mid.not_after = 190u64.to_be_bytes();
+
+        let mut leaf = CapV1::zeroed();
+        leaf.issuer_id = mid.subject_id;
+        leaf.subject_id = [0xEE; 16];
+        leaf.parent_id = mid.cap_id;
+        leaf.cap_id = [0xB2; 16];
+        leaf.resource_id = root.resource_id;
+        leaf.audience_id = root.audience_id;
+        leaf.suite_id = root.suite_id;
+        leaf.max_depth = [1];
+        leaf.action = [0, 0, 0, 0b0000_0001];
+        leaf.not_before = 120u64.to_be_bytes();
+        leaf.not_after = 180u64.to_be_bytes();
+
+        let v = [0x77; 16];
+        let caps = [root, mid, leaf];
+        assert!(accept_chain(&caps, &v, 150, &[true, true, true]));
+        // Matches the two-link gate on its own ground.
+        assert_eq!(
+            accept_chain(&[root, mid], &v, 150, &[true, true]),
+            accept_chain2(&root, &mid, &v, 150, true, true)
+        );
+        // Any missing signature: rejected.
+        assert!(!accept_chain(&caps, &v, 150, &[true, false, true]));
+        // A broken middle link (wrong parent id): rejected.
+        let mut bad_mid = mid;
+        bad_mid.parent_id = [0x01; 16];
+        assert!(!accept_chain(&[root, bad_mid, leaf], &v, 150, &[true, true, true]));
+
+        // Signed variant: keys must match the named issuers.
+        let owner = PublicKey { bytes: [0xAB; 32] };
+        let mid_k = PublicKey { bytes: [0xCD; 32] };
+        let leaf_k = PublicKey { bytes: [0xEF; 32] };
+        let mut root2 = root;
+        root2.issuer_id = key_id(&owner);
+        root2.subject_id = key_id(&mid_k);
+        let mut mid2 = mid;
+        mid2.issuer_id = key_id(&mid_k);
+        mid2.subject_id = key_id(&leaf_k);
+        let mut leaf2 = leaf;
+        leaf2.issuer_id = key_id(&leaf_k);
+        let caps2 = [root2, mid2, leaf2];
+        assert!(accept_chain_signed(&caps2, &v, 150, &[owner, mid_k, leaf_k], &[true; 3]));
+        // Foreign key at the last hop: rejected even with a valid signature bit.
+        let foreign = PublicKey { bytes: [0x99; 32] };
+        assert!(!accept_chain_signed(&caps2, &v, 150, &[owner, mid_k, foreign], &[true; 3]));
     }
 
     #[test]
@@ -742,6 +870,121 @@ mod verification {
         let ls: bool = kani::any();
         kani::assume(key_id(&lpk) != root.subject_id);
         assert!(!accept_chain2_signed(&root, &leaf, &v, now, &rpk, rs, &lpk, ls));
+    }
+
+    /// The generalized chain accept agrees with the two-link definition: `accept_chain::<2>` and
+    /// `accept_chain2` are the same predicate, and likewise for the signed variants. So every
+    /// two-link theorem above transfers to the generalized gate, and the generalization introduced
+    /// no behavior change at the length it replaces.
+    #[kani::proof]
+    fn chain_n_agrees_with_chain2() {
+        let root = any_cap();
+        let leaf = any_cap();
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let rs: bool = kani::any();
+        let ls: bool = kani::any();
+        assert_eq!(
+            accept_chain(&[root, leaf], &v, now, &[rs, ls]),
+            accept_chain2(&root, &leaf, &v, now, rs, ls)
+        );
+        let rpk = any_pk();
+        let lpk = any_pk();
+        assert_eq!(
+            accept_chain_signed(&[root, leaf], &v, now, &[rpk, lpk], &[rs, ls]),
+            accept_chain2_signed(&root, &leaf, &v, now, &rpk, rs, &lpk, ls)
+        );
+    }
+
+    /// A three-link chain accept is reachable (the N-link theorems below are not vacuous).
+    #[kani::proof]
+    fn chain3_reachable() {
+        let caps = [any_cap(), any_cap(), any_cap()];
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        kani::cover!(accept_chain(&caps, &v, now, &[true, true, true]));
+    }
+
+    /// Accepting a three-link chain requires every link's signature: no link's check can be skipped.
+    #[kani::proof]
+    fn chain3_requires_all_sigs() {
+        let caps = [any_cap(), any_cap(), any_cap()];
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let sigs: [bool; 3] = kani::any();
+        kani::assume(accept_chain(&caps, &v, now, &sigs));
+        assert!(sigs[0] && sigs[1] && sigs[2]);
+    }
+
+    /// End-to-end attenuation at three links: an accepted leaf grants no action bit the root lacks,
+    /// sits inside the root's window at `now`, keeps resource and audience, and has consumed at
+    /// least one unit of depth budget per hop (`root.max_depth >= leaf.max_depth + 2`), so the
+    /// chain's length is bounded by the root's budget.
+    #[kani::proof]
+    fn chain3_attenuates() {
+        let caps = [any_cap(), any_cap(), any_cap()];
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let sigs: [bool; 3] = kani::any();
+        kani::assume(accept_chain(&caps, &v, now, &sigs));
+        let (root, leaf) = (&caps[0], &caps[2]);
+        assert_eq!(action_bits(leaf) & !action_bits(root), 0);
+        assert!(root.max_depth[0] as usize >= leaf.max_depth[0] as usize + 2);
+        let (r_nb, r_na) = window(root);
+        assert!(r_nb <= now && now <= r_na);
+        assert_eq!(leaf.audience_id, v);
+        assert_eq!(leaf.resource_id, root.resource_id);
+        assert!(is_root(root));
+    }
+
+    /// The same attenuation theorem at four links (depth margin 3). Together with the three-link
+    /// case this checks the composition at every length the harnesses instantiate; lengths beyond
+    /// these are covered by the argument that `valid_delegation` is link-local (see CAP-V1.md), not
+    /// by a machine-checked induction.
+    #[kani::proof]
+    fn chain4_attenuates() {
+        let caps = [any_cap(), any_cap(), any_cap(), any_cap()];
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let sigs: [bool; 4] = kani::any();
+        kani::assume(accept_chain(&caps, &v, now, &sigs));
+        let (root, leaf) = (&caps[0], &caps[3]);
+        assert_eq!(action_bits(leaf) & !action_bits(root), 0);
+        assert!(root.max_depth[0] as usize >= leaf.max_depth[0] as usize + 3);
+        let (r_nb, r_na) = window(root);
+        assert!(r_nb <= now && now <= r_na);
+        assert_eq!(leaf.audience_id, v);
+        assert_eq!(leaf.resource_id, root.resource_id);
+    }
+
+    /// Key binding down a three-link chain: every non-root link is signed by exactly the key the
+    /// previous link delegated to (`key_id(pks[i]) == caps[i-1].subject_id`), joining the binding
+    /// clause with `valid_delegation` at each hop.
+    #[kani::proof]
+    fn chain3_signing_keys_are_delegates() {
+        let caps = [any_cap(), any_cap(), any_cap()];
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let pks = [any_pk(), any_pk(), any_pk()];
+        let sigs: [bool; 3] = kani::any();
+        kani::assume(accept_chain_signed(&caps, &v, now, &pks, &sigs));
+        assert_eq!(key_id(&pks[1]), caps[0].subject_id);
+        assert_eq!(key_id(&pks[2]), caps[1].subject_id);
+    }
+
+    /// Confused deputy at any hop of a three-link chain: if any non-root link is signed with a key
+    /// that is not the one its parent delegated to, the chain rejects, whatever else is set.
+    #[kani::proof]
+    fn chain3_confused_deputy_rejected() {
+        let caps = [any_cap(), any_cap(), any_cap()];
+        let v: [u8; 16] = kani::any();
+        let now: u64 = kani::any();
+        let pks = [any_pk(), any_pk(), any_pk()];
+        let sigs: [bool; 3] = kani::any();
+        kani::assume(
+            key_id(&pks[1]) != caps[0].subject_id || key_id(&pks[2]) != caps[1].subject_id,
+        );
+        assert!(!accept_chain_signed(&caps, &v, now, &pks, &sigs));
     }
 
     /// Round-trip on records: parsing a serialized capability recovers it exactly, for every
