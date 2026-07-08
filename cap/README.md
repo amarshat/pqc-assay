@@ -259,3 +259,8 @@ section.
     cargo test --features hyb1-keyid   # concrete tests incl. the hybrid crypto test
                                        # (plain `cargo test` skips the hybrid test: it
                                        # needs the feature, declared via required-features)
+
+CI: `.github/workflows/cap.yml` runs both (the full harness set via `cap/verify_cap.sh`, then the
+feature-on test suite) on every push touching `cap/` or `docs/cap/`, with Kani pinned to the
+version the spec's results were produced with. This leg is separate from `make verify` (the
+SAW/Isabelle pipeline); the two share no toolchain.

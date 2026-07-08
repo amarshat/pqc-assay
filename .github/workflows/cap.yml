@@ -1,0 +1,55 @@
+name: cap
+on:
+  push:
+    paths:
+      - 'cap/**'
+      - 'docs/cap/**'
+      - '.github/workflows/cap.yml'
+  pull_request:
+    paths:
+      - 'cap/**'
+      - 'docs/cap/**'
+      - '.github/workflows/cap.yml'
+  workflow_dispatch:
+
+# The Cap-V1 leg: the capability-token verifier's Kani harnesses (format bijection, delegation
+# attenuation, accept gates, signature/key binding, single-use, revocation) plus the real-crypto
+# integration test (ECDSA P-256 + ML-DSA-44 over serialize(cap), and the key-id KAT).
+#
+# Runs on ubuntu: the cap crate is pure Rust with no dependence on the repo's .tools SAW/Isabelle
+# toolchain (which is macOS-only), and Kani ships linux x86_64 bundles. Kani is pinned (0.67.0,
+# the version the results in docs/cap/CAP-V1.md were produced with); bumping it is a deliberate
+# change to this file.
+jobs:
+  cap-kani:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      KANI_VERSION: 0.67.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Kani (cargo-kani binary + verifier bundle)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-kani
+            ~/.cargo/bin/kani
+            ~/.kani
+          key: kani-${{ env.KANI_VERSION }}-${{ runner.os }}
+
+      - name: Install Kani (pinned, skipped when cached)
+        run: |
+          if [ -x "$HOME/.cargo/bin/cargo-kani" ] && [ -d "$HOME/.kani/kani-$KANI_VERSION" ]; then
+            echo "kani $KANI_VERSION restored from cache; skipping install"
+          else
+            cargo install --locked kani-verifier --version "$KANI_VERSION"
+            cargo kani setup
+          fi
+          cargo kani --version
+
+      - name: Verify the Cap-V1 Kani harnesses (all must pass, 0 failures)
+        run: ./cap/verify_cap.sh
+
+      - name: Run the concrete tests (unit + key-id KAT + real hybrid crypto)
+        run: cd cap && cargo test --features hyb1-keyid
