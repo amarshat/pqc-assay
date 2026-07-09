@@ -1,0 +1,21 @@
+[package]
+name = "cap-demo"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Runnable Cap-V1 agent-delegation demo: real ECDSA P-256 + ML-DSA-44 driving the Kani-verified capability gates."
+
+[dependencies]
+# The verified verifier itself. Unlike the Q-SEAL demo (which mirrors a Cryptol model in Rust),
+# this demo calls the exact functions the Kani harnesses verify, plus the library's deployment
+# key commitment (hyb1-keyid).
+cap-v1 = { path = "..", features = ["hyb1-keyid"] }
+# ML-DSA-44 from the RustCrypto crate this project also formally verifies.
+ml-dsa = "0.1.1"
+# Classical half of the hybrid.
+p256 = { version = "0.13", features = ["ecdsa"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+
+[[bin]]
+name = "cap-demo"
+path = "src/main.rs"

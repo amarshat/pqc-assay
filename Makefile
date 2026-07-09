@@ -178,6 +178,13 @@ cap-hybrid:
 	@echo ">> Cap-V1 hybrid crypto: real ECDSA + ML-DSA-44 over serialize(cap); valid accepts, tamper/downgrade/confused-deputy/expired reject; plus the key-id KAT"
 	cd cap && cargo test --features hyb1-keyid --quiet
 
+## Cap-V1 runnable demo: an orchestrator->agent->worker delegation chain with real hybrid crypto,
+## every accept/reject decided by the Kani-verified accept_chain_full. Self-checks, exits nonzero
+## on any wrong verdict. Needs cargo only.
+cap-demo:
+	@echo ">> Cap-V1 demo: delegation chain accepts; replay/tamper/escalation/confused-deputy/downgrade/terminal-redelegation/revoked reject"
+	cd cap/demo && cargo run --quiet
+
 ## The writeups: the NTT/SAW/Isabelle technical piece, and the Q-SEAL eSIM-attestation post
 ## (docs/writeup/verified-esim-attestation.{md,html}; the .html is self-contained for GitHub Pages).
 writeup:

@@ -53,3 +53,6 @@ jobs:
 
       - name: Run the concrete tests (unit + key-id KAT + real hybrid crypto)
         run: cd cap && cargo test --features hyb1-keyid
+
+      - name: Run the demo (self-checking; exits nonzero on any wrong verdict)
+        run: cd cap/demo && cargo run --quiet
