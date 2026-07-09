@@ -9,6 +9,7 @@
   <a href="https://github.com/amarshat/pqc-assay/actions/workflows/verify.yml"><img src="https://github.com/amarshat/pqc-assay/actions/workflows/verify.yml/badge.svg" alt="verify"></a>
   <a href="https://github.com/amarshat/pqc-assay/actions/workflows/saw.yml"><img src="https://github.com/amarshat/pqc-assay/actions/workflows/saw.yml/badge.svg" alt="saw"></a>
   <a href="https://github.com/amarshat/pqc-assay/actions/workflows/rust.yml"><img src="https://github.com/amarshat/pqc-assay/actions/workflows/rust.yml/badge.svg" alt="rust"></a>
+  <a href="https://github.com/amarshat/pqc-assay/actions/workflows/cap.yml"><img src="https://github.com/amarshat/pqc-assay/actions/workflows/cap.yml/badge.svg" alt="cap"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
   <img src="https://img.shields.io/badge/Isabelle-2025--2-9cf.svg" alt="Isabelle2025-2">
   <img src="https://img.shields.io/badge/SAW-1.5.1-orange.svg" alt="SAW 1.5.1">
@@ -61,6 +62,16 @@ survivors being equivalent mutants; `make qseal-mutants`). The seventh (5, `PROF
 cannot be reached through a host-exposed APDU path) is a reachability property checked in ProVerif. See
 [`qseal/README.md`](qseal/README.md) for the exact scope and non-claims of each. `make qseal-tbs
 qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-reachability`.
+
+A third track, **Cap-V1** ([`cap/`](cap/), spec [`docs/cap/CAP-V1.md`](docs/cap/CAP-V1.md)), applies
+the same discipline to agent delegation: a fixed 191-byte capability token, hybrid-signed with the
+same ECDSA P-256 + ML-DSA-44 suite, whose Rust verifier is machine-checked with Kani (55 harnesses:
+format bijection, chain attenuation, key binding, single-use, per-link revocation; each tagged
+honestly in the spec as independent content, definition check, or non-vacuity cover). A runnable
+demo (`make cap-demo`) drives the verified gate with real hybrid signatures through eight
+accept/reject scenarios, and the write-up is
+[A machine-checked capability layer for agent delegation](https://amarshat.github.io/pqc-assay/writeup/verified-agent-delegation.html).
+`make cap-kani cap-hybrid cap-demo`.
 
 To anchor the method to a real defect, [`cve-anchor/`](cve-anchor/) machine-checks the FIPS 204
 hint-decode canonicity rule that CVE-2026-24850 (GHSA-5x2r-hc65-25f9) broke: SAW proves a verifiable
@@ -290,7 +301,10 @@ make saw                             # SAW leg only (fast, no Isabelle)
 | `model/`   | Cryptol model of the primitives |
 | `proof/`   | SAW scripts (C ≡ Cryptol) |
 | `spec/`    | Isabelle spec + the equivalence proof |
-| `docs/`    | Roadmap, assumptions, pipeline, writeup |
+| `implementations/` | Second target: RustCrypto `ml-dsa` (MIR) and its SAW proofs |
+| `qseal/`   | Q-SEAL protocol properties (Cryptol/SAW/ProVerif) and demo |
+| `cap/`     | Cap-V1 capability layer: Kani-verified Rust verifier and demo |
+| `docs/`    | Roadmap, assumptions, pipeline, specs, writeups |
 | `scripts/` | Toolchain setup and pipeline orchestration |
 
 ## Tools

@@ -159,6 +159,7 @@ tests and demo. CI (`.github/workflows/cap.yml`) runs all three legs on every pu
 the layer.
 
 The spec, the per-harness honesty tags, and the full scope-and-limitations list are in
-[`docs/cap/CAP-V1.md`](../cap/CAP-V1.md). The sibling write-up on this repository's other track,
-verifying the ML-DSA arithmetic that backs the post-quantum half, is
-[here](verified-esim-attestation.md).
+[`docs/cap/CAP-V1.md`](https://github.com/amarshat/pqc-assay/blob/main/docs/cap/CAP-V1.md). The
+sibling write-up on this repository's other track, verifying the ML-DSA arithmetic that backs the
+post-quantum half, is
+[here](https://amarshat.github.io/pqc-assay/writeup/verified-esim-attestation.html).
