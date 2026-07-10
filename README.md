@@ -33,7 +33,9 @@ functional equivalence, a machine-checked overflow-freedom / coefficient-bound r
 correctness theorems for the lifted normal-domain transforms. The bridges linking those transforms back
 to the montgomery-domain models the SAW C≡Cryptol legs check are now proven (`ntt_bridge` forward,
 `invntt_bridge` inverse), so C → FIPS-204 forward NTT and C → FIPS-204 inverse NTT are each a single
-machine-checked chain mod q, modulo the scoped `-fwrapv` no-UB assumption (see the claim table below).
+machine-checked chain mod q. The forward chain's former `-fwrapv` no-UB assumption is now itself
+machine-checked (`make ntt-nsw`: the default nsw build verified overflow-free and equal to the model
+on the bounded window); the inverse still carries it as a scoped assumption (claim table below).
 Montgomery reduction is an
 implementation device the NTT uses; it is not defined in FIPS 204. None of this is the
 optimized/assembly code that ships in production (see [Roadmap](docs/ROADMAP.md)).
@@ -87,6 +89,10 @@ rejected by the same proof. The rule is FIPS 204's, not ours. `make cve-anchor`.
     `caddq`, `freeze`, these also assert no signed-overflow UB in range.
   - The forward NTT `ntt(a[256])`, under two's-complement wrapping (`-fwrapv`). This is functional
     equivalence for all inputs; overflow-freedom is proven separately in Isabelle (below).
+  - The forward NTT again on the DEFAULT (nsw) bitcode (`make ntt-nsw`, ~12.5 h, out of band):
+    under inputs in `±(2³¹−2²⁷)`, all ~3000 signed-overflow side conditions discharge AND the
+    result equals the model (SAW + bitwuzla 0.9.1). This mechanizes the forward `-fwrapv` ⇒ no-UB
+    step on that window; the same step for the inverse remains argued.
 
   A mutation test confirms the reduce proof is non-vacuous, and CI diffs the lifted Isabelle model
   against the Cryptol model SAW checks.
@@ -101,9 +107,10 @@ rejected by the same proof. The rule is FIPS 204's, not ours. `make cve-anchor`.
   8 levels, so **no `int32` add/sub overflows** and every `montgomery_reduce` input stays in range.
   This is the coefficient-bound composition the `-fwrapv` proof sidesteps, proven by induction over
   the 8 levels (one per-level lemma iterated, montgomery output bound `|t| < Q`), not by SAW
-  unrolling. The C-side claim (the reference NTT has no signed-overflow UB) follows by composing this
-  with the `-fwrapv` C≡model equivalence; that last bridge is an argued meta-step, not separately
-  mechanized (see [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md), Roadmap v1.5).
+  unrolling. The C-side claim (the reference forward NTT has no signed-overflow UB on this window)
+  is now separately mechanized too: `make ntt-nsw` verifies the default (nsw) bitcode directly
+  (SAW + bitwuzla, 12.5 h), so the forward direction no longer leans on the argued `-fwrapv`
+  meta-step (see [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md)).
 
 Chained with the SAW leg, this gives C ≡ spec for the full `reduce.c` arithmetic layer (each function
 computes a correct residue mod Q within its proven output window), plus a machine-checked
@@ -166,7 +173,7 @@ The inverse NTT and its `256⁻¹` (= `mont/256`) normalization are now machine-
 and inverse overflow-freedom too (`invntt_overflow_free`, under a non-negative `[0,Q)` input window,
 not the symmetric `|coeff| < Q`; it is tight because the Gentleman-Sande low leg doubles the bound per
 level, and it does not cover the signed centered coefficients the reference feeds `invntt_tomont`). Still open: constant-time, and
-scoping the `-fwrapv` ⇒ no-UB seam (the same argued meta-step the forward already relies on). See
+the inverse's `-fwrapv` ⇒ no-UB seam (the forward's is now mechanized, `make ntt-nsw`). See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ### Claim status (forward-NTT chain)
@@ -180,7 +187,8 @@ with justification in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md); "not claimed
 | `reduce.c` primitives (`montgomery_reduce`/`reduce32`/`caddq`/`freeze`) ≡ Cryptol | machine-checked (SAW + Z3) |
 | C `ntt(a[256])` ≡ Cryptol montgomery `ntt` (under `-fwrapv` wrapping; functional) | machine-checked (SAW) |
 | montgomery NTT overflow-freedom / coefficient bound | machine-checked (Isabelle `ntt_overflow_free`) |
-| `-fwrapv` wrapping ⇒ no signed-overflow UB in the C | argued (meta-step, not mechanized) |
+| forward: no signed-overflow UB in the DEFAULT (nsw) build, and ≡ model, on `±(2³¹−2²⁷)` inputs | machine-checked (SAW + bitwuzla, `make ntt-nsw`, ~12.5 h) |
+| inverse: `-fwrapv` wrapping ⇒ no signed-overflow UB in the C | argued (meta-step, not mechanized) |
 | Cryptol montgomery `ntt` lifts to Isabelle | machine-checked (cryptol-to-isabelle; builds) |
 | montgomery lifted `ntt` ≡ normal `nttFwdAllRef` (mod q) | machine-checked (Isabelle `Mont_Bridge`, `mbfly0`..`mbfly7` composed) |
 | normal `nttFwdAllRef` ≡ FIPS-204 forward NTT | machine-checked (Isabelle `fwd_ntt_correct`) |
@@ -194,7 +202,8 @@ with justification in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md); "not claimed
 
 With `ntt_bridge` (forward) and `invntt_bridge` (inverse) the two machine-checked ends join in both
 directions: C → FIPS-204 forward NTT *and* C → FIPS-204 inverse NTT are each one connected
-machine-checked chain mod q, with the only non-mechanized step the `-fwrapv` ⇒ no-UB meta-argument
+machine-checked chain mod q. The forward chain now has no argued step on the bounded window (the
+nsw row above); the inverse's only non-mechanized step is its `-fwrapv` ⇒ no-UB meta-argument
 (the "argued" row above). Both directions are also overflow-free (`ntt_overflow_free` /
 `invntt_overflow_free`); the inverse needs a tight non-negative `[0,Q)` input window (`256·(Q−1)` just
 fits int32), which does not cover the signed centered inputs at the reference call site (open). What is *not* claimed: that this is the hard or shipping code (it

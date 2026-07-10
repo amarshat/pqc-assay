@@ -1,0 +1,58 @@
+// RESULT (2026-07-10): the forward NTT's -fwrapv => no-UB link, mechanized.
+//
+// Verifies PQCLEAN ntt() on the DEFAULT (nsw) bitcode, where signed overflow is poison/UB, under
+// the input bound ntt_in_range (+/-(2^31 - 2^27), the ntt_overflow_free window). Discharging it
+// means: every unrolled int32 add/sub is overflow-free, every montgomery_reduce input is in its
+// precondition, and the result equals the Cryptol model, on the default build. The forward
+// direction's argued -fwrapv meta-step is therefore a theorem on this domain.
+//
+// First verified 2026-07-10: 44966 s wall (12.5 h), ~3000 nsw side-condition obligations, SAW
+// 1.5.1 + bitwuzla 0.9.1 (w4_unint_bitwuzla). The 2026-06-09 attempt with w4_unint_z3 (branch
+// v1.5-saw-overflow-wip) never completed; bitwuzla's abstraction-refinement makes each obligation
+// cheap (under 2 s solver CPU), so the cost is SAW's per-goal preparation times the volume. Run
+// via `make ntt-nsw` (out of band; far too slow for `make saw`/CI). Needs bitwuzla on PATH
+// (.tools/bin, pinned 0.9.1).
+//
+// Non-vacuity: the precondition is satisfiable (cryptol :sat, instant). A loosened-bound mutation
+// (headroom < 8Q, which must fail) was NOT run: one run costs 12.5 h and a timeout would prove
+// nothing. The functional half is non-trivially pinned regardless (llvm_points_to against the same
+// model ntt the Isabelle leg proves equal to FIPS-204), and the -fwrapv functional proof remains
+// the unconditional twin.
+
+enable_experimental;
+
+m <- llvm_load_module "../../build/mldsa_ntt.bc";
+import "../../model/cryptol/MLDSA_NTT.cry";
+
+// Bounded montgomery_reduce override on the nsw bitcode: half-open input domain (strict output
+// bound -Q < t < Q fails at the inclusive endpoint, finding OF-1), output bound carried as a
+// postcondition so the per-coefficient bound propagates through the butterflies.
+let mont_safe_spec = do {
+    a <- llvm_fresh_var "a" (llvm_int 64);
+    llvm_precond {{ (a >=$ (- ((2 : [64]) ^^ 31 * 8380417))) /\ (a <$ ((2 : [64]) ^^ 31 * 8380417)) }};
+    llvm_execute_func [llvm_term a];
+    llvm_return (llvm_term {{ montgomery_reduce a }});
+    llvm_postcond {{ (montgomery_reduce a >$ (-Q32)) /\ (montgomery_reduce a <$ Q32) }};
+};
+mont_safe_ov <- llvm_verify m "PQCLEAN_MLDSA44_CLEAN_montgomery_reduce" [] true mont_safe_spec z3;
+print "probe: mont_safe override verified (z3)";
+
+let ptr_to_fresh nm ty = do {
+    x <- llvm_fresh_var nm ty;
+    p <- llvm_alloc ty;
+    llvm_points_to p (llvm_term x);
+    return (x, p);
+};
+
+// Input bound +/- (2^31 - 2^27): headroom 2^27 > 8*Q above the per-level growth < Q per level.
+let ntt_safe_spec = do {
+    (a, pa) <- ptr_to_fresh "a" (llvm_array 256 (llvm_int 32));
+    llvm_precond {{ all (\x -> (x >=$ (-2013265920 : [32])) && (x <=$ (2013265920 : [32]))) a }};
+    llvm_execute_func [pa];
+    llvm_points_to pa (llvm_term {{ ntt a }});
+};
+
+ntt_safe_ov <- llvm_verify m "PQCLEAN_MLDSA44_CLEAN_ntt" [mont_safe_ov] true ntt_safe_spec
+                          (w4_unint_bitwuzla ["montgomery_reduce"]);
+
+print "PROBE SUCCESS: ntt overflow-free AND == Cryptol ntt under ntt_in_range (nsw bitcode, bitwuzla)";

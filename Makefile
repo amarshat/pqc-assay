@@ -86,6 +86,13 @@ barrett-solver:
 	@echo ">> (needs the RustCrypto MIR harness: implementations/rustcrypto-ml-dsa/build/mldsa_harness.linked-mir.json)"
 	cd implementations/rustcrypto-ml-dsa/proof/ntt && $(SAW) barrett_reduce_bitwuzla.saw
 
+## Forward NTT on the DEFAULT (nsw) bitcode: overflow-free AND == model under the
+## +/-(2^31-2^27) input window, discharging the forward -fwrapv => no-UB meta-step as a theorem.
+## ~12.5 h wall (bitwuzla per ~3000 unrolled side conditions); out of band, never in CI/make saw.
+ntt-nsw:
+	@echo ">> SAW + bitwuzla: forward ntt on the nsw bitcode, overflow-free + == model (~12.5 h)"
+	PATH="$(TOOLS_BIN):$$PATH" $(SAW) proof/saw/ntt_nsw.saw
+
 ## Q-SEAL protocol property (independent of the ML-DSA primitive). Fast (<1s). Property 1 of
 ## Q-SEAL v0.1 section 16: the fixed-length TBS-V1 transcript serializer is bijective and injective,
 ## i.e. no transcript-level malleability. Model + proof in qseal/.
