@@ -81,7 +81,12 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
     assumption on that domain. The **inverse** is overflow-free on the model under `[0, Q)`
     (`invntt_overflow_free`; see the inverse-NTT scope bullet above); its `-fwrapv` ⇒ no-UB seam
     REMAINS the argued meta-step, and that domain does not cover the reference call site's centered
-    inputs.
+    inputs. A direct nsw-build attempt for the inverse (2026-07-10..12, `proof/saw/
+    invntt_nsw_probe.saw` + the goal-dump sweep) was closed as impractical: of 4609 obligations,
+    3747 discharged unsat (most in seconds), 36 hit a 2 h per-goal cap, none was sat, and the
+    late-level band (where the Gentleman-Sande doubling makes terms widest) resists the same
+    bitwuzla abstraction-refinement that crossed the forward's unroll. Measured boundary datum,
+    recorded in the script header; the inverse link stays argued.
 - Anything not listed as proven is, explicitly, NOT proven.
 
 ## v2 (Rust / RustCrypto `ml-dsa`) assumptions

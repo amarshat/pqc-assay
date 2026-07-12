@@ -1,0 +1,61 @@
+// NEGATIVE / PARTIAL RESULT (attempted 2026-07-10..12): the inverse twin of ntt_nsw.saw.
+// NOT part of the pipeline; preserved as a measured boundary datum. The inverse's -fwrapv =>
+// no-UB link REMAINS ARGUED.
+//
+// Goal: re-verify PQCLEAN invntt_tomont() on the DEFAULT (nsw) bitcode under the [0, Q) input
+// bound the Isabelle overflow theorem (invntt_overflow_free) uses. Would have upgraded the
+// inverse's argued link to "mechanized on the restricted domain" (which still would not cover the
+// deployed call site's centered coefficients; disclosed).
+//
+// What happened (contrast: the forward twin, ntt_nsw.saw, completed in 12.5 h):
+// - Sequential run (this script): ~55 h without completing. One observed obligation took 7.65 h
+//   of bitwuzla CPU before falling.
+// - Parallel sweep (invntt_nsw_dump.saw + scripts/solve_nsw_goals.sh): all 4609 obligations
+//   dumped to SMT-LIB2, solved 6-way with a 2 h per-goal cap. 3783 attempted before close-out:
+//   3747 unsat (3492 of those in under 10 s), 36 unknown at the cap, none sat (no counterexample
+//   anywhere), ~826 unattempted in the same hard band. Progress rate implied 12+ days to finish.
+// - Diagnosis: the late Gentleman-Sande levels. The inverse's unreduced low leg DOUBLES the
+//   coefficient bound per level (the forward grows it by +Q), so its late side conditions carry
+//   far wider terms; bitwuzla's abstraction-refinement, which crossed the forward unroll and the
+//   wide Barrett goal, stalls on a band of these. Same boundary shape as the eager-bit-blasting
+//   wall, one solver class further out.
+// - The bulk data point: sequential SAW spent 15-20 s of per-goal preparation on goals raw
+//   bitwuzla solves in under a second; the dump-and-parallelize route is how to attack this class.
+// Closed as impractical on this hardware (time-boxed); the Isabelle induction (invntt_overflow_free)
+// remains the tractable route for the inverse bound, on the model.
+
+enable_experimental;
+
+m <- llvm_load_module "../../build/mldsa_ntt.bc";
+import "../../model/cryptol/MLDSA_NTT.cry";
+
+let mont_safe_spec = do {
+    a <- llvm_fresh_var "a" (llvm_int 64);
+    llvm_precond {{ (a >=$ (- ((2 : [64]) ^^ 31 * 8380417))) /\ (a <$ ((2 : [64]) ^^ 31 * 8380417)) }};
+    llvm_execute_func [llvm_term a];
+    llvm_return (llvm_term {{ montgomery_reduce a }});
+    llvm_postcond {{ (montgomery_reduce a >$ (-Q32)) /\ (montgomery_reduce a <$ Q32) }};
+};
+mont_safe_ov <- llvm_verify m "PQCLEAN_MLDSA44_CLEAN_montgomery_reduce" [] true mont_safe_spec z3;
+print "probe: mont_safe override verified (z3)";
+
+let ptr_to_fresh nm ty = do {
+    x <- llvm_fresh_var nm ty;
+    p <- llvm_alloc ty;
+    llvm_points_to p (llvm_term x);
+    return (x, p);
+};
+
+// [0, Q) non-negative input bound (the invntt_overflow_free hypothesis): the Gentleman-Sande low
+// leg is unreduced, so magnitudes double per level, reaching 2^8 (Q-1) = 2145386496 < 2^31.
+let invntt_safe_spec = do {
+    (a, pa) <- ptr_to_fresh "a" (llvm_array 256 (llvm_int 32));
+    llvm_precond {{ all (\x -> (x >=$ (0 : [32])) && (x <$ Q32)) a }};
+    llvm_execute_func [pa];
+    llvm_points_to pa (llvm_term {{ invntt a }});
+};
+
+invntt_safe_ov <- llvm_verify m "PQCLEAN_MLDSA44_CLEAN_invntt_tomont" [mont_safe_ov] true invntt_safe_spec
+                             (w4_unint_bitwuzla ["montgomery_reduce"]);
+
+print "PROBE SUCCESS: invntt_tomont overflow-free AND == Cryptol invntt on [0,Q) (nsw bitcode, bitwuzla)";

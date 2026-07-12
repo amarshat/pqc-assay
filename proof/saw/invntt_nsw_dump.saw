@@ -1,0 +1,39 @@
+// DUMP variant of invntt_nsw_probe.saw: writes every proof obligation of the inverse-NTT
+// nsw-build verification to standalone SMT-LIB2 files (no solving), so the goals can be
+// discharged in parallel and the slow ones identified individually. Same spec as the probe.
+
+enable_experimental;
+
+m <- llvm_load_module "../../build/mldsa_ntt.bc";
+import "../../model/cryptol/MLDSA_NTT.cry";
+
+let mont_safe_spec = do {
+    a <- llvm_fresh_var "a" (llvm_int 64);
+    llvm_precond {{ (a >=$ (- ((2 : [64]) ^^ 31 * 8380417))) /\ (a <$ ((2 : [64]) ^^ 31 * 8380417)) }};
+    llvm_execute_func [llvm_term a];
+    llvm_return (llvm_term {{ montgomery_reduce a }});
+    llvm_postcond {{ (montgomery_reduce a >$ (-Q32)) /\ (montgomery_reduce a <$ Q32) }};
+};
+mont_safe_ov <- llvm_verify m "PQCLEAN_MLDSA44_CLEAN_montgomery_reduce" [] true mont_safe_spec z3;
+print "dump: mont_safe override verified (z3)";
+
+let ptr_to_fresh nm ty = do {
+    x <- llvm_fresh_var nm ty;
+    p <- llvm_alloc ty;
+    llvm_points_to p (llvm_term x);
+    return (x, p);
+};
+
+let invntt_safe_spec = do {
+    (a, pa) <- ptr_to_fresh "a" (llvm_array 256 (llvm_int 32));
+    llvm_precond {{ all (\x -> (x >=$ (0 : [32])) && (x <$ Q32)) a }};
+    llvm_execute_func [pa];
+    llvm_points_to pa (llvm_term {{ invntt a }});
+};
+
+// offline: every goal is WRITTEN, none is proven. The llvm_verify "success" below is NOT a
+// verification result; the verification is the later parallel discharge of every written file.
+invntt_dump <- llvm_verify m "PQCLEAN_MLDSA44_CLEAN_invntt_tomont" [mont_safe_ov] true invntt_safe_spec
+                          (offline_w4_unint_bitwuzla ["montgomery_reduce"] "../../build/nsw_goals/invntt");
+
+print "DUMP COMPLETE (goals written to build/nsw_goals/; NOTHING IS PROVEN by this script)";
