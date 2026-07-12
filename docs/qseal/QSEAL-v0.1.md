@@ -221,6 +221,52 @@ The transcript is fixed-length and MUST contain no optional fields, variable enc
 
 This is deliberate. Canonicalisation bugs are the cryptographic equivalent of leaving a side door open because the main gate had a nice lock.
 
+### 7.1 TBS-V2 (v0.2 draft): hybrid pair binding
+
+Motivation, from public review of v0.1 (r/crypto, 2026-07-12): in TBS-V1 each component signature
+commits to the hybrid pair only through `ak_id`, an identifier bound to the two public keys at the
+certificate layer. Nothing inside the signed bytes commits to the key material of the OTHER half
+of the pair, and FIPS 204's `ctx` parameter is unused. That leaves pair binding resting entirely
+on certification, the known non-separability concern for hybrid signatures.
+
+TBS-V2 is TBS-V1 with one field inserted directly after `ak_id`:
+
+```text
+    pair_commitment         : 32 bytes
+```
+
+Total 263 bytes; `version` = 2. The commitment is:
+
+```text
+    pair_commitment = SHA-256("QSEAL-PAIR-HYB1" || AK_classical_compressed_33 || AK_pqc_encoded_1312)
+```
+
+the untruncated form of the domain-separated pair hash Cap-V1 uses for its key ids (both inputs
+fixed length, so the concatenation is unambiguous without length prefixes).
+
+Rules:
+
+- The applet MUST compute `pair_commitment` from its own key material; a host-supplied value MUST
+  be rejected (same applet-controls-identity rule as `issuer_id`/`ak_id`).
+- The verifier MUST recompute the commitment from the two public keys it validated via `ak_id`'s
+  certificate chain and reject on mismatch.
+- The ML-DSA-44 signature MUST be produced and verified with the FIPS 204 context string
+  `ctx = "Q-SEAL/v2"`. ECDSA has no context parameter; its half relies on the commitment inside
+  the message.
+- V1 and V2 cannot be confused on the wire: both are fixed-length with no optional fields and
+  231 != 263, so no byte string parses as both.
+
+With this, each component signature commits to the exact hybrid pair rather than to its name, so
+a peeled-off component signature identifies itself as half of a Q-SEAL pair. What v0.2 does NOT
+claim: any guarantee about foreign verifiers that ignore the transcript format entirely; the
+commitment's strength is SHA-256 collision resistance (out of scope of the format proofs).
+
+Machine-checked (qseal/model/QSEAL_TBS_V2.cry, `make qseal-tbs`): the V2 serializer is a bijection
+and injective; `pair_commitment` is signed and position-pinned (two transcripts differing only in
+the commitment never share bytes); and a serializer that omitted the commitment is witnessed to
+collide them (mutation-style non-vacuity). The verifier-side recompute-and-compare check and the
+`ctx` wiring are v0.2 implementation work, not yet in the verified C reference or the demo.
+
 ---
 
 ## 8. Assertion Types

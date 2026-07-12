@@ -97,7 +97,7 @@ ntt-nsw:
 ## Q-SEAL v0.1 section 16: the fixed-length TBS-V1 transcript serializer is bijective and injective,
 ## i.e. no transcript-level malleability. Model + proof in qseal/.
 qseal-tbs:
-	@echo ">> cryptol + z3: Q-SEAL TBS-V1 transcript is bijective and injective (no transcript malleability)"
+	@echo ">> cryptol + z3: Q-SEAL TBS-V1 + TBS-V2 transcripts bijective/injective; V2 pair commitment signed (no transcript malleability)"
 	./qseal/verify_tbs.sh
 
 ## SAW: the C reference TBS-V1 (de)serializer (qseal/ref/) equals the Cryptol model, so it places

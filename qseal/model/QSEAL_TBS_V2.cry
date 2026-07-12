@@ -1,0 +1,135 @@
+// Q-SEAL TBS-V2 canonical transcript: Cryptol model + bijectivity/injectivity proofs.
+//
+// V2 exists to close the hybrid non-separability gap raised in public review of v0.1 (r/crypto,
+// 2026-07-12): in V1, each signature commits to the pair only through `ak_id`, an identifier
+// resolved at the certificate layer; nothing inside the signed bytes commits to the actual key
+// material of BOTH halves of the hybrid pair. V2 adds `pair_commitment`, defined in the spec as
+// SHA-256("QSEAL-PAIR-HYB1" || ec_compressed_33 || mldsa_pk_1312), the untruncated form of the
+// same domain-separated pair hash the Cap-V1 layer uses for its key ids. With it inside the
+// transcript, each component signature commits to the exact hybrid pair, not just its name; a
+// component signature cannot be re-presented as a signature by a standalone key without the
+// commitment giving it away. The hash itself is out of scope here (opaque 32 bytes, computed and
+// checked by signer and verifier); what this model proves is the format: the commitment is part
+// of the canonical bytes, and the serializer stays a bijection.
+//
+// Layout: TBS-V1 with `pair_commitment : 32 bytes` inserted directly after `ak_id`. Total
+// 263 bytes (V1 is 231). The two versions cannot be confused on the wire: both are fixed-length
+// with no optional fields, and 231 != 263, so no byte string parses as both (the same
+// fixed-length disambiguation argument the spec makes for QSEAL vs CAPV1). V2 transcripts set
+// `version = 2`.
+//
+// Verified with cryptol :prove (z3), structural concat/slice identities as for V1.
+
+module QSEAL_TBS_V2 where
+
+magic : [5][8]
+magic = "QSEAL"
+
+type TBS2 =
+  { version                 : [1][8]
+  , suite_id                : [2][8]
+  , assertion_type          : [1][8]
+  , assertion_origin        : [1][8]
+  , issuer_id               : [16][8]
+  , verifier_id             : [16][8]
+  , ak_id                   : [16][8]
+  , pair_commitment         : [32][8]
+  , request_id              : [16][8]
+  , nonce                   : [32][8]
+  , policy_id               : [4][8]
+  , issued_at               : [8][8]
+  , expires_at              : [8][8]
+  , subject_ref             : [32][8]
+  , object_hash_algorithm   : [1][8]
+  , object_length           : [8][8]
+  , object_digest           : [32][8]
+  , associated_claim_digest : [32][8]
+  }
+
+serialize2 : TBS2 -> [263][8]
+serialize2 t =
+    magic
+  # t.version
+  # t.suite_id
+  # t.assertion_type
+  # t.assertion_origin
+  # t.issuer_id
+  # t.verifier_id
+  # t.ak_id
+  # t.pair_commitment
+  # t.request_id
+  # t.nonce
+  # t.policy_id
+  # t.issued_at
+  # t.expires_at
+  # t.subject_ref
+  # t.object_hash_algorithm
+  # t.object_length
+  # t.object_digest
+  # t.associated_claim_digest
+
+parse2 : [263][8] -> TBS2
+parse2 b =
+  { version                 = take`{1}  (drop`{5}   b)
+  , suite_id                = take`{2}  (drop`{6}   b)
+  , assertion_type          = take`{1}  (drop`{8}   b)
+  , assertion_origin        = take`{1}  (drop`{9}   b)
+  , issuer_id               = take`{16} (drop`{10}  b)
+  , verifier_id             = take`{16} (drop`{26}  b)
+  , ak_id                   = take`{16} (drop`{42}  b)
+  , pair_commitment         = take`{32} (drop`{58}  b)
+  , request_id              = take`{16} (drop`{90}  b)
+  , nonce                   = take`{32} (drop`{106} b)
+  , policy_id               = take`{4}  (drop`{138} b)
+  , issued_at               = take`{8}  (drop`{142} b)
+  , expires_at              = take`{8}  (drop`{150} b)
+  , subject_ref             = take`{32} (drop`{158} b)
+  , object_hash_algorithm   = take`{1}  (drop`{190} b)
+  , object_length           = take`{8}  (drop`{191} b)
+  , object_digest           = take`{32} (drop`{199} b)
+  , associated_claim_digest = take`{32} (drop`{231} b)
+  }
+
+well_formed2 : [263][8] -> Bit
+well_formed2 b = take`{5} b == magic
+
+// (1) Round-trip on records.
+property roundtrip2_parse_serialize t = parse2 (serialize2 t) == t
+
+// (2) Round-trip on bytes.
+property roundtrip2_serialize_parse b = well_formed2 b ==> (serialize2 (parse2 b) == b)
+
+// (3) Injectivity: no transcript-level malleability, commitment included.
+property serialize2_injective t1 t2 = (serialize2 t1 == serialize2 t2) ==> (t1 == t2)
+
+// (4) The commitment is signed and position-pinned: two transcripts differing only in
+// pair_commitment serialize to different bytes (a signature over one is not a signature over the
+// other), and a serializer that OMITTED the commitment (zeroing its slot) would collide them.
+// Mutation-style non-vacuity, the same device as the audience-omission witness in Cap-V1.
+serialize2_omitting_commitment : TBS2 -> [263][8]
+serialize2_omitting_commitment t = serialize2 (t' t)
+  where t' x = { version = x.version, suite_id = x.suite_id, assertion_type = x.assertion_type
+               , assertion_origin = x.assertion_origin, issuer_id = x.issuer_id
+               , verifier_id = x.verifier_id, ak_id = x.ak_id
+               , pair_commitment = zero
+               , request_id = x.request_id, nonce = x.nonce, policy_id = x.policy_id
+               , issued_at = x.issued_at, expires_at = x.expires_at, subject_ref = x.subject_ref
+               , object_hash_algorithm = x.object_hash_algorithm, object_length = x.object_length
+               , object_digest = x.object_digest
+               , associated_claim_digest = x.associated_claim_digest }
+
+property commitment_is_signed t1 t2 =
+  (t1.pair_commitment != t2.pair_commitment) ==> (serialize2 t1 != serialize2 t2)
+
+property omitting_commitment_breaks_binding t1 t2 =
+  ((t1.pair_commitment != t2.pair_commitment)
+   /\ (t1.version == t2.version) /\ (t1.suite_id == t2.suite_id)
+   /\ (t1.assertion_type == t2.assertion_type) /\ (t1.assertion_origin == t2.assertion_origin)
+   /\ (t1.issuer_id == t2.issuer_id) /\ (t1.verifier_id == t2.verifier_id)
+   /\ (t1.ak_id == t2.ak_id) /\ (t1.request_id == t2.request_id) /\ (t1.nonce == t2.nonce)
+   /\ (t1.policy_id == t2.policy_id) /\ (t1.issued_at == t2.issued_at)
+   /\ (t1.expires_at == t2.expires_at) /\ (t1.subject_ref == t2.subject_ref)
+   /\ (t1.object_hash_algorithm == t2.object_hash_algorithm)
+   /\ (t1.object_length == t2.object_length) /\ (t1.object_digest == t2.object_digest)
+   /\ (t1.associated_claim_digest == t2.associated_claim_digest))
+  ==> (serialize2_omitting_commitment t1 == serialize2_omitting_commitment t2)

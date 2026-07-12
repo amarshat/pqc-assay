@@ -25,6 +25,17 @@ A fixed-length, no-optional-fields transcript removes that class of bug by const
 here is the machine-checked statement of it. A mutation check (a deliberately wrong field offset) is
 rejected with a counterexample, so the proofs are not vacuous.
 
+**TBS-V2 (v0.2 draft): hybrid pair binding, same properties plus commitment signedness.** From public
+review of v0.1 (hybrid non-separability: neither component signature commits to the other key's
+material, pair binding rests on the certificate layer). `model/QSEAL_TBS_V2.cry` models TBS-V2 (263
+bytes: V1 plus a 32-byte `pair_commitment`, SHA-256 over a domain prefix and both encoded public keys,
+directly after `ak_id`) and proves the same three properties plus: `commitment_is_signed` (transcripts
+differing only in the commitment never share bytes, so each component signature commits to the exact
+pair) and `omitting_commitment_breaks_binding` (a serializer that dropped the field is witnessed to
+collide them). The hash itself and the verifier's recompute-and-compare check are out of scope of the
+format proofs; the C reference, `ctx` wiring, and demo are v0.2 implementation work. All eight
+properties run in `make qseal-tbs`. Spec section 7.1.
+
 **C reference (de)serializer matches the model.** `ref/tbs_v1.c` is a reference implementation written
 to be verifiable (fixed offsets, constant-size copies, no slicing). SAW proves, on its LLVM bitcode:
 
