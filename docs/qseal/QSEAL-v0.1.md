@@ -152,6 +152,11 @@ Private keys MUST:
 * be inaccessible to the handset application processor
 * be inaccessible to profile applications
 * be deleted or permanently disabled on revocation or secure-element retirement
+* be single-purpose: both keys sign Q-SEAL canonical transcripts and nothing else. The applet
+  MUST NOT expose any other signing interface over either key, and neither key may be certified
+  for or used by any other protocol. This matters most for `AK_classical`: ECDSA has no context
+  parameter, so key dedication is its only domain separation (from public review follow-up,
+  2026-07-13; the ML-DSA context rule is in 7.1).
 
 ### 6.2 Certification
 
@@ -251,8 +256,15 @@ Rules:
 - The verifier MUST recompute the commitment from the two public keys it validated via `ak_id`'s
   certificate chain and reject on mismatch.
 - The ML-DSA-44 signature MUST be produced and verified with the FIPS 204 context string
-  `ctx = "Q-SEAL/v2"`. ECDSA has no context parameter; its half relies on the commitment inside
-  the message.
+  `ctx = "Q-SEAL/v2"`, and that context value is RESERVED in both directions: `AK_pqc` MUST NOT
+  produce a signature under any other `ctx`, and no other code path, key, or protocol may sign
+  under `ctx = "Q-SEAL/v2"`. A context string only separates domains if it is exclusive (public
+  review follow-up, 2026-07-13).
+- ECDSA has no context parameter, so message content cannot substitute for domain separation:
+  `AK_classical` MUST be a dedicated key per the single-purpose rule in 6.1 (generated for
+  Q-SEAL, certified for nothing else, signs only serialized Q-SEAL transcripts). The
+  `pair_commitment` identifies the pair inside the signed bytes; it does not protect a key that
+  also signs other protocols' messages.
 - V1 and V2 cannot be confused on the wire: both are fixed-length with no optional fields and
   231 != 263, so no byte string parses as both.
 
@@ -265,7 +277,11 @@ Machine-checked (qseal/model/QSEAL_TBS_V2.cry, `make qseal-tbs`): the V2 seriali
 and injective; `pair_commitment` is signed and position-pinned (two transcripts differing only in
 the commitment never share bytes); and a serializer that omitted the commitment is witnessed to
 collide them (mutation-style non-vacuity). The verifier-side recompute-and-compare check and the
-`ctx` wiring are v0.2 implementation work, not yet in the verified C reference or the demo.
+`ctx` wiring are v0.2 implementation work, not yet in the verified C reference or the demo. The
+key-usage rules (reserved `ctx`, dedicated classical key) are policy obligations on the applet
+and its certification, not properties of the transcript format; on the reference-code side the
+corresponding checkable statement is that the validated create path is the only signing call
+site, which is part of the planned v0.2 reference work.
 
 ---
 
