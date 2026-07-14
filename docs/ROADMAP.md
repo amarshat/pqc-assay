@@ -154,6 +154,15 @@ the 20 to "where this exact pipeline has an edge" collapses it to a handful:
   arithmetic (reduce + NTT). Reuses the Cryptol specs, the wired toolchain, and the v1.5 bound machinery.
   Strongest *paper* ("complete verified ML-DSA arithmetic", not "a 4th unrelated thing") and lowest
   start-up cost. Recommended next, after fork 1 lands and one artifact is published.
+
+  **STARTED 2026-07-14: the ML-KEM cross.** The sequencing gate is met (fork 1 landed:
+  `invntt_bridge` mechanized; artifacts published: Zenodo preprint + the Q-SEAL paper under review).
+  Target vendored at the same PQClean pin into `target/pqclean-mlkem/` (see `target/README.md`).
+  Scope, deliberately one slice: the ML-KEM-512 `clean` reduce layer + forward NTT, C ≡ Cryptol in
+  SAW first (16-bit reductions, expected below the SMT wall — itself a boundary datum for paper-1),
+  then FIPS 203 transform correctness in Isabelle by reusing the Tier-2 stage-invariant machinery
+  (ML-KEM's 7-layer NTT is the same induction stopped one level early, at degree-2 blocks). Not in
+  `make verify` until the first proof lands.
 - **Tier B (greenfield, deliberate new domain):** **bitcoin-core/secp256k1 field reduction** (the
   5×52 / 10×26 limb reduce — same shape as our Montgomery/Barrett work). Best *external* story
   (wallet/Bitcoin money, name recognition) and clean methodological transfer. Caveat: novelty is

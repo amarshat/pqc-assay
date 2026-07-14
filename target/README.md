@@ -57,7 +57,34 @@ The natural v2 target (optimized ≡ reference) is **PQ Code Package `mldsa-nati
   pq-crystals/dilithium commit `cbcd8753a43402885c90343cd6335fb54712cda1`, imported via
   mkannwischer/package-pqclean tree `69049406ed50d83a792f2fa67f6c088dbd0e335e`.
 
+## ML-KEM target (go-wide, vendored 2026-07-14 into `target/pqclean-mlkem/`)
+
+Second algorithm through the same pipeline (reviewer advice on paper-1: two algorithms with a
+reusable pipeline beat one deep). Same repo, same pinned commit as the ML-DSA target.
+
+- Upstream repo URL: https://github.com/PQClean/PQClean
+- Commit hash: `202a8f96315f9ed219387a50f7e40d04af037ea8` (same pin as above)
+- Path within repo: `crypto_kem/ml-kem-512/clean/`
+- Date vendored: 2026-07-14 (verbatim, fetched per-file from raw.githubusercontent.com at that hash)
+- Files vendored (the compile closure for `ntt.c`), with SHA-256:
+  - `ntt.c`     (forward NTT + invntt + basemul + 128-entry signed `zetas`) — `835f1a855990217c4ee0b910631a0d6d29221da936817089172f5250ed0147ea`
+  - `ntt.h`     — `b3920d95d1ec5e4151fffee4a5af83c7707655bae7095dcfd247556ee452eb3f`
+  - `reduce.c`  (`montgomery_reduce` R=2^16, `barrett_reduce` shift 26) — `b3747f6e4175037781b16f8f299b004412512636029ac1b6ee8f8e9ed0185c71`
+  - `reduce.h`  (`MONT = -1044`, `QINV = -3327`) — `264f6e3c6d96ff8d2ad4bf97b9642e318ba6c11f90bcf3744b6fb335c38b89c0`
+  - `params.h`  (`KYBER_Q = 3329`, `KYBER_N = 256`) — `db7c409f864ebf0864051516e18515081b3fbc9fa932b2a53c3d10b3287610f4`
+  - `LICENSE`   (CC0, byte-identical to the ML-DSA directory's) — `5d7798eec4d8c8ef0a72dfe805ec54dfd7b212d3928bf9695fda4095d22829ab`
+- Upstream provenance (per `crypto_kem/ml-kem-512/META.yml`): the `clean` implementation tracks
+  pq-crystals/kyber commit `10b478fc3cc4ff6215eb0b6a11bd758bf0929cbd`, imported via
+  mkannwischer/package-pqclean tree `85197ff`.
+- Scope note: only the NTT compile closure is vendored (ntt/reduce/params); Keccak and the KEM
+  layer are out of scope, so the LICENSE's Keccak/AES attribution note does not apply to any
+  vendored file here either.
+- Width note (why this target doubles as a boundary datum): ML-KEM's reductions are 16-bit
+  (Montgomery R=2^16 over q=3329, Barrett shift 26), far below the ~2^46 wide-Barrett wall measured
+  on the RustCrypto ML-DSA side, so the reduce layer is expected to discharge with plain eager SMT.
+
 ## Rules
 - Never edit vendored C silently. If SAW needs a transformation (e.g. isolating a function),
   document exactly what and why here, and prefer a wrapper over an edit.
-- When vendored, the files go under `target/pqclean/` and are treated as read-only.
+- When vendored, the files go under `target/pqclean/` (ML-DSA) or `target/pqclean-mlkem/` (ML-KEM)
+  and are treated as read-only.
