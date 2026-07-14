@@ -87,15 +87,16 @@ of scope here (see Scope); without it the chain guarantees are conditional on th
 ## Machine-checked properties (this session, Kani)
 
 `cap/src/lib.rs`, harnesses under `#[cfg(kani)] mod verification`, run with `cargo kani` (or
-`make cap-kani`). Kani 0.67.0, CBMC backend. All fifty-five verified, 0 failures. `any_cap()` is
+`make cap-kani`). Kani 0.67.0, CBMC backend. All fifty-eight verified, 0 failures. `any_cap()` is
 `parse(kani::any::<[u8; 191]>())`, which ranges over all `CapV1` (each field is an independent slice
 of a fully symbolic buffer).
 
-Not all fifty-five carry equal weight, and the count should not be read as "fifty-five
+Not all fifty-eight carry equal weight, and the count should not be read as "fifty-eight
 independent theorems". The honest taxonomy:
 - Independent content: the format bijection/injectivity (`roundtrip_*`, `serialize_injective`), the
   multi-hop attenuation results (`chain_attenuates`, `chain_attenuates_flags_and_bindings`,
-  `chain3_attenuates`, `chain4_attenuates`),
+  `chain3_attenuates`, `chain4_attenuates`), the chain-invariant induction base and step
+  (`chain_invariant_base`, `chain_invariant_step`),
   `omitting_audience_breaks_binding` (a mutation witness that a plausible bug would be caught), the
   key-binding results (`chain_signing_key_is_delegate`, `confused_deputy_rejected` and their
   three-link counterparts), the stateful replay results (`no_replay`, with `chain_once_no_replay`
@@ -132,9 +133,10 @@ Delegation (attenuation / chains terminate):
 - `chain_attenuates` (two-hop composition, independent content): if `valid_delegation(a, b)` and
   `valid_delegation(b, c)` then `c`'s action bits are a subset of `a`'s, `c.max_depth < a.max_depth`,
   `c`'s validity window is inside `a`'s, and resource and audience are unchanged. This composes the
-  local check across two links (subset, `<`, and interval-containment are transitive). No induction
-  is run; the N-link accept gate below re-checks the composition at chain lengths 3 and 4, and
-  lengths beyond those remain covered by the link-local argument only.
+  local check across two links (subset, `<`, and interval-containment are transitive). Two hops is
+  not itself the induction step (the middle capability is exactly one link from the root); the
+  mechanized induction is `chain_invariant_base` / `chain_invariant_step` below. The N-link accept
+  gate re-checks the gate-level composition at chain lengths 3 and 4.
 - `link_requires_delegation_flag` (definition check, stated as the attack): a parent without
   `FLAG_DELEGATE` (flags bit 0, "further delegation permitted") has no valid re-delegation. This
   gives the documented bit its meaning in the verifier; before this rule, re-delegation was gated
@@ -200,18 +202,33 @@ inspection, not machine-checked):
   is accepted, the leaf grants no action bit the root lacks, `now` is inside the root's window,
   resource and audience are unchanged, and the depth budget shrank by at least one per hop
   (`root.max_depth >= leaf.max_depth + N-1`, at these lengths). The "chain length is bounded by the
-  root's budget" corollary is a for-all-N statement, i.e. the induction disclaimed below; only the
-  instantiated margins are machine-checked.
+  root's budget" corollary is a for-all-N statement: it follows by iterating
+  `chain_invariant_step` + `link_depth_decreases`, with only the iteration (the induction
+  principle) unchecked; the instantiated margins here are what is machine-checked directly.
 - `chain3_signing_keys_are_delegates` (independent content): in an accepted key-bound 3-link chain,
   each non-root link is signed by exactly the key its parent delegated to
   (`key_id(pks[i]) == caps[i-1].subject_id`), at both hops.
 - `chain3_confused_deputy_rejected` (independent content, stated as the attack): a wrong key at
   *either* hop makes the chain reject, whatever else is set.
 
-Read the length honestly: these are bounded results at N = 2, 3, 4 (each harness a fixed
-instantiation). There is still no machine-checked induction giving all N at once; what changed is
-that the verifier code itself is now the general gate, and the composition has been re-checked at
-every length the harnesses instantiate rather than only at 2.
+Read the length honestly: the gate-level results are bounded at N = 2, 3, 4 (each harness a fixed
+instantiation of the general `accept_chain` gate). The attenuation invariant is the exception:
+
+- `chain_invariant_base` (independent content): `chain_invariant(r, r)` for every capability `r`,
+  no assumption. `chain_invariant` states the attenuation invariant as a predicate (actions and
+  flags a subset of the root's, depth at most the root's, window contained,
+  resource/audience/suite/type/constraints the root's).
+- `chain_invariant_step` (independent content, the induction step): `chain_invariant(r, x) &&
+  valid_delegation(x, y) => chain_invariant(r, y)`, for an ARBITRARY invariant-satisfying
+  intermediate `x`, not one a fixed number of links from the root. Iterating the step N times
+  gives the invariant for a chain of N links; that iteration, the induction principle itself, is
+  the only move not machine-checked.
+- `chain_invariant_step_reachable` (`kani::cover!`, SATISFIED): the step's hypotheses are
+  satisfiable at an intermediate strictly below the root's depth, so the lemma is not vacuous and
+  genuinely covers deep intermediates.
+
+What remains instantiated-only is the gate-level composition (per-link signature bits and key
+binding threaded through `accept_chain`), verified at the lengths the harnesses instantiate.
 
 Single-use leaf presentation (`accept_leaf_once(cap, verifier_id, now, sig_ok, store)` = the leaf gate plus a bounded
 used-token store. The replay key is `cap_id || nonce` (32 bytes), with no verifier component,

@@ -16,11 +16,12 @@ Cap-V1 is the "verified Rust" track, so the proof tool is Kani (CBMC), not SMT o
 
 ## Verified so far (Kani 0.67, this repo)
 
-`make cap-kani` (or `cargo kani` in this directory) checks fifty-five harnesses in `src/lib.rs`,
+`make cap-kani` (or `cargo kani` in this directory) checks fifty-eight harnesses in `src/lib.rs`,
 all verified with 0 failures. Read the count honestly: the independent-content harnesses are the
 format bijection/injectivity, the multi-hop attenuation results (`chain_attenuates`,
 `chain_attenuates_flags_and_bindings`,
-`chain3_attenuates`, `chain4_attenuates`), `omitting_audience_breaks_binding`, the key-binding
+`chain3_attenuates`, `chain4_attenuates`), the chain-invariant induction
+(`chain_invariant_base` / `chain_invariant_step`), `omitting_audience_breaks_binding`, the key-binding
 results (`chain_signing_key_is_delegate`, `confused_deputy_rejected`, and their three-link
 counterparts), the stateful replay results (`no_replay`, with `chain_once_no_replay` extending the same
 mechanism to the chain gate; `accept_consumes` and `chain_once_consumes` are mixed, their reject
@@ -65,6 +66,16 @@ Delegation (attenuation, chains terminate):
   enforces the referenced policy, and a zero-digest root pins no constraint set (see the spec).
 - `two_hop_link_reachable`: two consecutive valid links are jointly satisfiable
   (`kani::cover!`, SATISFIED), the non-vacuity guard for the two-hop composition harnesses.
+- `chain_invariant_base` / `chain_invariant_step`: the mechanized induction. `chain_invariant(root,
+  x)` is the attenuation invariant as a predicate (actions and flags a subset of the root's, depth
+  at most the root's, window contained, resource/audience/suite/type/constraints the root's). Base:
+  it is reflexive, for every capability, no assumption. Step: from an ARBITRARY
+  invariant-satisfying intermediate (any number of links from the root, unlike the fixed-length
+  harnesses above), one `valid_delegation` link preserves the invariant. Iterating the step N times
+  gives attenuation for a chain of any length; that iteration (the induction principle itself) is
+  the only unchecked move. `chain_invariant_step_reachable` (`kani::cover!`, SATISFIED) confirms
+  the step's hypotheses are satisfiable at an intermediate strictly below the root's depth, so the
+  lemma genuinely covers deep intermediates.
 - `terminal_leaf_accepted`: a chain whose leaf cleared `FLAG_DELEGATE` still accepts
   (`kani::cover!`, SATISFIED); the rules forbid setting flags, not clearing them.
 
@@ -92,13 +103,17 @@ N-link chain accept (`accept_chain<N>` / `accept_chain_signed<N>`; the two-link 
 - `chain3_attenuates` / `chain4_attenuates`: an accepted 3-link (resp. 4-link) chain's leaf grants
   no more than the root, and depth shrinks by at least one per hop
   (`root.max_depth >= leaf.max_depth + N-1`, at these lengths; the for-all-N "length bounded by
-  budget" corollary would need the induction we do not run).
+  budget" corollary is the same iterate-the-step-lemma move as the chain invariant, so it now rests
+  on `chain_invariant_step` + `link_depth_decreases`, with only the iteration unchecked).
 - `chain3_signing_keys_are_delegates`: each non-root link is signed by exactly the key its parent
   delegated to, at both hops.
 - `chain3_confused_deputy_rejected`: a wrong key at either hop rejects the whole chain.
 
-These are bounded results at concrete lengths (2, 3, 4), not an induction over all N; see the
-spec's scope section.
+The accept-gate results above are bounded at concrete lengths (2, 3, 4). The attenuation
+invariant itself is no longer length-bounded: `chain_invariant_base` / `chain_invariant_step`
+mechanize the induction base and step, leaving only the induction principle (iterating the step)
+unchecked. What stays instantiated-only is the gate-level composition, per-link signatures and key
+binding through the accept function; see the spec's scope section.
 
 Field-value validation (`valid_field_values` pins `version == 1` and `suite_id == HYB-1`, the only
 defined value sets in v0.1; `accept_leaf_checked` / `accept_chain_checked<N>` run it before the
@@ -242,8 +257,11 @@ any hop), and single-use acceptance (no replay, on a bounded store). Real ECDSA 
 the integration test over `serialize(cap)`. Assumed: ML-DSA-44/ECDSA unforgeability (no test can
 prove it), and collision resistance of the deployed key commitment (`hyb1_key_id`, truncated
 SHA-256: ~2^128 second preimage, ~2^64 birthday; the model's `key_id` stays an abstract commitment
-inside Kani, bridged by the machine-checked `committing_to`). Bounded: chain
-lengths beyond 4 rest on the link-local argument (no induction is machine-checked), and the replay
+inside Kani, bridged by the machine-checked `committing_to`). Bounded: the
+attenuation invariant holds for every chain length via the mechanized induction base and step
+(`chain_invariant_base` / `chain_invariant_step`; iterating the step is the one unchecked move),
+but the gate-level composition (per-link signatures, key binding) is instantiated at lengths 2, 3,
+4 only, and the replay
 store is fixed at capacity 8, sequential, fail-closed when full, with no expiry or eviction. Not
 yet: absolute value sets for `cap_type` / flag bits beyond bit 0 (still provisional, so
 `valid_field_values` pins only `version` and `suite_id`; cross-link relations for those fields ARE

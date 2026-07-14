@@ -210,6 +210,30 @@ pub fn valid_delegation(parent: &CapV1, child: &CapV1) -> bool {
         && c_nb <= c_na
 }
 
+/// The chain attenuation invariant between a root and a descendant `x`: `x`'s actions and flags
+/// are a subset of the root's, its depth does not exceed the root's, its validity window is
+/// contained in the root's, and the resource, audience, suite, type, and constraint bindings are
+/// the root's. This is the property the composition harnesses assert at fixed lengths, stated as a
+/// predicate so the induction can be machine-checked: `chain_invariant_base` proves it reflexive
+/// (length 0) and `chain_invariant_step` proves one `valid_delegation` link preserves it from an
+/// ARBITRARY invariant-satisfying intermediate, not one a fixed number of links away. Together
+/// they give the invariant for every chain length; the only step not machine-checked is the
+/// induction principle itself (iterating the step lemma N times).
+pub fn chain_invariant(root: &CapV1, x: &CapV1) -> bool {
+    let (r_nb, r_na) = window(root);
+    let (x_nb, x_na) = window(x);
+    (action_bits(x) & !action_bits(root)) == 0
+        && (x.flags[0] & !root.flags[0]) == 0
+        && x.max_depth[0] <= root.max_depth[0]
+        && x_nb >= r_nb
+        && x_na <= r_na
+        && x.resource_id == root.resource_id
+        && x.audience_id == root.audience_id
+        && x.suite_id == root.suite_id
+        && x.cap_type == root.cap_type
+        && x.constraints_digest == root.constraints_digest
+}
+
 /// Accept a single (leaf) capability presented to a verifier.
 ///
 /// `sig_ok` is the outcome of the signature check over `serialize(cap)`. It is an input, not
@@ -1282,8 +1306,9 @@ mod verification {
     /// Two-hop composition: if `a` delegates to `b` and `b` to `c`, then `c`'s authority is within
     /// `a`'s (action subset, narrower window), its depth is strictly below `a`'s, and the resource
     /// and audience are unchanged. The local link check composes into the global chain invariant:
-    /// authority only attenuates down the chain. Proving it at two hops discharges the inductive
-    /// step for any length.
+    /// authority only attenuates down the chain. Two hops alone is not the inductive step (the
+    /// middle cap here is exactly one link from the root); the machine-checked induction is
+    /// `chain_invariant_base` + `chain_invariant_step` below.
     #[kani::proof]
     fn chain_attenuates() {
         let a = any_cap();
@@ -1348,6 +1373,48 @@ mod verification {
         assert_eq!(c.flags[0] & !a.flags[0], 0);
         assert_eq!(c.cap_type, a.cap_type);
         assert_eq!(c.constraints_digest, a.constraints_digest);
+    }
+
+    /// Induction base (chain length 0): the invariant is reflexive. A root is within its own
+    /// authority: every subset/containment clause of `chain_invariant` holds of a capability
+    /// against itself, for EVERY capability, no assumption. With `chain_invariant_step` this
+    /// mechanizes the attenuation argument for all chain lengths.
+    #[kani::proof]
+    fn chain_invariant_base() {
+        let r = any_cap();
+        assert!(chain_invariant(&r, &r));
+    }
+
+    /// Induction step, the piece the fixed-length harnesses do not give: from an ARBITRARY
+    /// intermediate `x` satisfying the invariant (any number of links from the root, not a fixed
+    /// number), one valid delegation link preserves it. Subset and containment clauses compose
+    /// transitively; the equality bindings pass through; depth strictly decreases at the link
+    /// (`link_depth_decreases`), so it stays at or below the root's. Iterating this lemma N times
+    /// gives the invariant for a chain of N links; that iteration (the induction principle) is the
+    /// only step not machine-checked.
+    #[kani::proof]
+    fn chain_invariant_step() {
+        let r = any_cap();
+        let x = any_cap();
+        let y = any_cap();
+        kani::assume(chain_invariant(&r, &x));
+        kani::assume(valid_delegation(&x, &y));
+        assert!(chain_invariant(&r, &y));
+    }
+
+    /// The step lemma's hypotheses are satisfiable (`kani::cover!`), including at an intermediate
+    /// that is NOT one link from the root (depth strictly below the root's), so
+    /// `chain_invariant_step` is not vacuous and genuinely covers deep intermediates.
+    #[kani::proof]
+    fn chain_invariant_step_reachable() {
+        let r = any_cap();
+        let x = any_cap();
+        let y = any_cap();
+        kani::cover!(
+            chain_invariant(&r, &x)
+                && valid_delegation(&x, &y)
+                && x.max_depth[0] < r.max_depth[0]
+        );
     }
 
     /// A terminal leaf is still acceptable (`kani::cover!`): a two-link chain whose leaf has
