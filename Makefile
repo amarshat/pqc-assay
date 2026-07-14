@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test mlkem-reduce qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -48,6 +48,15 @@ bitcode:
 saw: bitcode
 	@echo ">> SAW: proving C ≡ Cryptol"
 	$(SAW) $(SAW_SCRIPT)
+
+## ML-KEM go-wide slice 1: the ML-KEM-512 reduce layer, C == Cryptol (bit-exact) plus the
+## math-level Montgomery/Barrett correctness by direct z3 at 16-bit widths, with result+1
+## non-vacuity mutants. See docs/ROADMAP.md (Tier A) and target/README.md (ML-KEM target).
+mlkem-reduce:
+	@mkdir -p build
+	CLANG=$(CLANG) ./scripts/build_bitcode.sh target/pqclean-mlkem build/mlkem_ntt.bc
+	@echo ">> SAW: ML-KEM-512 reduce layer == Cryptol model + math correctness (16-bit, direct SMT)"
+	$(SAW) proof/saw/mlkem_reduce.saw
 
 ## Run the Isabelle session: model ≡ FIPS-204 spec
 isabelle:

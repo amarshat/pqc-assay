@@ -1,0 +1,119 @@
+// Cryptol model of the ML-KEM-512 reduce.c primitives, checked bit-for-bit against the vendored
+// PQClean C by SAW (proof/saw/mlkem_reduce.saw). Forward NTT model to follow (go-wide slice 2).
+//
+// Modeled at exact C bit widths (montgomery_reduce is [32]->[16], barrett_reduce [16]->[16]):
+// SAW checks bit-exact equivalence, and these algorithms depend on two's-complement truncation
+// and the signed shift. Typechecking this module proves nothing on its own; the SAW run ties it
+// to the C.
+//
+// Target: PQClean ml-kem-512/clean @ 202a8f9 (reduce.c). KYBER_Q = 3329, N = 256. The 16-bit
+// widths are the point of interest for the boundary study: the same Montgomery/Barrett shapes
+// that stall eager SMT at ML-DSA's Rust 2^46 Barrett domain sit here at 2^16.
+
+module MLKEM_NTT where
+
+q : Integer
+q = 3329
+
+// --- constants, at the exact C widths -------------------------------------------------
+//   KYBER_Q : the ML-KEM prime modulus (params.h)
+//   QINV    : q^{-1} mod 2^16 (reduce.h: -3327; as a [16] two's-complement literal that is
+//             0xF301 = 62209, and indeed 62209 * 3329 mod 2^16 == 1).
+Q16 : [16]
+Q16 = 3329
+
+Q32 : [32]
+Q32 = 3329
+
+QINV : [16]
+QINV = -3327
+
+// Sign-extend a 16-bit two's-complement value to 32 bits, modeling C's `(int32_t)t` on int16_t.
+sext32 : [16] -> [32]
+sext32 x = (if x @ 0 then ~zero else zero : [16]) # x
+
+// --- montgomery_reduce -----------------------------------------------------------------
+// Bit-exact transcription of the C:
+//   int16_t t;
+//   t = (int16_t)a * QINV;               -> low 16 bits of a, times QINV, truncated to 16
+//   t = (a - (int32_t)t * KYBER_Q) >> 16;-> 32-bit subtract, ARITHMETIC shift, truncate to 16
+// `*` on [n] is multiplication mod 2^n (matches the C int promotion + truncating assignment);
+// `>>$` is the arithmetic right shift matching `>> 16` on a signed int32_t.
+montgomery_reduce : [32] -> [16]
+montgomery_reduce a = drop`{16} ((a - sext32 t * Q32) >>$ 16)
+  where
+    t : [16]
+    t = drop`{16} a * QINV
+
+// Documented input precondition from reduce.c: -q*2^15 <= a <= q*2^15 - 1 (signed). Inside it,
+// a - t*Q stays within int32 (|a| + |t*Q| < 2^27 + 2^27 < 2^31), so the C has no signed-overflow
+// UB on the default (nsw) bitcode and the SAW proof discharges under this predicate.
+mont_in_range : [32] -> Bit
+mont_in_range a = (a >=$ lo) && (a <=$ hi)
+  where
+    hi = (2 : [32]) ^^ 15 * Q32 - 1
+    lo = - ((2 : [32]) ^^ 15 * Q32)
+
+// --- barrett_reduce ---------------------------------------------------------------------
+// Bit-exact transcription of the C:
+//   const int16_t v = ((1 << 26) + KYBER_Q / 2) / KYBER_Q;   -> 20159, a compile-time constant
+//   t  = ((int32_t)v * a + (1 << 25)) >> 26;                 -> 32-bit product + rounding, >>$
+//   t *= KYBER_Q;                                            -> int product, truncated to 16
+//   return a - t;                                            -> 16-bit subtract
+// Note the C's `t *= KYBER_Q` computes at int width then narrows to int16_t; for a near 2^15 the
+// int product t*q can exceed int16 range, and the narrowing conversion (implementation-defined,
+// wraps on clang) is exactly the [16] `*` here. No signed-overflow UB is involved (the multiply
+// itself happens at 32 bits), so this proof runs on the default bitcode with NO precondition.
+V16 : [16]
+V16 = 20159
+
+barrett_reduce : [16] -> [16]
+barrett_reduce a = a - t2
+  where
+    t1 : [32]
+    t1 = (sext32 V16 * sext32 a + 0x02000000) >>$ 26
+    t2 : [16]
+    t2 = drop`{16} t1 * Q16
+
+// --- math-level correctness (the boundary datum) ----------------------------------------
+// At ML-DSA's widths the same statements needed an Isabelle proof (montgomery_reduce_correct,
+// 64/32-bit) or bitwuzla (the Rust 2^46 Barrett); at ML-KEM's 16-bit widths they are stated
+// here and discharged directly by z3 (prove_print in proof/saw/mlkem_reduce.saw). Signed views:
+si16 : [16] -> Integer
+si16 x = if x @ 0 then toInteger x - 65536 else toInteger x
+
+si32 : [32] -> Integer
+si32 x = if x @ 0 then toInteger x - 4294967296 else toInteger x
+
+// montgomery_reduce is a Montgomery reduction: 2^16 * result == a (mod q), |result| < q
+// (reduce.c documents {-q+1,...,q-1}), on the documented input range.
+//
+// Two statements of the same fact. The Integer form (mont_correct) is the readable one; z3 AND
+// cvc5 both stall on it past several minutes (nonlinear Integer arithmetic with mod, measured
+// 2026-07-14) even at these widths, a boundary datum in itself. The bit-vector form
+// (mont_correct_bv) is what gets DISCHARGED: at [48] every quantity fits without wrapping
+// (|r*2^16| < 2^28, |a| < 2^27), the 2^16 multiply is a shift (linear), and the only hard
+// operation is one signed remainder by the constant 3329, which eager bit-blasting handles.
+// The two forms assert the same integer fact because nothing wraps at 48 bits.
+property mont_correct a =
+  mont_in_range a ==> ((r * 65536 - si32 a) % q == 0) /\ (r > -q) /\ (r < q)
+  where r = si16 (montgomery_reduce a)
+
+sext48_16 : [16] -> [48]
+sext48_16 x = (if x @ 0 then ~zero else zero : [32]) # x
+
+sext48_32 : [32] -> [48]
+sext48_32 x = (if x @ 0 then ~zero else zero : [16]) # x
+
+property mont_correct_bv a =
+  mont_in_range a ==> (d %$ 3329 == 0) /\ (r >$ -3329) /\ (r <$ 3329)
+  where
+    r = montgomery_reduce a
+    d : [48]
+    d = (sext48_16 r << (16 : [48])) - sext48_32 a
+
+// barrett_reduce returns the centered representative: result == a (mod q),
+// -(q-1)/2 <= result <= (q-1)/2, for every int16 input.
+property barrett_correct a =
+  ((r - si16 a) % q == 0) /\ (r >= -1664) /\ (r <= 1664)
+  where r = si16 (barrett_reduce a)

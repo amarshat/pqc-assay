@@ -344,6 +344,35 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   exact-integer transcription discipline. **Non-vacuity:** four mutations (r1+1, r0+1, norm+1,
   modpm+1) each fail with a counterexample. Trust base: the three assumed CT specs + mir-json.
 
+## ML-KEM-512 reduce layer (go-wide slice 1, 2026-07-14)
+
+Target: `target/pqclean-mlkem/reduce.c` (PQClean ml-kem-512/clean, same pin `202a8f9`; provenance
+in `target/README.md`). Proofs: `proof/saw/mlkem_reduce.saw` via `make mlkem-reduce`, exit 0 on
+2026-07-14 (SAW 1.5.1 + z3).
+
+- **C ≡ Cryptol, `montgomery_reduce` ([32]→[16]): VERIFIED** under the documented input range
+  `-q*2^15 ≤ a ≤ q*2^15 - 1` (q = 3329). Default (nsw) bitcode, so the proof also establishes no
+  signed-overflow UB inside that range (outside it, `a - t*q` can overflow int32; nothing is
+  claimed there). Result+1 mutant rejected with a counterexample.
+- **C ≡ Cryptol, `barrett_reduce` ([16]→[16]): VERIFIED, unconditional.** The C's `t *= KYBER_Q`
+  multiplies at int width (no overflow there: |v*a| < 2^30) and then narrows to `int16_t`; for
+  inputs near ±2^15 that narrowing wraps. Narrowing conversion is implementation-defined, not UB
+  (C17 6.3.1.3p3; clang wraps), and the model's mod-2^16 arithmetic matches it exactly. Result+1
+  mutant rejected.
+- **Math-level correctness, direct SMT (boundary datum):** `barrett_correct` (result ≡ a mod q,
+  centered in ±(q-1)/2, all int16) Q.E.D. in ~13 s in the readable Integer form. The Montgomery
+  congruence needed one restatement: the Integer form (`mont_correct`) stalls BOTH z3 and cvc5
+  past 300-400 s (nonlinear Integer with mod), while the equivalent [48] bit-vector form
+  (`mont_correct_bv`: nothing wraps at 48 bits, the 2^16 multiply is a shift, one signed remainder
+  by the constant 3329) is Q.E.D. in ~11 s. Same integer fact, so the C functions inherit full
+  Montgomery/Barrett correctness by composition with the equivalence proofs. Contrast with ML-DSA:
+  the analogous 64/32-bit Montgomery statement needed Isabelle, and the Rust 2^46 Barrett needed
+  bitwuzla. Goal SHAPE, not just width, decides tractability: even at 16-bit data widths the
+  Integer-with-mod form is out of reach while the BV form is seconds.
+- Not yet claimed for ML-KEM: the NTT itself (model and proofs to follow), overflow-freedom of the
+  NTT's unreduced adds, FIPS 203 transform correctness. `fqmul` is static and inlined; it will be
+  covered by the NTT proof, not separately.
+
 ## Tool/version pins
 Pinned and installed by `scripts/setup.sh` into `.tools/` (gitignored). Platform of record:
 **macOS 26.3.1, Apple Silicon (arm64)**, set up 2026-06-01.
