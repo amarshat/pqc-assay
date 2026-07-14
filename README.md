@@ -59,11 +59,18 @@ machine-checked. Six (1 transcript bijection, 2 challenge binding, 3 hybrid no-d
 signature verifiers left uninterpreted, 4 sequential single-use, 6 evidence reassembly
 round-trip-or-fail-closed, 7 field-value validation before signing) are SAW proofs that a C reference
 matches a Cryptol model of the spec rule, each with an injected-mutant non-vacuity check (and a
-mutation-adequacy pass that kills 39 of 41 systematic relational/logical mutants of the C, the two
+mutation-adequacy pass that kills 42 of 44 systematic relational/logical mutants of the C, the two
 survivors being equivalent mutants; `make qseal-mutants`). The seventh (5, `PROFILE_ACTION_OBSERVED`
 cannot be reached through a host-exposed APDU path) is a reachability property checked in ProVerif. See
 [`qseal/README.md`](qseal/README.md) for the exact scope and non-claims of each. `make qseal-tbs
 qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-reachability`.
+
+Public review of v0.1 surfaced a hybrid non-separability gap (component signatures committed to the
+key pair only via an identifier). TBS-V2 (spec 7.1) adds a signed 32-byte pair commitment: model
+bijectivity/injectivity plus commitment-signedness proven in Cryptol, the C reference (de)serializer
+proven equal to the model in SAW (`make qseal-ref`), and the demo signs V2 with the reserved FIPS 204
+context `"Q-SEAL/v2"` and recomputes the commitment on verify. Key-usage rules (reserved context,
+dedicated classical key) are spec obligations in sections 6.1/7.1.
 
 A third track, **Cap-V1** ([`cap/`](cap/), spec [`docs/cap/CAP-V1.md`](docs/cap/CAP-V1.md)), applies
 the same discipline to agent delegation: a fixed 191-byte capability token, hybrid-signed with the

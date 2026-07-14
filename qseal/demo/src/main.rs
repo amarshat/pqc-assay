@@ -15,10 +15,18 @@
 //!      qseal/proof/validate.saw (section 16 property 7). The applet produces no transcript at all,
 //!   6. evidence returned as fragments reassembles to exactly the original bytes, and a dropped
 //!      fragment fails closed rather than being zero-filled, matching qseal/proof/evidence.saw
-//!      (section 16 property 6).
+//!      (section 16 property 6),
+//!   7. TBS-V2 (spec 7.1): the applet computes a pair commitment from its own key material and
+//!      signs the 263-byte V2 transcript, ML-DSA under the reserved FIPS 204 ctx "Q-SEAL/v2". The
+//!      verifier recomputes the commitment from the certified keys, so a zeroed commitment is
+//!      rejected even with valid signatures, and an empty-ctx ML-DSA signature does not verify
+//!      under the reserved ctx. The V2 layout is the one verified in qseal/proof/tbs_v2.saw.
 
 mod tbs;
-use tbs::{create_assertion, create_assertion_checked, AppletId, Request};
+use tbs::{
+    create_assertion, create_assertion_checked, create_assertion_v2, AppletId, Request,
+    QSEAL_CTX_V2, V2_COMMITMENT_RANGE,
+};
 
 use std::collections::HashSet;
 
@@ -28,6 +36,7 @@ use ml_dsa::{Signature as MlSig, Signer as MlSign, SigningKey as MlSk, Verifier 
 use p256::ecdsa::signature::{Signer as EcSign, Verifier as EcVerify};
 use p256::ecdsa::{Signature as EcSig, SigningKey as EcSk, VerifyingKey as EcVk};
 use rand_core::OsRng;
+use sha2::{Digest, Sha256};
 
 struct SecretKeys {
     ec: EcSk,
@@ -59,6 +68,40 @@ fn verify_both(pk: &PublicKeys, tbs: &[u8], sig: &HybridSig) -> (bool, bool) {
     let ok_c = pk.ec.verify(tbs, &sig.ec).is_ok();
     let ok_pq = pk.ml.verify(tbs, &sig.ml).is_ok();
     (ok_c, ok_pq)
+}
+
+// ---- TBS-V2 (spec 7.1): pair commitment + reserved ML-DSA context ----
+
+/// pair_commitment = SHA-256("QSEAL-PAIR-HYB1" || compressed P-256 point || encoded ML-DSA-44 key).
+/// The applet computes this from its OWN key material (a host-supplied value must be rejected);
+/// the verifier recomputes it from the keys it validated via the ak_id certificate chain.
+fn pair_commitment(pk: &PublicKeys) -> [u8; 32] {
+    let ec_point = pk.ec.to_encoded_point(true); // 33-byte compressed SEC1 point
+    let ml_encoded = pk.ml.encode(); // 1312-byte FIPS 204 encoding
+    let mut h = Sha256::new();
+    h.update(b"QSEAL-PAIR-HYB1");
+    h.update(ec_point.as_bytes());
+    h.update(ml_encoded.as_slice());
+    h.finalize().into()
+}
+
+/// V2 signing: ECDSA as before (no context parameter; the key is dedicated, spec 6.1), ML-DSA under
+/// the reserved FIPS 204 context "Q-SEAL/v2" (spec 7.1).
+fn hybrid_sign_v2(sk: &SecretKeys, tbs2: &[u8]) -> HybridSig {
+    HybridSig {
+        ec: sk.ec.sign(tbs2),
+        ml: sk.ml.expanded_key().sign_deterministic(tbs2, QSEAL_CTX_V2).expect("ctx under 255 bytes"),
+    }
+}
+
+/// V2 acceptance: recompute the pair commitment from the validated keys and compare against the
+/// transcript bytes, then require BOTH signatures, the ML-DSA one under the reserved context.
+/// Returns (commitment_ok, classical_ok, pq_ok); accept is the AND of all three.
+fn verify_v2(pk: &PublicKeys, tbs2: &[u8], sig: &HybridSig) -> (bool, bool, bool) {
+    let commit_ok = tbs2[V2_COMMITMENT_RANGE] == pair_commitment(pk);
+    let ok_c = pk.ec.verify(tbs2, &sig.ec).is_ok();
+    let ok_pq = pk.ml.verify_with_context(tbs2, QSEAL_CTX_V2, &sig.ml);
+    (commit_ok, ok_c, ok_pq)
 }
 
 /// Stateful single-use challenge store: the set of request_ids already consumed. This is the runnable
@@ -163,7 +206,7 @@ fn outcome(accept: bool) -> &'static str {
 }
 
 fn main() {
-    println!("Q-SEAL hybrid attestation demo (ECDSA P-256 + ML-DSA-44 over the verified TBS-V1 transcript)\n");
+    println!("Q-SEAL hybrid attestation demo (ECDSA P-256 + ML-DSA-44 over the verified TBS-V1/V2 transcripts)\n");
 
     let (sk, pk) = keygen();
     let req = sample_request();
@@ -223,10 +266,42 @@ fn main() {
     println!("   dropped fragment            recovered={:5}  ->  {}", recovered_bad.is_some(), if recovered_bad.is_none() { "REJECT" } else { "ACCEPT" });
     println!("   a reassembler that skipped the completeness check would have returned zero-filled bytes.");
 
+    // 7. TBS-V2: hybrid pair binding inside the signed bytes (spec 7.1). The applet computes
+    //    pair_commitment from its own keys; the verifier recomputes it from the keys it validated
+    //    via ak_id's certificate chain. The ML-DSA half signs under the reserved ctx "Q-SEAL/v2".
+    let app2 = AppletId {
+        version: [0x02],
+        issuer_id: app.issuer_id,
+        ak_id: app.ak_id,
+        issued_at: app.issued_at,
+    };
+    let commit = pair_commitment(&pk);
+    let tbs2 = create_assertion_v2(&req, &app2, &commit);
+    let sig2 = hybrid_sign_v2(&sk, &tbs2);
+    let (k, c, q) = verify_v2(&pk, &tbs2, &sig2);
+    println!("7. V2 pair-bound transcript    commit={k:5} classical={c:5}  pq={q:5}  ->  {}", outcome(k && c && q));
+
+    //    A commitment not derived from the pair (here zeroed): both signatures over the bytes still
+    //    verify, but the recompute-and-compare check rejects. This is the check that makes a peeled
+    //    component signature identify itself as half of a Q-SEAL pair.
+    let tbs2_zero = create_assertion_v2(&req, &app2, &[0u8; 32]);
+    let sig2_zero = hybrid_sign_v2(&sk, &tbs2_zero);
+    let (k, c, q) = verify_v2(&pk, &tbs2_zero, &sig2_zero);
+    println!("   zeroed commitment           commit={k:5} classical={c:5}  pq={q:5}  ->  {}", outcome(k && c && q));
+    println!("   a verifier that skipped recompute-and-compare would have returned {} here.", outcome(c && q));
+
+    //    Context separation: an ML-DSA signature over the same bytes with the empty ctx (V1 style)
+    //    does not verify under the reserved ctx.
+    let no_ctx_sig = sk.ml.sign(&tbs2[..]);
+    let ctx_separated = !pk.ml.verify_with_context(&tbs2[..], QSEAL_CTX_V2, &no_ctx_sig);
+    println!("   empty-ctx ML-DSA sig under reserved ctx      ->  {}",
+        if ctx_separated { "REJECT (context separation live)" } else { "ACCEPT (BUG)" });
+
     println!("\nHYB-1 accepts only when both signatures verify over the same transcript, each challenge is");
-    println!("single-use, a malformed request is never signed, and fragmented evidence reassembles exactly");
-    println!("or fails closed. Those rules are machine-checked in qseal/proof/hybrid.saw, nonce.saw,");
-    println!("validate.saw, and evidence.saw.");
+    println!("single-use, a malformed request is never signed, fragmented evidence reassembles exactly or");
+    println!("fails closed, and the V2 transcript binds the exact hybrid pair under a reserved ML-DSA ctx.");
+    println!("Those rules are machine-checked in qseal/proof/hybrid.saw, nonce.saw, validate.saw,");
+    println!("evidence.saw, and tbs_v2.saw.");
 
     // Non-zero exit if the demo does not behave (keeps it usable as a check).
     let (c1, q1) = verify_both(&pk, &tbs, &sig);
@@ -247,6 +322,11 @@ fn main() {
     let mut ev_dropped = fragment_evidence(&ev);
     ev_dropped[2].seq = ev_dropped[1].seq;
     let ok_dropped_rejected = reassemble_evidence(&ev_dropped).is_none();
+    let (k7, c7, q7) = verify_v2(&pk, &tbs2, &sig2);
+    let ok_v2_valid = k7 && c7 && q7;
+    let (kz, cz, qz) = verify_v2(&pk, &tbs2_zero, &sig2_zero);
+    let ok_v2_commit_rejected = !kz && cz && qz; // signatures valid; the recompute check rejects
+    let ok_v2_ctx_separated = ctx_separated;
     if !(ok_valid
         && ok_tamper_rejected
         && ok_downgrade_rejected
@@ -255,7 +335,10 @@ fn main() {
         && ok_valid_signed
         && ok_malformed_refused
         && ok_evidence_exact
-        && ok_dropped_rejected)
+        && ok_dropped_rejected
+        && ok_v2_valid
+        && ok_v2_commit_rejected
+        && ok_v2_ctx_separated)
     {
         eprintln!("DEMO SELF-CHECK FAILED");
         std::process::exit(1);

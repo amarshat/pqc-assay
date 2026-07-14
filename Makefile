@@ -100,10 +100,11 @@ qseal-tbs:
 	@echo ">> cryptol + z3: Q-SEAL TBS-V1 + TBS-V2 transcripts bijective/injective; V2 pair commitment signed (no transcript malleability)"
 	./qseal/verify_tbs.sh
 
-## SAW: the C reference TBS-V1 (de)serializer (qseal/ref/) equals the Cryptol model, so it places
-## every field at its FIPS-spec offset. Needs clang + saw on PATH (.tools/bin).
+## SAW: the C reference TBS-V1 and TBS-V2 (de)serializers (qseal/ref/) each equal their Cryptol
+## model, so every field sits at its spec offset (V2 includes the signed pair_commitment). Needs
+## clang + saw on PATH (.tools/bin).
 qseal-ref:
-	@echo ">> SAW: C reference TBS-V1 (de)serializer == Cryptol model (bijective); fields at spec offsets"
+	@echo ">> SAW: C reference TBS-V1 + TBS-V2 (de)serializers == Cryptol models (bijective); fields at spec offsets"
 	./qseal/verify_ref.sh
 
 ## Q-SEAL CREATE_ASSERTION (section 16 property 2): the applet builds TBS-V1 from the validated

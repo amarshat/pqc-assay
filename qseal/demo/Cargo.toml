@@ -11,6 +11,8 @@ ml-dsa = "0.1.1"
 # Classical half of the hybrid.
 p256 = { version = "0.13", features = ["ecdsa"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
+# pair_commitment = SHA-256 over the two public keys (TBS-V2, spec 7.1).
+sha2 = "0.10"
 
 [[bin]]
 name = "qseal-demo"

@@ -33,14 +33,20 @@ directly after `ak_id`) and proves the same three properties plus: `commitment_i
 differing only in the commitment never share bytes, so each component signature commits to the exact
 pair) and `omitting_commitment_breaks_binding` (a serializer that dropped the field is witnessed to
 collide them). The hash itself and the verifier's recompute-and-compare check are out of scope of the
-format proofs; the C reference, `ctx` wiring, and demo are v0.2 implementation work. All eight
-properties run in `make qseal-tbs`. Spec section 7.1.
+format proofs. All eight properties run in `make qseal-tbs`. Spec section 7.1. The V2 C reference is
+verified below; the demo signs V2 with the reserved `ctx` and recomputes the commitment (scenario 7).
+Still open on the verified-C side: the V2 validate/create path and the single-signing-call-site
+statement (spec 6.1/7.1 key-usage rules are policy obligations, not format properties).
 
-**C reference (de)serializer matches the model.** `ref/tbs_v1.c` is a reference implementation written
-to be verifiable (fixed offsets, constant-size copies, no slicing). SAW proves, on its LLVM bitcode:
+**C reference (de)serializers match the models.** `ref/tbs_v1.c` and `ref/tbs_v2.c` are reference
+implementations written to be verifiable (fixed offsets, constant-size copies, no slicing). SAW
+proves, on their LLVM bitcode (`proof/tbs_v1.saw`, `proof/tbs_v2.saw`):
 
-- `qseal_tbs_serialize` equals the Cryptol `serialize` (every field lands at its FIPS-spec offset).
-- `qseal_tbs_parse` equals the Cryptol `parse` on well-formed input (returns 1, fills the struct).
+- `qseal_tbs_serialize` equals the Cryptol `serialize` (every field lands at its FIPS-spec offset),
+  and `qseal_tbs_v2_serialize` equals `serialize2` (including the signed `pair_commitment` at its
+  spec offset).
+- `qseal_tbs_parse` equals the Cryptol `parse` on well-formed input (returns 1, fills the struct);
+  likewise `qseal_tbs_v2_parse` against `parse2`.
 
 Composed with the model bijectivity above, the C pair round-trips. This is the first rung toward a
 verifiable Q-SEAL applet: real code checked against the transcript spec, not a test suite.
@@ -185,7 +191,7 @@ Each proof above carries one hand-injected mutant, which shows the proof is sens
 clause. To measure adequacy rather than sensitivity, `mutation/mutate.py` applies a relational/logical
 operator set (the class CVE-2026-24850 lived in: `<`/`<=`, `==`/`!=`, `&&`/`||`, and so on) to each C
 reference systematically, one mutation per occurrence, and reruns the matching SAW proof. Across the six
-references, the proofs kill **39 of 41** such mutants. The two survivors are the same shape, a loop bound
+references, the proofs kill **42 of 44** such mutants. The two survivors are the same shape, a loop bound
 `i < CAP` weakened to `i <= CAP`, and are semantically equivalent mutants: a downstream guard makes the
 extra iteration a no-op, so no proof or test could kill them. There are no adequacy gaps in this operator
 set. Details in [`mutation/README.md`](mutation/README.md); run with `make qseal-mutants`.
@@ -209,7 +215,7 @@ All exit non-zero on failure. `verify_tbs.sh` needs `cryptol`; the SAW ones need
 ## Section 16 coverage
 
 All seven verification targets are now machine-checked: 1-4, 6, 7 as SAW proofs that a C reference equals
-a Cryptol model of the spec rule (each with an injected-mutant non-vacuity check and a 39/41
+a Cryptol model of the spec rule (each with an injected-mutant non-vacuity check and a 42/44
 mutation-adequacy pass, see above), and 5 as a ProVerif reachability result. Properties 1-4/6/7 are
 code-level (a C reference is verified); property 5 is a symbolic protocol model with no C link, and the
 scope note under each property states what it does and does not establish. A shipped Rust

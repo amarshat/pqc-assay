@@ -2,8 +2,9 @@
 
 A runnable demonstration of the Q-SEAL hybrid attestation, no proof toolchain required. It uses real
 ECDSA P-256 and real ML-DSA-44 (the RustCrypto `ml-dsa` crate this project also formally verifies) to
-sign the verified TBS-V1 transcript, and shows two rules the proofs machine-check: both signatures over
-the same transcript (`qseal/proof/hybrid.saw`), and a single-use challenge (`qseal/proof/nonce.saw`).
+sign the verified TBS-V1 and TBS-V2 transcripts, and shows the rules the proofs machine-check: both
+signatures over the same transcript (`qseal/proof/hybrid.saw`), a single-use challenge
+(`qseal/proof/nonce.saw`), and the V2 hybrid pair binding (`qseal/proof/tbs_v2.saw`).
 
 ## Run
 
@@ -25,6 +26,10 @@ Output:
     6. complete fragment set       exact=true       ->  RECOVER
        dropped fragment            recovered=false  ->  REJECT
        a reassembler that skipped the completeness check would have returned zero-filled bytes.
+    7. V2 pair-bound transcript    commit=true  classical=true   pq=true   ->  ACCEPT
+       zeroed commitment           commit=false classical=true   pq=true   ->  REJECT
+       a verifier that skipped recompute-and-compare would have returned ACCEPT here.
+       empty-ctx ML-DSA sig under reserved ctx      ->  REJECT (context separation live)
 
 Case 3 is the downgrade point: a valid classical signature with no valid post-quantum one (the situation
 once the classical scheme is broken). HYB-1 rejects it because it requires both. A verifier that accepted
@@ -41,6 +46,14 @@ Case 6 is evidence read-back: the applet returns the evidence blob as fragments 
 complete set reassembles to exactly the original bytes; a dropped fragment (which shows up as a
 duplicated index) is rejected rather than zero-filled. A reassembler that skipped the completeness check
 would have returned corrupted bytes under an "ok" result.
+
+Case 7 is the V2 hybrid pair binding (spec 7.1): the applet computes a 32-byte pair commitment
+(SHA-256 over a domain prefix and both public keys) from its own key material and signs the 263-byte
+V2 transcript, the ML-DSA half under the reserved FIPS 204 context `"Q-SEAL/v2"`. The verifier
+recomputes the commitment from the keys it validated, so a transcript carrying a commitment not
+derived from the pair is rejected even though both signatures over its bytes verify. The empty-ctx
+check shows the context separation is live: a V1-style ML-DSA signature over the same bytes does not
+verify under the reserved context.
 
 ## What ties to the verification
 
@@ -59,6 +72,11 @@ would have returned corrupted bytes under an "ok" result.
 - `reassemble_evidence` in `src/main.rs` is the twin of `qseal/ref/evidence.c`, proved equal to
   `qseal/model/QSEAL_Evidence.cry` in `qseal/proof/evidence.saw`: a complete fragment set recovers the
   exact bytes, a dropped or mis-sized one fails closed.
+- `create_assertion_v2` in `src/tbs.rs` builds the V2 layout proved bijective (with the commitment
+  signed and position-pinned) in `qseal/model/QSEAL_TBS_V2.cry`, whose C twin `qseal/ref/tbs_v2.c` is
+  proved equal to the model in `qseal/proof/tbs_v2.saw`. `pair_commitment` / `verify_v2` in
+  `src/main.rs` implement the spec 7.1 applet-computes / verifier-recomputes rules and the reserved
+  `ctx`; those two rules are demo logic, not (yet) verified C.
 
 The demo binary is NOT itself verified. Each piece above is a Rust twin of a rule proved in
 `qseal/proof/*.saw`; the proofs are about the Cryptol model and the C reference, not this code. The twins

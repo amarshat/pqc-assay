@@ -372,6 +372,7 @@ dependencies = [
  "ml-dsa",
  "p256",
  "rand_core 0.6.4",
+ "sha2",
 ]
 
 [[package]]

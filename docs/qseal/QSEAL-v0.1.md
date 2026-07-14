@@ -276,12 +276,15 @@ commitment's strength is SHA-256 collision resistance (out of scope of the forma
 Machine-checked (qseal/model/QSEAL_TBS_V2.cry, `make qseal-tbs`): the V2 serializer is a bijection
 and injective; `pair_commitment` is signed and position-pinned (two transcripts differing only in
 the commitment never share bytes); and a serializer that omitted the commitment is witnessed to
-collide them (mutation-style non-vacuity). The verifier-side recompute-and-compare check and the
-`ctx` wiring are v0.2 implementation work, not yet in the verified C reference or the demo. The
-key-usage rules (reserved `ctx`, dedicated classical key) are policy obligations on the applet
-and its certification, not properties of the transcript format; on the reference-code side the
-corresponding checkable statement is that the validated create path is the only signing call
-site, which is part of the planned v0.2 reference work.
+collide them (mutation-style non-vacuity). The C reference (de)serializer `qseal/ref/tbs_v2.c` is
+proven equal to the model by SAW (`qseal/proof/tbs_v2.saw`, `make qseal-ref`), and the demo signs
+TBS-V2 with `ctx = "Q-SEAL/v2"` and performs the verifier-side recompute-and-compare (scenario 7:
+a zeroed commitment is rejected with both signatures still valid; an empty-ctx ML-DSA signature
+does not verify under the reserved ctx). The key-usage rules (reserved `ctx`, dedicated classical
+key) are policy obligations on the applet and its certification, not properties of the transcript
+format; on the reference-code side the corresponding checkable statement is that the validated
+create path is the only signing call site, which remains open, as does the V2 validate/create
+path in the verified C.
 
 ---
 

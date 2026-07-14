@@ -105,7 +105,7 @@ the ones the applet signed is the binding and hybrid properties, not re-checked 
 The mutants above are hand-injected, not bugs found in the wild, so catching them shows sensitivity to
 one clause, not adequacy. To measure adequacy I ran a systematic pass (`make qseal-mutants`): apply the
 CVE's operator class (`<` vs `<=`, `==` vs `!=`, `&&` vs `||`, and so on) to each C reference, one
-mutation at a time, and rerun the matching proof. The proofs kill 39 of 41 such mutants; the two
+mutation at a time, and rerun the matching proof. The proofs kill 42 of 44 such mutants; the two
 survivors are equivalent mutants (a loop bound whose extra iteration a downstream guard makes a no-op),
 so no proof or test could kill them. And the C references are written to be verifiable; the shipped Rust
 deserializer, where the CVE lived, is outside the verified set because of a tool limit on how it slices

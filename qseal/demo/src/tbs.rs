@@ -83,3 +83,53 @@ pub fn create_assertion(r: &Request, a: &AppletId) -> [u8; QSEAL_TBS_LEN] {
     debug_assert_eq!(o, QSEAL_TBS_LEN);
     out
 }
+
+// ---- TBS-V2 (spec 7.1, v0.2 draft): TBS-V1 plus pair_commitment after ak_id, 263 bytes ----
+
+pub const QSEAL_TBS_V2_LEN: usize = 263;
+
+/// FIPS 204 context string for the ML-DSA half of a V2 attestation (spec 7.1). Reserved: the
+/// attestation key signs under no other ctx, and nothing else signs under this one.
+pub const QSEAL_CTX_V2: &[u8] = b"Q-SEAL/v2";
+
+/// Byte range of pair_commitment inside a serialized V2 transcript
+/// (magic 5 + version 1 + suite 2 + type 1 + origin 1 + issuer 16 + verifier 16 + ak 16 = 58).
+pub const V2_COMMITMENT_RANGE: std::ops::Range<usize> = 58..90;
+
+/// Build the TBS-V2 bytes: as V1, with the applet-computed pair_commitment directly after ak_id.
+/// Field order matches QSEAL_TBS_V2.cry `serialize2` exactly (verified C twin: qseal/ref/tbs_v2.c,
+/// proved in qseal/proof/tbs_v2.saw). The commitment MUST come from the applet's own key material;
+/// this function's caller plays the applet.
+pub fn create_assertion_v2(
+    r: &Request,
+    a: &AppletId,
+    pair_commitment: &[u8; 32],
+) -> [u8; QSEAL_TBS_V2_LEN] {
+    let mut out = [0u8; QSEAL_TBS_V2_LEN];
+    let mut o = 0usize;
+    let mut put = |src: &[u8]| {
+        out[o..o + src.len()].copy_from_slice(src);
+        o += src.len();
+    };
+    put(MAGIC);
+    put(&a.version);
+    put(&r.suite_id);
+    put(&r.assertion_type);
+    put(&r.assertion_origin);
+    put(&a.issuer_id);
+    put(&r.verifier_id);
+    put(&a.ak_id);
+    put(pair_commitment);
+    put(&r.request_id);
+    put(&r.nonce);
+    put(&r.policy_id);
+    put(&a.issued_at);
+    put(&r.expires_at);
+    put(&r.subject_ref);
+    put(&r.object_hash_algorithm);
+    put(&r.object_length);
+    put(&r.object_digest);
+    put(&r.associated_claim_digest);
+    debug_assert_eq!(o, QSEAL_TBS_V2_LEN);
+    out
+}

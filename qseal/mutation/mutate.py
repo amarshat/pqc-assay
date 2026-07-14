@@ -32,6 +32,7 @@ QSEAL = os.path.join(REPO, "qseal")
 # reference file -> the verify script that exercises it
 TARGETS = {
     "tbs_v1.c": "verify_ref.sh",
+    "tbs_v2.c": "verify_ref.sh",
     "assertion.c": "verify_assertion.sh",
     "hybrid.c": "verify_hybrid.sh",
     "nonce.c": "verify_nonce.sh",

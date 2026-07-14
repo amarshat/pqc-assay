@@ -1,0 +1,82 @@
+// SAW: the C reference TBS-V2 (de)serializer computes exactly the Cryptol model QSEAL_TBS_V2.cry,
+// which is proven bijective + injective with pair_commitment signed and position-pinned. Composing,
+// the C serializer inherits those properties: every field at its spec offset (7.1, v0.2 draft), the
+// hybrid pair commitment inside the signed bytes, no transcript-level malleability.
+//
+// Exits 0 only when llvm_verify genuinely discharges the goals.
+enable_experimental;
+
+m <- llvm_load_module "../build/tbs_v2.bc";
+import "../model/QSEAL_TBS_V2.cry";
+
+let field nm n = llvm_fresh_var nm (llvm_array n (llvm_int 8));
+
+// Build the Cryptol TBS2 record and the matching C struct from one set of fresh field vars.
+let serialize_spec = do {
+    version                 <- field "version" 1;
+    suite_id                <- field "suite_id" 2;
+    assertion_type          <- field "assertion_type" 1;
+    assertion_origin        <- field "assertion_origin" 1;
+    issuer_id               <- field "issuer_id" 16;
+    verifier_id             <- field "verifier_id" 16;
+    ak_id                   <- field "ak_id" 16;
+    pair_commitment         <- field "pair_commitment" 32;
+    request_id              <- field "request_id" 16;
+    nonce                   <- field "nonce" 32;
+    policy_id               <- field "policy_id" 4;
+    issued_at               <- field "issued_at" 8;
+    expires_at              <- field "expires_at" 8;
+    subject_ref             <- field "subject_ref" 32;
+    object_hash_algorithm   <- field "object_hash_algorithm" 1;
+    object_length           <- field "object_length" 8;
+    object_digest           <- field "object_digest" 32;
+    associated_claim_digest <- field "associated_claim_digest" 32;
+
+    pt <- llvm_alloc (llvm_alias "struct.qseal_tbs_v2_t");
+    llvm_points_to pt (llvm_struct_value [
+        llvm_term version, llvm_term suite_id, llvm_term assertion_type,
+        llvm_term assertion_origin, llvm_term issuer_id, llvm_term verifier_id,
+        llvm_term ak_id, llvm_term pair_commitment, llvm_term request_id, llvm_term nonce,
+        llvm_term policy_id, llvm_term issued_at, llvm_term expires_at, llvm_term subject_ref,
+        llvm_term object_hash_algorithm, llvm_term object_length, llvm_term object_digest,
+        llvm_term associated_claim_digest ]);
+
+    pout <- llvm_alloc (llvm_array 263 (llvm_int 8));
+    llvm_execute_func [pt, pout];
+
+    let tbs = {{ { version = version, suite_id = suite_id, assertion_type = assertion_type,
+        assertion_origin = assertion_origin, issuer_id = issuer_id, verifier_id = verifier_id,
+        ak_id = ak_id, pair_commitment = pair_commitment, request_id = request_id, nonce = nonce,
+        policy_id = policy_id, issued_at = issued_at, expires_at = expires_at,
+        subject_ref = subject_ref, object_hash_algorithm = object_hash_algorithm,
+        object_length = object_length, object_digest = object_digest,
+        associated_claim_digest = associated_claim_digest } : TBS2 }};
+    llvm_points_to pout (llvm_term {{ serialize2 tbs }});
+};
+
+serialize_ov <- llvm_verify m "qseal_tbs_v2_serialize" [] true serialize_spec z3;
+print "VERIFIED: qseal_tbs_v2_serialize == Cryptol serialize2 (every field at its spec offset, pair_commitment signed)";
+
+// parse: on a well-formed (magic-prefixed) input, C returns 1 and fills the struct with exactly the
+// Cryptol parse2 result. Composed with serialize above, the C pair round-trips like the Cryptol pair.
+let parse_spec = do {
+    inp <- llvm_fresh_var "inp" (llvm_array 263 (llvm_int 8));
+    llvm_precond {{ (take`{5} inp) == "QSEAL" }};
+    pin <- llvm_alloc_readonly (llvm_array 263 (llvm_int 8));
+    llvm_points_to pin (llvm_term inp);
+    pt <- llvm_alloc (llvm_alias "struct.qseal_tbs_v2_t");
+    llvm_execute_func [pin, pt];
+    let out = {{ parse2 inp }};
+    llvm_points_to pt (llvm_struct_value [
+        llvm_term {{ out.version }}, llvm_term {{ out.suite_id }}, llvm_term {{ out.assertion_type }},
+        llvm_term {{ out.assertion_origin }}, llvm_term {{ out.issuer_id }}, llvm_term {{ out.verifier_id }},
+        llvm_term {{ out.ak_id }}, llvm_term {{ out.pair_commitment }}, llvm_term {{ out.request_id }},
+        llvm_term {{ out.nonce }}, llvm_term {{ out.policy_id }}, llvm_term {{ out.issued_at }},
+        llvm_term {{ out.expires_at }}, llvm_term {{ out.subject_ref }},
+        llvm_term {{ out.object_hash_algorithm }}, llvm_term {{ out.object_length }},
+        llvm_term {{ out.object_digest }}, llvm_term {{ out.associated_claim_digest }} ]);
+    llvm_return (llvm_term {{ 1 : [32] }});
+};
+
+parse_ov <- llvm_verify m "qseal_tbs_v2_parse" [] true parse_spec z3;
+print "VERIFIED: qseal_tbs_v2_parse == Cryptol parse2 on well-formed input (returns 1, fills struct)";
