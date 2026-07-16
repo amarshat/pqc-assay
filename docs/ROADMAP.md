@@ -173,7 +173,22 @@ the 20 to "where this exact pipeline has an edge" collapses it to a handful:
   cvc5 stalled; (b) unlike ML-DSA, the int16 butterfly cannot overflow int, so the C is UB-free with
   no coefficient bound, but the ~2700 nsw side conditions on the default bitcode do not discharge as
   one monolithic goal (either backend), so -fwrapv is still used for the equivalence (see
-  ASSUMPTIONS). NEXT slice 3: FIPS 203 forward transform in Isabelle via the Tier-2 machinery.
+  ASSUMPTIONS).
+
+  Slice 3 STARTED (2026-07-16): FIPS 203 forward-transform correctness in Isabelle. Foundation
+  landed (`spec/isabelle/kem/`, session `Kem_Base` builds green, 0 sorry): the forward model
+  `model/cryptol/MLKEM_NTT.cry` lifts via cryptol-to-isabelle to `MLKEM_NTT.thy` on the AFP
+  `Number_Theoretic_Transform` + `Cryptol` base. The math differs from the ML-DSA Tier-2: mod 3329
+  has a 256th root of unity but no 512th, so X^256+1 splits only into 128 degree-2 factors. The
+  target theorem is the INCOMPLETE transform: for i<128, the output pair (f_hat[2i], f_hat[2i+1]) is
+  the residue of f mod (X^2 - zeta^(2*brv7(i)+1)), i.e. f_hat[2i] = sum_j f[2j]*g^j and
+  f_hat[2i+1] = sum_j f[2j+1]*g^j mod q with g = zeta^(2*brv7(i)+1), zeta=17. Remaining bricks
+  (multi-session, mirrors the ML-DSA Tier-2 shape): (a) a normal-domain reference twin of the model
+  + a montgomery bridge (the zetas table and fqmul are montgomery-domain, as in ML-DSA Mont_Bridge);
+  (b) the 7-layer Cooley-Tukey routing == the even/odd length-128 sub-transforms (the incomplete-split
+  analogue of the ML-DSA CT_Routing/Negacyclic_Bridge, NOT a direct reuse); (c) the degree-2 residue
+  characterization as the spec, chained onto AFP length-128 NTT facts. Session is WIP, excluded from
+  make verify until hole-free.
 - **Tier B (greenfield, deliberate new domain):** **bitcoin-core/secp256k1 field reduction** (the
   5×52 / 10×26 limb reduce — same shape as our Montgomery/Barrett work). Best *external* story
   (wallet/Bitcoin money, name recognition) and clean methodological transfer. Caveat: novelty is
