@@ -189,6 +189,12 @@ the 20 to "where this exact pipeline has an edge" collapses it to a handful:
   analogue of the ML-DSA CT_Routing/Negacyclic_Bridge, NOT a direct reuse); (c) the degree-2 residue
   characterization as the spec, chained onto AFP length-128 NTT facts. Session is WIP, excluded from
   make verify until hole-free.
+  Progress (2026-07-16): brick (a) arithmetic base landed. `Kyber_Mont.thy` (`mont_core_kem`,
+  Kem_Base builds green, 0 sorry): given T == A*QINV (mod 2^16) and the int16 + mont_in_range
+  bounds, r = (A - T*q) div 2^16 satisfies 2^16*r == A (mod q=3329) and strict -q < r < q. Integer
+  core only, mirrors the ML-DSA `mont_core` at 16-bit width (QINV = -3327, R = 2^16, factor
+  1 + 3327*3329 = 169*2^16). Next: the word/seq bridge onto the lifted `montgomery_reduce` (the
+  ML-KEM analogue of Assay probe_bridge/red_value/tcong), then bricks (b) routing and (c) residue spec.
 - **Tier B (greenfield, deliberate new domain):** **bitcoin-core/secp256k1 field reduction** (the
   5×52 / 10×26 limb reduce — same shape as our Montgomery/Barrett work). Best *external* story
   (wallet/Bitcoin money, name recognition) and clean methodological transfer. Caveat: novelty is

@@ -13,3 +13,4 @@ session Kem_Base = "Number_Theoretic_Transform" +
     Cryptol
   theories
     "MLKEM_NTT"
+    "Kyber_Mont"
