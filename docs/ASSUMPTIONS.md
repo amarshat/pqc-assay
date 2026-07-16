@@ -369,9 +369,36 @@ in `target/README.md`). Proofs: `proof/saw/mlkem_reduce.saw` via `make mlkem-red
   the analogous 64/32-bit Montgomery statement needed Isabelle, and the Rust 2^46 Barrett needed
   bitwuzla. Goal SHAPE, not just width, decides tractability: even at 16-bit data widths the
   Integer-with-mod form is out of reach while the BV form is seconds.
-- Not yet claimed for ML-KEM: the NTT itself (model and proofs to follow), overflow-freedom of the
-  NTT's unreduced adds, FIPS 203 transform correctness. `fqmul` is static and inlined; it will be
-  covered by the NTT proof, not separately.
+- Not yet claimed for ML-KEM (reduce layer): FIPS 203 transform correctness. `fqmul` is static and
+  inlined; it is covered by the forward-NTT proof below, not separately.
+
+## ML-KEM-512 forward NTT (go-wide slice 2, 2026-07-16)
+
+Target: `target/pqclean-mlkem/ntt.c` (same pin `202a8f9`). Model: `model/cryptol/MLKEM_NTT.cry`
+(`ntt`, 7 Cooley-Tukey levels, mirrors the ML-DSA forward model at int16 widths). Proof:
+`proof/saw/mlkem_ntt.saw` via `make mlkem-ntt`, exit 0 on 2026-07-16 (SAW 1.5.1). In `saw.yml`.
+
+- **C ≡ Cryptol, `PQCLEAN_MLKEM512_CLEAN_ntt(a[256])`: VERIFIED under two's-complement wrapping.**
+  Proven on the `-fwrapv` bitcode (all inputs, no bound precondition), with `montgomery_reduce`
+  passed as an uninterpreted override so the 896 butterfly calls collapse to a structural array
+  equality. Cross-checked before the proof by a differential test against the compiled C on two
+  vectors (spread values and full int16 extremes): 256/256 identical.
+- **Solver datum (paper-relevant):** the equality discharges under SBV `unint_z3` in ~3.5 s, but the
+  what4 `w4_unint_z3` backend does NOT terminate on it within 9 min (measured). This is the reverse
+  of the reduce layer, where z3 discharged the equivalences and cvc5 stalled. Backend choice, not
+  just width or goal size, decides tractability.
+- **Overflow / no-UB setting (differs from ML-DSA).** ML-DSA's forward NTT needs a coefficient-bound
+  proof because its int32 butterfly add/sub genuinely overflows for unbounded inputs. ML-KEM's
+  coefficients are int16: `r[j] ± t` promotes both legs to int, the 32-bit add cannot overflow
+  (|r|<2^15, |t|<q<2^12, so |r±t|<2^16), and the narrowing back to int16_t is implementation-defined
+  (C17 6.3.1.3p3), not UB. So the C is UB-free with NO coefficient bound. That fact is ARGUED, not
+  mechanized: on the default (nsw) bitcode SAW emits ~2700 no-signed-overflow side conditions that,
+  though each individually trivial (17-bit sums, 30-bit products), do not discharge as one monolithic
+  goal under either backend (both time out). We therefore use `-fwrapv` for the equivalence, as with
+  ML-DSA, and record UB-freedom as an argued meta-step (narrower width removes the overflow ML-DSA
+  had to bound; the nsw and `-fwrapv` bitcodes differ only in poison, absent when nothing overflows).
+- Not yet claimed for the ML-KEM NTT: FIPS 203 forward-transform correctness in Isabelle (slice 3,
+  planned via the Tier-2 stage-invariant machinery); a mechanized nsw/`-fwrapv` overflow bridge.
 
 ## Tool/version pins
 Pinned and installed by `scripts/setup.sh` into `.tools/` (gitignored). Platform of record:

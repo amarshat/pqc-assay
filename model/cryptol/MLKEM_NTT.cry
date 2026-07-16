@@ -117,3 +117,63 @@ property mont_correct_bv a =
 property barrett_correct a =
   ((r - si16 a) % q == 0) /\ (r >= -1664) /\ (r <= 1664)
   where r = si16 (barrett_reduce a)
+
+// --- forward NTT (ntt.c) --------------------------------------------------------------
+// Bit-exact model of the C forward NTT, mirroring the ML-DSA model (MLDSA_NTT.cry) at
+// ML-KEM's int16 widths. Kyber's Rq = Zq[X]/(X^256+1) splits only down to degree-2 factors,
+// so the transform has 7 Cooley-Tukey levels (len = 128 >> i for i = 0..6), one fewer than
+// ML-DSA, and the zeta table has 128 entries. The C runs a single counter k starting at 1 with
+// `zeta = zetas[k++]` per block; unrolling the loop, level i (len = 128>>i) has 2^i blocks that
+// consume zetas[2^i .. 2^i + 2^i - 1], so block b uses zetas[2^i + b] with no threading, exactly
+// as in the ML-DSA model. zetas[0] = -1044 is never read (k begins at 1).
+//
+// fqmul is the C's Montgomery multiply: montgomery_reduce((int32_t)a * b). For any int16 legs the
+// product |a*b| < 2^15 * 1664 < q*2^15, so montgomery_reduce's documented input range holds and no
+// coefficient precondition is needed. The int16 add/subtract in the butterfly promote to int, so
+// they carry no signed-overflow UB; the narrowing back to int16_t is implementation-defined (wraps
+// on clang), modeled by the mod-2^16 `+`/`-` here. This is why the forward NTT equivalence is
+// expected to discharge on the default (nsw) bitcode with no -fwrapv build (unlike ML-DSA).
+zetas : [128][16]
+zetas =
+  [ -1044,  -758,  -359, -1517,  1493,  1422,   287,   202,
+     -171,   622,  1577,   182,   962, -1202, -1474,  1468,
+      573, -1325,   264,   383,  -829,  1458, -1602,  -130,
+     -681,  1017,   732,   608, -1542,   411,  -205, -1571,
+     1223,   652,  -552,  1015, -1293,  1491,  -282, -1544,
+      516,    -8,  -320,  -666, -1618, -1162,   126,  1469,
+     -853,   -90,  -271,   830,   107, -1421,  -247,  -951,
+     -398,   961, -1508,  -725,   448, -1065,   677, -1275,
+    -1103,   430,   555,   843, -1251,   871,  1550,   105,
+      422,   587,   177,  -235,  -291,  -460,  1574,  1653,
+     -246,   778,  1159,  -147,  -777,  1483,  -602,  1119,
+    -1590,   644,  -872,   349,   418,   329,  -156,   -75,
+      817,  1097,   603,   610,  1322, -1285, -1465,   384,
+    -1215,  -136,  1218, -1335,  -874,   220, -1187, -1659,
+    -1185, -1530, -1278,   794, -1510,  -854,  -870,   478,
+     -108,  -308,   996,   991,   958, -1460,  1522,  1628 ]
+
+// fqmul: Montgomery multiply. The C computes `montgomery_reduce((int32_t)a * b)`; both int16
+// operands sign-extend to 32 bits, the product is the [32] multiply mod 2^32 (no overflow at
+// these magnitudes), and montgomery_reduce narrows to [16].
+fqmul : [16] -> [16] -> [16]
+fqmul a b = montgomery_reduce (sext32 a * sext32 b)
+
+// One Cooley-Tukey level, built element-wise from the previous array (all butterflies in a level
+// read old values and write disjoint legs, so this is exact for the in-place C). Index m is a
+// "low" leg j when (m mod 2len) < len (partner m+len), giving a[j] + fqmul(zeta, a[j+len]); else a
+// "high" leg j+len, giving a[j] - fqmul(zeta, a[j+len]) evaluated on the old legs. Both legs of a
+// block share zeta = zetas[2^i + b], b = block index.
+nttLevel : [16] -> [256][16] -> [256][16]
+nttLevel i a = [ bf m | m <- [0 .. 255] : [256][16] ]
+  where
+    len    = 128 >> i
+    twolen = 256 >> i
+    base   = 1  << i
+    bf : [16] -> [16]
+    bf m = if (m % twolen) < len
+             then (a @ m)         + fqmul (zetas @ (base + (m / twolen)))         (a @ (m + len))
+             else (a @ (m - len)) - fqmul (zetas @ (base + ((m - len) / twolen))) (a @ m)
+
+ntt : [256][16] -> [256][16]
+ntt a0 = foldl step a0 ([0, 1, 2, 3, 4, 5, 6] : [7][16])
+  where step a i = nttLevel i a

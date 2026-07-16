@@ -163,6 +163,17 @@ the 20 to "where this exact pipeline has an edge" collapses it to a handful:
   then FIPS 203 transform correctness in Isabelle by reusing the Tier-2 stage-invariant machinery
   (ML-KEM's 7-layer NTT is the same induction stopped one level early, at degree-2 blocks). Not in
   `make verify` until the first proof lands.
+
+  Slice 1 DONE (2026-07-14): reduce layer, `make mlkem-reduce`.
+  Slice 2 DONE (2026-07-16): forward NTT C ≡ Cryptol. `make mlkem-ntt` proves
+  `PQCLEAN_MLKEM512_CLEAN_ntt(a[256])` ≡ Cryptol `ntt` (7 Cooley-Tukey levels), on the -fwrapv
+  bitcode with montgomery_reduce as an uninterpreted override, ~3.5 s, in `saw.yml`. Two solver
+  datums for the paper: (a) the equality discharges under SBV `unint_z3` but the what4 `w4_unint_z3`
+  backend does not terminate within 9 min on it, the reverse of the reduce layer where z3 worked and
+  cvc5 stalled; (b) unlike ML-DSA, the int16 butterfly cannot overflow int, so the C is UB-free with
+  no coefficient bound, but the ~2700 nsw side conditions on the default bitcode do not discharge as
+  one monolithic goal (either backend), so -fwrapv is still used for the equivalence (see
+  ASSUMPTIONS). NEXT slice 3: FIPS 203 forward transform in Isabelle via the Tier-2 machinery.
 - **Tier B (greenfield, deliberate new domain):** **bitcoin-core/secp256k1 field reduction** (the
   5×52 / 10×26 limb reduce — same shape as our Montgomery/Barrett work). Best *external* story
   (wallet/Bitcoin money, name recognition) and clean methodological transfer. Caveat: novelty is

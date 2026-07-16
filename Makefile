@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test mlkem-reduce qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -57,6 +57,15 @@ mlkem-reduce:
 	CLANG=$(CLANG) ./scripts/build_bitcode.sh target/pqclean-mlkem build/mlkem_ntt.bc
 	@echo ">> SAW: ML-KEM-512 reduce layer == Cryptol model + math correctness (16-bit, direct SMT)"
 	$(SAW) proof/saw/mlkem_reduce.saw
+
+## ML-KEM-512 forward NTT: C ntt() == Cryptol model (7 Cooley-Tukey levels, -fwrapv bitcode,
+## montgomery_reduce uninterpreted override). Uses SBV unint_z3: the what4 w4_unint_z3 backend
+## does not terminate on this goal within 9 min, the reverse of the reduce-layer solver behaviour.
+mlkem-ntt:
+	@mkdir -p build
+	CLANG=$(CLANG) ./scripts/build_bitcode.sh target/pqclean-mlkem build/mlkem_ntt.bc
+	@echo ">> SAW: ML-KEM-512 forward NTT == Cryptol model (7 levels, wrapv, SBV unint_z3)"
+	$(SAW) proof/saw/mlkem_ntt.saw
 
 ## Run the Isabelle session: model ≡ FIPS-204 spec
 isabelle:
