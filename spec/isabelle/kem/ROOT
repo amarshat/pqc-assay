@@ -1,0 +1,15 @@
+(* WIP — ML-KEM-512 Tier-2 (slice 3): FIPS 203 forward NTT correctness.
+   Kyber's X^256+1 splits only into 128 degree-2 factors mod 3329 (256th root of
+   unity exists, 512th does not), so this is the INCOMPLETE NTT: 7 Cooley-Tukey
+   levels, output = 128 residues f mod (X^2 - zeta^(2*brv7(i)+1)). Distinct from the
+   ML-DSA Tier-2 complete negacyclic transform. SEPARATE session, never gates make-verify.
+
+   MLKEM_NTT is the cryptol-to-isabelle lift of model/cryptol/MLKEM_NTT.cry (the same
+   montgomery-domain model SAW checks the C against). Regenerate:
+     cryptol-to-isabelle -s model/cryptol/MLKEM_NTT.cry -d spec/isabelle/kem --all-modules *)
+session Kem_Base = "Number_Theoretic_Transform" +
+  options [document = false]
+  sessions
+    Cryptol
+  theories
+    "MLKEM_NTT"
