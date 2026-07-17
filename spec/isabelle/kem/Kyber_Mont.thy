@@ -69,6 +69,11 @@ qed
 
 section \<open>Word-level bridge lemmas (pure Word_Lib, no model defs yet)\<close>
 
+text \<open>take_bit at the full word length is the identity (local helper, as in ML-DSA
+  Assay_Equivalence; the library's take_bit_length_eq is over-specialized).\<close>
+lemma take_bit_length_eq'[simp]: "LENGTH('n) = n \<Longrightarrow> take_bit n (w :: 'n :: len word) = w"
+  by fastforce
+
 text \<open>Down-cast 32->16 preserves the signed value when it fits in int16. ML-KEM analogue
   of the ML-DSA \<open>sint_ucast_fit\<close> (64->32).\<close>
 lemma sint_ucast_fit_16:
@@ -179,5 +184,67 @@ proof -
     using lhs rhs by simp
   thus ?thesis by (simp add: mod_eq_dvd_iff)
 qed
+
+section \<open>Seq-level bridge onto the lifted model, and the assembled correctness theorem\<close>
+
+context includes cryptol_syntax begin
+
+text \<open>Signed interpretation of a seq is the word \<open>sint\<close> (library conv).\<close>
+lemma probe_sint_seq_kem: "sint_seq (w :: ('n::len, bool) seq) = sint (seq_to_word w)"
+  by (simp add: word_seq_convs)
+
+text \<open>\<open>sext32\<close> (the model's hand-written sign extend, \<open>(if msb then ~0 else 0) # x\<close>) is the
+  word-level \<open>scast\<close>. Mirrors the ML-DSA \<open>probe_sext64\<close>.\<close>
+lemma probe_sext32: "seq_to_word (sext32 x) = (scast (seq_to_word x) :: 32 word)"
+  unfolding sext32_def
+  apply (simp add: word_seq_convs seq_to_word)
+  apply (intro conjI impI; word_bitwise; simp)
+  done
+
+text \<open>Lower the lifted \<open>montgomery_reduce\<close> (seq form) to the clean word computation
+  \<open>ucast (sshiftr (aw - scast t16 * 3329) 16)\<close> with \<open>aw = seq_to_word a\<close> and
+  \<open>t16 = (low16 aw) * QINV\<close>. Mirrors the ML-DSA \<open>bval\<close>.\<close>
+lemma bval_kem:
+  "sint_seq (montgomery_reduce a)
+     = sint (ucast (sshiftr (seq_to_word a
+             - scast ((ucast (seq_to_word a) :: 16 word) * 62209) * 3329) 16) :: 16 word)"
+  unfolding montgomery_reduce_def
+  by (simp add: word_seq_convs QINV_def Q32_def probe_sext32 seq_to_word
+                ucast_up_ucast take_bit_length_eq' is_up unsigned_take_bit_eq)
+
+text \<open>Assembled: the lifted ML-KEM \<open>montgomery_reduce\<close> is a correct Montgomery reduction on the
+  documented input range: \<open>2^16 * r \<equiv> a (mod q)\<close> and \<open>-q < r < q\<close>, where \<open>r = sint_seq\<close> of the
+  result and \<open>a = sint_seq\<close> of the input. Stated over \<open>sint_seq\<close> (as the ML-DSA
+  \<open>montgomery_reduce_correct\<close>); the input bound \<open>-2^15*q \<le> a < 2^15*q\<close> is the sint reading of
+  the model's \<open>mont_in_range\<close>. Chains bval_kem -> red_value_kem -> mont_core_kem, tcong_kem.\<close>
+theorem montgomery_reduce_correct_kem:
+  fixes a :: "(32, bool) seq"
+  assumes Alo: "- (32768 * 3329) \<le> sint_seq a" and Ahi: "sint_seq a < 32768 * 3329"
+  shows "(65536 * sint_seq (montgomery_reduce a)) mod 3329 = sint_seq a mod 3329
+       \<and> - 3329 < sint_seq (montgomery_reduce a)
+       \<and> sint_seq (montgomery_reduce a) < 3329"
+proof -
+  define aw  :: "32 word" where "aw = seq_to_word a"
+  define t16 :: "16 word" where "t16 = (ucast aw :: 16 word) * 62209"
+  have A_eq: "sint_seq a = sint aw" unfolding aw_def by (rule probe_sint_seq_kem)
+  have Arng: "- (32768 * 3329) \<le> sint aw \<and> sint aw < 32768 * 3329"
+    using Alo Ahi A_eq by simp
+  have bval: "sint_seq (montgomery_reduce a)
+            = sint (ucast (sshiftr (aw - scast t16 * 3329) 16) :: 16 word)"
+    unfolding aw_def t16_def by (rule bval_kem)
+  have rval: "sint_seq (montgomery_reduce a) = (sint aw - sint t16 * 3329) div 65536"
+    unfolding bval using red_value_kem[OF conjunct1[OF Arng] conjunct2[OF Arng]] .
+  have Tcong: "(sint t16 - sint aw * (-3327)) mod 65536 = 0"
+    unfolding t16_def by (rule tcong_kem)
+  have Trng: "- 32768 \<le> sint t16 \<and> sint t16 < 32768"
+    using sint_greater_eq[of t16] sint_lt[of t16] by simp
+  show ?thesis
+    unfolding rval A_eq
+    using mont_core_kem[OF Tcong conjunct1[OF Trng] conjunct2[OF Trng]
+                           conjunct1[OF Arng] conjunct2[OF Arng]]
+    by simp
+qed
+
+end
 
 end

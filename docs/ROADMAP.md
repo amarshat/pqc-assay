@@ -189,12 +189,17 @@ the 20 to "where this exact pipeline has an edge" collapses it to a handful:
   analogue of the ML-DSA CT_Routing/Negacyclic_Bridge, NOT a direct reuse); (c) the degree-2 residue
   characterization as the spec, chained onto AFP length-128 NTT facts. Session is WIP, excluded from
   make verify until hole-free.
-  Progress (2026-07-16): brick (a) arithmetic base landed. `Kyber_Mont.thy` (`mont_core_kem`,
-  Kem_Base builds green, 0 sorry): given T == A*QINV (mod 2^16) and the int16 + mont_in_range
-  bounds, r = (A - T*q) div 2^16 satisfies 2^16*r == A (mod q=3329) and strict -q < r < q. Integer
-  core only, mirrors the ML-DSA `mont_core` at 16-bit width (QINV = -3327, R = 2^16, factor
-  1 + 3327*3329 = 169*2^16). Next: the word/seq bridge onto the lifted `montgomery_reduce` (the
-  ML-KEM analogue of Assay probe_bridge/red_value/tcong), then bricks (b) routing and (c) residue spec.
+  Progress (2026-07-17): brick (a) COMPLETE. `Kyber_Mont.thy` (Kem_Base builds green, 0 sorry),
+  theorem `montgomery_reduce_correct_kem`: for -2^15*q <= sint_seq a < 2^15*q, the lifted ML-KEM
+  `montgomery_reduce` satisfies 2^16 * sint_seq(result) == sint_seq a (mod q=3329) and strict
+  -q < result < q. Full chain, mirroring ML-DSA end to end: `mont_core_kem` (integer core:
+  T==A*QINV(mod 2^16) + int16/range bounds => r=(A-T*q)div 2^16 correct) -> `red_value_kem` +
+  `tcong_kem` (word layer, QINV = -3327 = 62209 mod 2^16, no int32 overflow) -> `bval_kem` +
+  `probe_sext32` (seq->word lowering of the lifted def) -> assembled. Stated over sint_seq (the
+  signed reading of the bits SAW checks C against), as the ML-DSA montgomery_reduce_correct;
+  the model's si16/si32-wrapped mont_correct predicate is the same value, linking si16==sint_seq
+  is a deferred cosmetic bridge (not a correctness gap). Next: brick (b) 7-layer CT routing ==
+  even/odd length-128 sub-transforms, then brick (c) degree-2 residue spec.
 - **Tier B (greenfield, deliberate new domain):** **bitcoin-core/secp256k1 field reduction** (the
   5×52 / 10×26 limb reduce — same shape as our Montgomery/Barrett work). Best *external* story
   (wallet/Bitcoin money, name recognition) and clean methodological transfer. Caveat: novelty is
