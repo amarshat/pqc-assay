@@ -67,4 +67,117 @@ proof -
   from cong rub rlb r_is show ?thesis by simp
 qed
 
+section \<open>Word-level bridge lemmas (pure Word_Lib, no model defs yet)\<close>
+
+text \<open>Down-cast 32->16 preserves the signed value when it fits in int16. ML-KEM analogue
+  of the ML-DSA \<open>sint_ucast_fit\<close> (64->32).\<close>
+lemma sint_ucast_fit_16:
+  fixes V :: "32 word"
+  assumes "- 32768 \<le> sint V" and "sint V < 32768"
+  shows "sint (ucast V :: 16 word) = sint V"
+proof -
+  have "sint (ucast V :: 16 word) = sint (scast V :: 16 word)"
+    by (simp add: scast_ucast_down_same)
+  also have "\<dots> = signed_take_bit 15 (sint V)"
+    by (simp add: signed_scast_eq)
+  also have "\<dots> = sint V" using assms by (simp add: signed_take_bit_int_eq_self)
+  finally show ?thesis .
+qed
+
+text \<open>The reduction body computes \<open>(A - t*q) div 2^16\<close> exactly as a signed value. Here
+  \<open>A = sint aw\<close> (int32 input) and \<open>t = sint t16\<close> (int16). The subtraction and the final
+  down-cast do not overflow on the documented input range. ML-KEM analogue of \<open>red_value\<close>.\<close>
+lemma red_value_kem:
+  fixes aw :: "32 word" and t16 :: "16 word"
+  assumes Alo: "- (32768 * 3329) \<le> sint aw" and Ahi: "sint aw < 32768 * 3329"
+  shows "sint (ucast (sshiftr (aw - scast t16 * 3329) 16) :: 16 word)
+       = (sint aw - sint t16 * 3329) div 65536"
+proof -
+  have t_lo: "(- 32768::int) \<le> sint t16" using sint_greater_eq[of t16] by simp
+  have t_hi: "sint t16 \<le> 32767" using sint_lt[of t16] by simp
+  have tq_lo: "- 109084672 \<le> sint t16 * 3329"
+    using mult_right_mono[OF t_lo, of 3329] by simp
+  have tq_hi: "sint t16 * 3329 \<le> 109081343"
+    using mult_right_mono[OF t_hi, of 3329] by simp
+  have Alo': "- 109084672 \<le> sint aw" using Alo by simp
+  have Ahi': "sint aw < 109084672" using Ahi by simp
+  have hom: "aw - scast t16 * 3329 = (of_int (sint aw - sint t16 * 3329) :: 32 word)"
+    by (simp add: of_int_sint_scast)
+  have fitX: "- 2147483648 \<le> sint aw - sint t16 * 3329
+            \<and> sint aw - sint t16 * 3329 < 2147483648"
+    using Alo' Ahi' tq_lo tq_hi by linarith
+  have sintX: "sint (aw - scast t16 * 3329) = sint aw - sint t16 * 3329"
+    unfolding hom by (rule sint_of_int_eq; (use fitX in simp))
+  have sh: "sint (sshiftr (aw - scast t16 * 3329) 16) = (sint aw - sint t16 * 3329) div 65536"
+    using sintX by (simp add: sshiftr_div_2n)
+  have ub: "sint aw - sint t16 * 3329 < 218169344" using Ahi' tq_lo by linarith
+  have lb: "- 218169344 \<le> sint aw - sint t16 * 3329" using Alo' tq_hi by linarith
+  have v_hi: "(sint aw - sint t16 * 3329) div 65536 < 32768"
+  proof -
+    have "(sint aw - sint t16 * 3329) div 65536 \<le> 218169343 div 65536"
+      using ub by (auto intro: zdiv_mono1)
+    thus ?thesis by simp
+  qed
+  have v_lo: "- 32768 \<le> (sint aw - sint t16 * 3329) div 65536"
+  proof -
+    have "(- 218169344) div (65536::int) \<le> (sint aw - sint t16 * 3329) div 65536"
+      using lb by (auto intro: zdiv_mono1)
+    thus ?thesis by simp
+  qed
+  have Vfit: "- 32768 \<le> sint (sshiftr (aw - scast t16 * 3329) 16)
+            \<and> sint (sshiftr (aw - scast t16 * 3329) 16) < 32768"
+    using v_lo v_hi unfolding sh by simp
+  show ?thesis
+    using sint_ucast_fit_16[OF conjunct1[OF Vfit] conjunct2[OF Vfit]] sh by simp
+qed
+
+text \<open>The low-16 product \<open>t = (low16 a) * QINV\<close> satisfies \<open>t \<equiv> a*QINV (mod 2^16)\<close>, with
+  \<open>QINV = 62209 = -3327 (mod 2^16)\<close>. ML-KEM analogue of \<open>tcong\<close>; the int16 multiply only
+  depends on the low 16 bits of \<open>a\<close>, so multiplying \<open>low16 a\<close> or (signed) \<open>a\<close> agrees mod 2^16.\<close>
+lemma sint_uint_mod16: "sint (y :: 16 word) mod 65536 = uint y mod 65536"
+proof -
+  have key: "(uint y - 65536) mod 65536 = uint y mod 65536"
+    using mod_mult_self1[of "uint y" "- 1" 65536] by simp
+  show ?thesis using key by (simp add: word_sint_msb_eq size_word.rep_eq)
+qed
+
+lemma sint_uint_mod32_16: "sint (aw :: 32 word) mod 65536 = uint aw mod 65536"
+proof -
+  have key: "(uint aw - 4294967296) mod 65536 = uint aw mod 65536"
+    using mod_mult_self1[of "uint aw" "- 65536" 65536] by simp
+  show ?thesis using key by (simp add: word_sint_msb_eq size_word.rep_eq)
+qed
+
+lemma tcong_kem:
+  fixes aw :: "32 word"
+  shows "(sint ((ucast aw :: 16 word) * 62209) - sint aw * (-3327)) mod 65536 = 0"
+proof -
+  have lhs: "sint ((ucast aw :: 16 word) * 62209) mod 65536 = (uint aw * 62209) mod 65536"
+  proof -
+    have "sint ((ucast aw :: 16 word) * 62209) mod 65536
+        = uint ((ucast aw :: 16 word) * 62209) mod 65536" by (rule sint_uint_mod16)
+    also have "\<dots> = (uint (ucast aw :: 16 word) * 62209) mod 65536"
+      by (simp add: uint_word_ariths(3) take_bit_eq_mod mod_mod_cancel)
+    also have "\<dots> = (uint aw mod 65536 * 62209) mod 65536"
+      by (simp add: unsigned_ucast_eq take_bit_eq_mod)
+    also have "\<dots> = (uint aw * 62209) mod 65536"
+      by (simp add: mod_mult_left_eq)
+    finally show ?thesis .
+  qed
+  have rhs: "(sint aw * (-3327)) mod 65536 = (uint aw * 62209) mod 65536"
+  proof -
+    have "(sint aw * (-3327)) mod 65536 = (uint aw * (-3327)) mod 65536"
+      by (rule mod_mult_cong[OF sint_uint_mod32_16 refl])
+    also have "\<dots> = (uint aw * 62209) mod 65536"
+    proof -
+      have "(- 3327::int) mod 65536 = 62209" by simp
+      thus ?thesis by (metis mod_mult_right_eq)
+    qed
+    finally show ?thesis .
+  qed
+  have "sint ((ucast aw :: 16 word) * 62209) mod 65536 = (sint aw * (-3327)) mod 65536"
+    using lhs rhs by simp
+  thus ?thesis by (simp add: mod_eq_dvd_iff)
+qed
+
 end
