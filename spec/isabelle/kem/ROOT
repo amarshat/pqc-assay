@@ -14,3 +14,4 @@ session Kem_Base = "Number_Theoretic_Transform" +
   theories
     "MLKEM_NTT"
     "Kyber_Mont"
+    "Kyber_NTT_Route"
