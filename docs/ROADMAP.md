@@ -198,8 +198,21 @@ the 20 to "where this exact pipeline has an edge" collapses it to a handful:
   `probe_sext32` (seq->word lowering of the lifted def) -> assembled. Stated over sint_seq (the
   signed reading of the bits SAW checks C against), as the ML-DSA montgomery_reduce_correct;
   the model's si16/si32-wrapped mont_correct predicate is the same value, linking si16==sint_seq
-  is a deferred cosmetic bridge (not a correctness gap). Next: brick (b) 7-layer CT routing ==
-  even/odd length-128 sub-transforms, then brick (c) degree-2 residue spec.
+  is a deferred cosmetic bridge (not a correctness gap).
+  Progress (2026-07-18): brick (b) routing seams landed (Kem_Work session, `work/Kyber_Route.thy`,
+  builds green on the Kem_Base heap, 0 sorry). Three reusable facts the 7-level routing consumes:
+  `ntt_unfold` (the model foldl over level indices 0..6 == the explicit 7-fold nttLevel
+  composition, via foldl_seq.rep_eq); `sint_add16`/`sint_sub16` (int16 +/- compute integer +/-
+  when the true result stays in [-2^15, 2^15), the no-overflow seam for the butterfly's
+  unreduced adds); `butterfly_law_kem` (packages the foundation lemmas: for any table index k and
+  coeff |x| <= B <= 32767, fqmul zetas[k] x is a correct normal-domain product, -q < it < q and
+  2^16*it == zetas[k]*x mod q). This mirrors Bridge_Word's op_add/red_mul/red_sub seams, which
+  landed before the full per-layer laws. Next: the per-level coefficient laws (nttLevel i output
+  == abstract butterfly on sint coeffs), the ML-KEM analogue of layer1_coeff. Level 0 (len=128,
+  twolen=256, base=1, twiddle zetas[1]) matches ML-DSA layer1; needs the [16]-word index unfold
+  (map_seq_nth on seq_compr + word-indexed @ access, m mod 256 < 128 test, m+/-128), then chain
+  the 7 levels with a magnitude-bound invariant (|coeff| grows <= q per level, stays < 2^15).
+  Then brick (c) degree-2 residue spec.
 - **Tier B (greenfield, deliberate new domain):** **bitcoin-core/secp256k1 field reduction** (the
   5×52 / 10×26 limb reduce — same shape as our Montgomery/Barrett work). Best *external* story
   (wallet/Bitcoin money, name recognition) and clean methodological transfer. Caveat: novelty is

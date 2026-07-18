@@ -15,3 +15,11 @@ session Kem_Base = "Number_Theoretic_Transform" +
     "MLKEM_NTT"
     "Kyber_Mont"
     "Kyber_NTT_Route"
+
+(* Thin child on the Kem_Base heap: the routing brick (b) proof-in-progress lives
+   here so editing it reprocesses one theory on the mmap'd base, not the whole
+   Cryptol stack. Build the base heap once: isabelle build -b -d ... Kem_Base *)
+session Kem_Work in "work" = Kem_Base +
+  options [document = false]
+  theories
+    "Kyber_Route"
