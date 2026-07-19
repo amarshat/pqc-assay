@@ -2341,7 +2341,8 @@ lemma invf_sint_bound: "- 4194304 \<le> sint_seq invf \<and> sint_seq invf \<le>
   unfolding invf_def by eval
 
 text \<open>OVERFLOW-FREEDOM (piece 5; inverse analog of \<open>ntt_overflow_free\<close>). Given the inverse C input
-  precondition \<open>|coeff| < Q\<close> (\<open>bounded w\<close>, \<open>B_0 = 8380416\<close>), the montgomery inverse NTT is overflow-
+  precondition \<open>bounded w\<close> (every coefficient's unsigned value \<open>< Q\<close>, i.e. \<open>coeff \<in> [0,Q)\<close>
+  non-negative, NOT symmetric \<open>|coeff| < Q\<close>; \<open>B_0 = 8380416\<close>), the montgomery inverse NTT is overflow-
   free: every one of the eight Gentleman-Sande layers keeps coefficients within \<open>2^8 * B_0 =
   2145386496 < 2^31\<close> (so every int32 add/sub \<open>a[j] + a[j+len]\<close> and difference \<open>a[j+len] - a[j]\<close>
   stays in range, and every \<open>montgomery_reduce\<close> input \<open>zeta * (...)\<close> stays \<open>< 2^31 * Q\<close>), and the
