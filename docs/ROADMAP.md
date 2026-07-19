@@ -213,6 +213,13 @@ the 20 to "where this exact pipeline has an edge" collapses it to a handful:
   (map_seq_nth on seq_compr + word-indexed @ access, m mod 256 < 128 test, m+/-128), then chain
   the 7 levels with a magnitude-bound invariant (|coeff| grows <= q per level, stays < 2^15).
   Then brick (c) degree-2 residue spec.
+  Progress (2026-07-19): index helpers for the per-level unfold landed (Kem_Work green, 0 sorry):
+  `to_nat_from_nat16`/`pos_nat_from_nat16` recover the nat index from the [16] word for the model's
+  `a @ m = nth_seq a (pos_nat m)` access, the ML-KEM analogue of ML-DSA `idx_val` at 16-bit width
+  (same word_seq_convs + unat_of_nat route, minus the zext). Next: the remaining index helpers
+  (div 256 = 0 for the twiddle index, the `m mod 256 < 128` half-test, `pos_nat (m +/- 128)`), then
+  assemble level0_lo/hi (nttLevel 0 access == a[n] +/- fqmul(zetas[1], a[n+/-128])) as one apply-script
+  mirroring Bridge_Word.layer1_lo/hi.
 - **Tier B (greenfield, deliberate new domain):** **bitcoin-core/secp256k1 field reduction** (the
   5×52 / 10×26 limb reduce — same shape as our Montgomery/Barrett work). Best *external* story
   (wallet/Bitcoin money, name recognition) and clean methodological transfer. Caveat: novelty is

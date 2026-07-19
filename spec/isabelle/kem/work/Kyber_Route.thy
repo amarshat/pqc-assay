@@ -86,6 +86,33 @@ proof -
     by simp
 qed
 
+section \<open>Index arithmetic for the per-level unfold (level 0: len=128, twolen=256)\<close>
+
+text \<open>The model indexes coefficient and twiddle sequences with \<open>[16]\<close> words: \<open>a @ m\<close> is
+  \<open>nth_seq a (pos_nat m)\<close>, and the level butterfly builds \<open>m\<close> from \<open>fromTo 0 255\<close>. These
+  helpers reduce the \<open>[16]\<close>-word index computations to plain \<open>nat\<close> facts for \<open>n < 256\<close>,
+  the ML-KEM analogue of the ML-DSA \<open>idx_*\<close> lemmas (there at 64/8-bit width).\<close>
+
+text \<open>Recovering the \<open>nat\<close> index from the \<open>[16]\<close> word, in bounds. Same route as the
+  ML-DSA \<open>idx_val\<close>, minus the zext (here the index word is already \<open>[16]\<close>).\<close>
+lemma to_nat_from_nat16:
+  assumes "n < 65536"
+  shows "to_nat (from_nat n :: [16]) = n"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_of_nat)
+  done
+
+lemma pos_nat_from_nat16:
+  assumes "n < 65536"
+  shows "pos_nat (from_nat n :: [16]) = n"
+proof -
+  have "to_int (from_nat n :: [16]) \<ge> 0"
+    by (simp add: to_int_word_def word_seq_convs cryptol_prim_defs)
+  thus ?thesis using to_nat_from_nat16[OF assms] by (simp add: pos_nat_def)
+qed
+
 end
 
 end
