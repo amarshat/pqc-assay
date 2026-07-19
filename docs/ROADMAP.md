@@ -228,6 +228,20 @@ the 20 to "where this exact pipeline has an edge" collapses it to a handful:
   Next: levels 1..6 (same recipe, different len/twolen/base and twiddle index range: level i has
   len=128>>i, base=2^i, and the twiddle spans base..base+2^i-1, so the zetas index is no longer the
   constant 1), then chain via a magnitude-bound invariant into the sint recurrence. Then brick (c).
+  Level-1 attempt (2026-07-19): NOT landed, reverted to keep the file green; WIP saved at
+  scratchpad/Kyber_Route_level1_wip.thy. Two concrete blockers found for levels i>=1:
+  (1) the level constants are seq shifts `(0x80::[16]) >> i` etc., which the level-0 narrow simp
+  does NOT evaluate for i>=1 (level 0 was shift-by-0 = identity). Broad `cryptol_prim_defs
+  word_seq_convs` reduces `bl_to_bin(seq_to_list 1)->1` but leaves `0x100 >> 1` unevaluated AND
+  over-unfolds (breaks the to_nat helper matching). A hand-written shift lemma in Cryptol backtick
+  notation `>>`{16,[16],Bit}` does NOT parse in a lemma prop. Need a clean rewrite
+  `(0x100::[16]) >> 1 = 0x80` (try plain Isabelle `>>`/drop_bit form + `by eval`, or find the seq
+  shift simp) that fires WITHOUT the broad unfold. (2) `presburger` on the mod/div side goals
+  (`n+64<256` from `n mod 128<64`, and `(n-64) div 128 = n div 128`) does NOT terminate (ran 110s+).
+  Avoid both: drop the `n+64<256` bound (both sides stay `nth_list`, so they match un-reduced), and
+  state the upper-leg twiddle in its literal `2+(n-64) div 128` form rather than proving the
+  div-equality. The rest of the level-1 structure (to_nat_plus64/minus64/zidx1_lo/hi, half_test1,
+  level1_lo/hi/coeff) is written and correct modulo the shift reduction.
 - **Tier B (greenfield, deliberate new domain):** **bitcoin-core/secp256k1 field reduction** (the
   5×52 / 10×26 limb reduce — same shape as our Montgomery/Barrett work). Best *external* story
   (wallet/Bitcoin money, name recognition) and clean methodological transfer. Caveat: novelty is
