@@ -220,6 +220,14 @@ the 20 to "where this exact pipeline has an edge" collapses it to a handful:
   (div 256 = 0 for the twiddle index, the `m mod 256 < 128` half-test, `pos_nat (m +/- 128)`), then
   assemble level0_lo/hi (nttLevel 0 access == a[n] +/- fqmul(zetas[1], a[n+/-128])) as one apply-script
   mirroring Bridge_Word.layer1_lo/hi.
+  Progress (2026-07-19, cont.): level-0 coefficient law COMPLETE (Kem_Work green, 0 sorry). The full
+  index-helper set landed (to_nat_plus128/minus128, to_nat_zidx_lo0/hi0, half_test0, all via the
+  word_seq_convs + unat route), then `level0_lo`/`level0_hi` assembled and combined into
+  `level0_coeff`: for n<256, nttLevel 0 a at n = (n<128 ? a[n] + fqmul(zetas[1], a[n+128]) :
+  a[n-128] - fqmul(zetas[1], a[n])). Word-exact, the ML-KEM analogue of Bridge_Word.layer1_coeff.
+  Next: levels 1..6 (same recipe, different len/twolen/base and twiddle index range: level i has
+  len=128>>i, base=2^i, and the twiddle spans base..base+2^i-1, so the zetas index is no longer the
+  constant 1), then chain via a magnitude-bound invariant into the sint recurrence. Then brick (c).
 - **Tier B (greenfield, deliberate new domain):** **bitcoin-core/secp256k1 field reduction** (the
   5×52 / 10×26 limb reduce — same shape as our Montgomery/Barrett work). Best *external* story
   (wallet/Bitcoin money, name recognition) and clean methodological transfer. Caveat: novelty is

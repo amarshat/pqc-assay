@@ -113,6 +113,114 @@ proof -
   thus ?thesis using to_nat_from_nat16[OF assms] by (simp add: pos_nat_def)
 qed
 
+text \<open>The model's \<open>a @ m = nth_seq a (pos_nat m)\<close> access rewrites \<open>pos_nat\<close> to \<open>to_nat\<close>
+  on non-negative words (\<open>pos_nat_simps\<close>), so the index helpers below are stated over
+  \<open>to_nat\<close>, the form the level unfold actually produces.\<close>
+
+text \<open>Lower-leg partner index \<open>m + len\<close> (len = 0x80 = 128): \<open>to_nat (m + 128) = n + 128\<close>.\<close>
+lemma to_nat_plus128:
+  assumes "n < 128"
+  shows "to_nat ((from_nat n :: [16]) + 0x80) = n + 128"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_of_nat)
+  done
+
+text \<open>Upper-leg index \<open>m - len\<close>: \<open>to_nat (m - 128) = n - 128\<close> for \<open>128 <= n < 256\<close>.\<close>
+lemma to_nat_minus128:
+  assumes "128 \<le> n" and "n < 256"
+  shows "to_nat ((from_nat n :: [16]) - 0x80) = n - 128"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_sub_if' unat_of_nat word_le_nat_alt)
+  done
+
+text \<open>Twiddle index for the lower leg: \<open>base + m div twolen = 1 + n div 256 = 1\<close> (n < 256).\<close>
+lemma to_nat_zidx_lo0:
+  assumes "n < 256"
+  shows "to_nat ((0x1 :: [16]) + (from_nat n :: [16]) div 0x100) = 1"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_div unat_of_nat)
+  done
+
+text \<open>Twiddle index for the upper leg: \<open>base + (m - len) div twolen = 1 + (n-128) div 256 = 1\<close>.\<close>
+lemma to_nat_zidx_hi0:
+  assumes "128 \<le> n" and "n < 256"
+  shows "to_nat ((0x1 :: [16]) + ((from_nat n :: [16]) - 0x80) div 0x100) = 1"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_div unat_sub_if' unat_of_nat word_le_nat_alt)
+  done
+
+text \<open>The half-test \<open>m mod twolen < len\<close> is \<open>n < 128\<close> for \<open>n < 256\<close>.\<close>
+lemma half_test0:
+  assumes "n < 256"
+  shows "(((from_nat n :: [16]) mod 0x100 < 0x80)) = (n < 128)"
+  using assms
+  apply (simp add: from_nat_def from_int_word_def word_seq_convs cryptol_prim_defs)
+  apply (simp add: word_less_nat_alt unat_mod unat_of_nat)
+  done
+
+section \<open>Level-0 coefficient access laws (len=128, twolen=256, base=1, twiddle zetas[1])\<close>
+
+text \<open>Level 0 is the ML-KEM analogue of ML-DSA \<open>layer1\<close>: stride 128, single twiddle
+  \<open>zetas[1]\<close>. The lower half is the additive leg, the upper half the subtractive leg.
+  These are plain \<open>[16]\<close>-word equalities (the model does no per-op reduction); the value
+  bridge to the sint recurrence is a later step.\<close>
+lemma level0_lo:
+  fixes a :: "[256][16]"
+  assumes n: "n < 128"
+  shows "nth_seq (nttLevel 0 a) n
+       = (nth_seq a n) + fqmul (nth_seq zetas 1) (nth_seq a (n + 128))"
+proof -
+  have n256: "n < 256" using n by simp
+  have n65: "n < 65536" using n by simp
+  show ?thesis
+    apply (simp add: nttLevel_def Let_def map_seq_nth nth_seq_conv seq_to_list n256)
+    apply (simp add: half_test0[OF n256] n n256
+                     to_nat_from_nat16[OF n65] to_nat_plus128[OF n] to_nat_zidx_lo0[OF n256])
+    done
+qed
+
+lemma level0_hi:
+  fixes a :: "[256][16]"
+  assumes n1: "128 \<le> n" and n2: "n < 256"
+  shows "nth_seq (nttLevel 0 a) n
+       = (nth_seq a (n - 128)) - fqmul (nth_seq zetas 1) (nth_seq a n)"
+proof -
+  have n65: "n < 65536" using n2 by simp
+  have nlt: "\<not> n < 128" using n1 by simp
+  show ?thesis
+    apply (simp add: nttLevel_def Let_def map_seq_nth nth_seq_conv seq_to_list n2)
+    apply (simp add: half_test0[OF n2] nlt n2
+                     to_nat_from_nat16[OF n65] to_nat_minus128[OF n1 n2] to_nat_zidx_hi0[OF n1 n2])
+    done
+qed
+
+text \<open>Level-0 coefficient law: at every output position the model's \<open>nttLevel 0\<close> is the
+  ML-KEM forward butterfly with twiddle \<open>zetas[1]\<close>. Lower half additive, upper half
+  subtractive. Word-exact (no proof holes); the ML-KEM analogue of Bridge_Word.layer1_coeff.\<close>
+lemma level0_coeff:
+  fixes a :: "[256][16]"
+  assumes n: "n < 256"
+  shows "nth_seq (nttLevel 0 a) n
+       = (if n < 128
+          then (nth_seq a n) + fqmul (nth_seq zetas 1) (nth_seq a (n + 128))
+          else (nth_seq a (n - 128)) - fqmul (nth_seq zetas 1) (nth_seq a n))"
+proof (cases "n < 128")
+  case True
+  thus ?thesis using level0_lo[OF True] by simp
+next
+  case False
+  hence "128 \<le> n" by simp
+  thus ?thesis using level0_hi[OF _ n] False by simp
+qed
+
 end
 
 end
