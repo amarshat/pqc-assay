@@ -272,4 +272,130 @@ proof -
   show ?thesis using zntt_pow[OF lt] brv7_pow_add[OF s a] by simp
 qed
 
+subsection \<open>Stage recursion lemmas\<close>
+
+text \<open>Splitting a length-\<open>2A\<close> sum into its even- and odd-indexed halves.\<close>
+lemma sum_pair_split:
+  fixes f :: "nat \<Rightarrow> 'a::comm_monoid_add"
+  shows "(\<Sum>m<2*A. f m) = (\<Sum>m<A. f (2*m)) + (\<Sum>m<A. f (2*m+1))"
+proof (induct A)
+  case 0 show ?case by simp
+next
+  case (Suc A)
+  have "(\<Sum>m<2*Suc A. f m) = (\<Sum>m<2*A. f m) + f (2*A) + f (2*A+1)"
+    by (simp add: mult_Suc_right)
+  also have "\<dots> = ((\<Sum>m<A. f (2*m)) + (\<Sum>m<A. f (2*m+1))) + f (2*A) + f (2*A+1)"
+    by (simp add: Suc.hyps)
+  also have "\<dots> = (\<Sum>m<Suc A. f (2*m)) + (\<Sum>m<Suc A. f (2*m+1))"
+    by (simp add: add.assoc add.left_commute)
+  finally show ?case .
+qed
+
+text \<open>Evaluate \<open>inv_formK\<close> at a position written as \<open>a*B + c\<close> with \<open>c < B\<close> (\<open>B = 2^(8-s)\<close>):
+  the div/mod resolve to \<open>a\<close> and \<open>c\<close>. Note the position stride \<open>2^(8-s)\<close> and the exponent
+  factor \<open>2^(7-s)\<close> differ (the incomplete-NTT signature).\<close>
+lemma inv_formK_ac:
+  assumes c: "c < 2^(8-s)"
+  shows "inv_formK s g (a * 2^(8-s) + c)
+       = (\<Sum>m<2^s. g (c + m * 2^(8-s)) * 17 ^ ((2 * brv s a + 1) * m * 2^(7-s)))"
+  using c by (simp add: inv_formK_def)
+
+text \<open>Lower-leg recursion (exact): one step of the invariant at the even output block \<open>2a\<close>
+  is the additive butterfly leg. ML-KEM analogue of ML-DSA \<open>inv_form_lower\<close>; the position
+  powers are unchanged, the exponent powers drop by one (\<open>2^(7-s)\<close> becomes \<open>2^(6-s)\<close>).\<close>
+lemma inv_formK_lower:
+  fixes g :: "nat \<Rightarrow> int"
+  assumes s: "s < 7" and off: "off < 2 ^ (7 - s)"
+  shows "inv_formK (Suc s) g (a * 2 ^ (8 - s) + off)
+       = inv_formK s g (a * 2 ^ (8 - s) + off)
+         + 17 ^ ((2 * brv s a + 1) * 2 ^ (6 - s))
+           * inv_formK s g (a * 2 ^ (8 - s) + off + 2 ^ (7 - s))"
+proof -
+  define e where "e = 2 * brv s a + 1"
+  have suc:   "8 - s = Suc (7 - s)" using s by linarith
+  have h7:    "7 - s = Suc (6 - s)" using s by linarith
+  have ssuc:  "8 - Suc s = 7 - s"   using s by simp
+  have ssuc2: "7 - Suc s = 6 - s"   using s by simp
+  have B2L:   "(2::nat) ^ (8 - s) = 2 * 2 ^ (7 - s)" by (simp add: suc)
+  have E2E:   "(2::nat) ^ (7 - s) = 2 * 2 ^ (6 - s)" by (simp add: h7)
+  have accL:  "off < 2 ^ (8 - Suc s)" using off by (simp add: ssuc)
+  have offB:  "off < 2 ^ (8 - s)" using off by (simp add: B2L)
+  have offLB: "off + 2 ^ (7 - s) < 2 ^ (8 - s)" using off by (simp add: B2L)
+  have arw:   "a * 2 ^ (8 - s) = (2 * a) * 2 ^ (8 - Suc s)" by (simp add: ssuc B2L)
+  have L1: "inv_formK (Suc s) g (a * 2 ^ (8 - s) + off)
+        = (\<Sum>m'<2 ^ Suc s. g (off + m' * 2 ^ (7 - s)) * 17 ^ (e * m' * 2 ^ (6 - s)))"
+  proof -
+    have "inv_formK (Suc s) g (a * 2 ^ (8 - s) + off)
+        = inv_formK (Suc s) g ((2 * a) * 2 ^ (8 - Suc s) + off)" by (simp add: arw)
+    also have "\<dots> = (\<Sum>m'<2 ^ Suc s. g (off + m' * 2 ^ (8 - Suc s))
+                      * 17 ^ ((2 * brv (Suc s) (2 * a) + 1) * m' * 2 ^ (7 - Suc s)))"
+      by (rule inv_formK_ac[OF accL])
+    also have "\<dots> = (\<Sum>m'<2 ^ Suc s. g (off + m' * 2 ^ (7 - s)) * 17 ^ (e * m' * 2 ^ (6 - s)))"
+      by (simp add: ssuc ssuc2 brv_double e_def)
+    finally show ?thesis .
+  qed
+  have L2: "(\<Sum>m'<2 ^ Suc s. g (off + m' * 2 ^ (7 - s)) * 17 ^ (e * m' * 2 ^ (6 - s)))
+        = (\<Sum>m<2 ^ s. g (off + (2*m) * 2 ^ (7 - s)) * 17 ^ (e * (2*m) * 2 ^ (6 - s)))
+        + (\<Sum>m<2 ^ s. g (off + (2*m+1) * 2 ^ (7 - s)) * 17 ^ (e * (2*m+1) * 2 ^ (6 - s)))"
+    using sum_pair_split[where A = "2 ^ s"
+            and f = "\<lambda>m'. g (off + m' * 2 ^ (7-s)) * 17 ^ (e * m' * 2 ^ (6-s))"]
+    by simp
+  have FIRST: "(\<Sum>m<2 ^ s. g (off + (2*m) * 2 ^ (7 - s)) * 17 ^ (e * (2*m) * 2 ^ (6 - s)))
+        = inv_formK s g (a * 2 ^ (8 - s) + off)"
+  proof -
+    have iac: "inv_formK s g (a * 2 ^ (8 - s) + off)
+        = (\<Sum>m<2 ^ s. g (off + m * 2 ^ (8 - s)) * 17 ^ (e * m * 2 ^ (7 - s)))"
+      using inv_formK_ac[OF offB, of g a] by (simp add: e_def)
+    have "(\<Sum>m<2 ^ s. g (off + (2*m) * 2 ^ (7 - s)) * 17 ^ (e * (2*m) * 2 ^ (6 - s)))
+        = (\<Sum>m<2 ^ s. g (off + m * 2 ^ (8 - s)) * 17 ^ (e * m * 2 ^ (7 - s)))"
+    proof (rule sum.cong[OF refl])
+      fix m :: nat assume "m \<in> {..<2 ^ s}"
+      have b1: "off + (2*m) * 2 ^ (7-s) = off + m * 2 ^ (8-s)" by (simp add: B2L)
+      have b2: "e * (2*m) * 2 ^ (6-s) = e * m * 2 ^ (7-s)" by (simp add: E2E)
+      show "g (off + (2*m) * 2 ^ (7-s)) * 17 ^ (e * (2*m) * 2 ^ (6-s))
+          = g (off + m * 2 ^ (8-s)) * 17 ^ (e * m * 2 ^ (7-s))"
+        by (simp add: b1 b2)
+    qed
+    thus ?thesis by (simp add: iac)
+  qed
+  have SECOND: "(\<Sum>m<2 ^ s. g (off + (2*m+1) * 2 ^ (7 - s)) * 17 ^ (e * (2*m+1) * 2 ^ (6 - s)))
+        = 17 ^ (e * 2 ^ (6 - s)) * inv_formK s g (a * 2 ^ (8 - s) + off + 2 ^ (7 - s))"
+  proof -
+    have iac: "inv_formK s g (a * 2 ^ (8 - s) + off + 2 ^ (7 - s))
+        = (\<Sum>m<2 ^ s. g ((off + 2 ^ (7-s)) + m * 2 ^ (8-s)) * 17 ^ (e * m * 2 ^ (7-s)))"
+    proof -
+      have eq: "a * 2 ^ (8-s) + off + 2 ^ (7-s) = a * 2 ^ (8-s) + (off + 2 ^ (7-s))"
+        by (simp add: add.assoc)
+      show ?thesis unfolding eq using inv_formK_ac[OF offLB, of g a] by (simp add: e_def)
+    qed
+    have "(\<Sum>m<2 ^ s. g (off + (2*m+1) * 2 ^ (7 - s)) * 17 ^ (e * (2*m+1) * 2 ^ (6 - s)))
+        = (\<Sum>m<2 ^ s. 17 ^ (e * 2 ^ (6-s))
+              * (g ((off + 2 ^ (7-s)) + m * 2 ^ (8-s)) * 17 ^ (e * m * 2 ^ (7-s))))"
+    proof (rule sum.cong[OF refl])
+      fix m :: nat assume "m \<in> {..<2 ^ s}"
+      have a1: "off + (2*m+1) * 2 ^ (7-s) = (off + 2 ^ (7-s)) + m * 2 ^ (8-s)"
+        by (simp add: B2L algebra_simps)
+      have a2: "e * (2*m+1) * 2 ^ (6-s) = e * 2 ^ (6-s) + e * m * 2 ^ (7-s)"
+        by (simp add: E2E algebra_simps)
+      show "g (off + (2*m+1) * 2 ^ (7-s)) * 17 ^ (e * (2*m+1) * 2 ^ (6-s))
+          = 17 ^ (e * 2 ^ (6-s)) * (g ((off + 2 ^ (7-s)) + m * 2 ^ (8-s)) * 17 ^ (e * m * 2 ^ (7-s)))"
+        unfolding a1 a2 by (simp add: power_add mult.assoc mult.left_commute mult.commute)
+    qed
+    also have "\<dots> = 17 ^ (e * 2 ^ (6-s))
+          * (\<Sum>m<2 ^ s. g ((off + 2 ^ (7-s)) + m * 2 ^ (8-s)) * 17 ^ (e * m * 2 ^ (7-s)))"
+      by (simp add: sum_distrib_left)
+    also have "\<dots> = 17 ^ (e * 2 ^ (6-s)) * inv_formK s g (a * 2 ^ (8-s) + off + 2 ^ (7-s))"
+      by (simp add: iac)
+    finally show ?thesis .
+  qed
+  have "inv_formK (Suc s) g (a * 2 ^ (8-s) + off)
+      = (\<Sum>m<2 ^ s. g (off + (2*m) * 2 ^ (7-s)) * 17 ^ (e * (2*m) * 2 ^ (6-s)))
+      + (\<Sum>m<2 ^ s. g (off + (2*m+1) * 2 ^ (7-s)) * 17 ^ (e * (2*m+1) * 2 ^ (6-s)))"
+    using L1 L2 by simp
+  also have "\<dots> = inv_formK s g (a * 2 ^ (8-s) + off)
+      + 17 ^ (e * 2 ^ (6-s)) * inv_formK s g (a * 2 ^ (8-s) + off + 2 ^ (7-s))"
+    using FIRST SECOND by simp
+  finally show ?thesis by (simp add: e_def)
+qed
+
 end
