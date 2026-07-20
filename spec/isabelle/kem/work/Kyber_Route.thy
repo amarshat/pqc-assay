@@ -909,6 +909,246 @@ proof -
   thus ?thesis by (simp add: cong_def)
 qed
 
+section \<open>Bound and congruence invariants for the 7-level composition\<close>
+
+text \<open>Pure nat/int reasoning from here on (the level index arithmetic). Coercion off so the
+  quantified nat variables stay \<open>nat\<close> (with it on, \<open>\<forall>m<256\<close> leaves \<open>m :: 'a\<close>). Same discipline
+  as the ML-DSA \<open>Mont_Bridge\<close> chaining block.\<close>
+declare [[coercion_enabled = false]]
+
+text \<open>The signed coefficient view of a state array (ML-KEM analogue of ML-DSA \<open>sf\<close>). Kept an
+  abbreviation so \<open>sfk a n\<close> is literally \<open>sint_seq (nth_seq a n)\<close> and matches the foundation
+  lemmas without unfolding.\<close>
+abbreviation sfk :: "[256][16] \<Rightarrow> nat \<Rightarrow> int" where
+  "sfk a n \<equiv> sint_seq (nth_seq a n)"
+
+text \<open>Running magnitude bound on the coefficients (over the live positions \<open>< 256\<close>). Each level
+  reads only positions \<open>< 256\<close> (both butterfly partners stay in range), so a \<open>\<forall>m<256\<close> invariant
+  is self-contained: no out-of-bounds clamping argument is needed.\<close>
+definition boundedK :: "int \<Rightarrow> [256][16] \<Rightarrow> bool" where
+  "boundedK B a \<longleftrightarrow> (\<forall>m. m < 256 \<longrightarrow> - B \<le> sfk a m \<and> sfk a m \<le> B)"
+
+text \<open>Abstract normal-domain Cooley-Tukey butterfly layer on the coefficient view. Uses the
+  normal twiddle value \<open>zntt\<close>; the upper leg carries \<open>+ q\<close> so it stays a clean mod-\<open>q\<close> form.
+  \<open>L\<close> = stride, \<open>TL\<close> = block size \<open>2L\<close>, \<open>BASE\<close> = twiddle base index at that level.\<close>
+definition bflyK :: "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> (nat \<Rightarrow> int) \<Rightarrow> nat \<Rightarrow> int" where
+  "bflyK L TL BASE g n =
+     (if n mod TL < L
+      then g n + zntt (BASE + n div TL) * g (n + L)
+      else g (n - L) + 3329 - zntt (BASE + (n - L) div TL) * g n)"
+
+text \<open>Congruence invariant: the montgomery coefficient view agrees, mod \<open>q\<close>, with an abstract
+  \<open>nat \<Rightarrow> int\<close> reference on every live position. ML-KEM analogue of \<open>Rcong\<close>, but against an
+  abstract function (there is no separate normal-domain array model on this track).\<close>
+definition RcongK :: "[256][16] \<Rightarrow> (nat \<Rightarrow> int) \<Rightarrow> bool" where
+  "RcongK a g \<longleftrightarrow> (\<forall>m. m < 256 \<longrightarrow> sfk a m mod 3329 = g m mod 3329)"
+
+text \<open>Generic per-level exact value: given a level's coefficient law (\<open>levelI_coeff\<close> restated
+  in the uniform \<open>base + m div twolen\<close> index form) and the partner-index bounds, the montgomery
+  \<open>+\<close>/\<open>-\<close> compute the integer add/sub (no int16 overflow) because \<open>|coeff| <= B <= 29439\<close> and
+  \<open>|fqmul| < q\<close> keep the result inside \<open>[-2^15, 2^15)\<close>.\<close>
+lemma gen_val:
+  fixes a :: "[256][16]" and L TL BASE n :: nat and B :: int
+  assumes law: "\<And>m. m < 256 \<Longrightarrow> nth_seq (F a) m =
+        (if m mod TL < L
+         then nth_seq a m + fqmul (nth_seq zetas (BASE + m div TL)) (nth_seq a (m + L))
+         else nth_seq a (m - L) - fqmul (nth_seq zetas (BASE + (m - L) div TL)) (nth_seq a m))"
+      and plo: "\<And>m. m < 256 \<Longrightarrow> m mod TL < L \<Longrightarrow> m + L < 256"
+      and phi: "\<And>m. m < 256 \<Longrightarrow> \<not> m mod TL < L \<Longrightarrow> L \<le> m"
+      and bd: "boundedK B a" and Blo: "B \<le> 29439" and n: "n < 256"
+  shows "sfk (F a) n =
+        (if n mod TL < L
+         then sfk a n + sint_seq (fqmul (nth_seq zetas (BASE + n div TL)) (nth_seq a (n + L)))
+         else sfk a (n - L) - sint_seq (fqmul (nth_seq zetas (BASE + (n - L) div TL)) (nth_seq a n)))"
+proof (cases "n mod TL < L")
+  case True
+  have mp: "n + L < 256" using plo[OF n True] .
+  have Bh: "B \<le> 32767" using Blo by simp
+  have bx: "- B \<le> sfk a (n + L)" "sfk a (n + L) \<le> B"
+    using bd mp by (auto simp: boundedK_def)
+  have bn: "- B \<le> sfk a n" "sfk a n \<le> B"
+    using bd n by (auto simp: boundedK_def)
+  have fb: "- 3329 < sint_seq (fqmul (nth_seq zetas (BASE + n div TL)) (nth_seq a (n + L)))"
+           "sint_seq (fqmul (nth_seq zetas (BASE + n div TL)) (nth_seq a (n + L))) < 3329"
+    using butterfly_law_kem[OF bx(1) bx(2) Bh] by simp_all
+  have "sfk (F a) n
+      = sint_seq (nth_seq a n + fqmul (nth_seq zetas (BASE + n div TL)) (nth_seq a (n + L)))"
+    using law[OF n] True by simp
+  also have "\<dots> = sfk a n + sint_seq (fqmul (nth_seq zetas (BASE + n div TL)) (nth_seq a (n + L)))"
+    by (rule sint_add16) (use bn fb Blo in linarith)+
+  finally show ?thesis using True by simp
+next
+  case False
+  have nge: "L \<le> n" using phi[OF n False] .
+  have mm: "n - L < 256" using n by simp
+  have Bh: "B \<le> 32767" using Blo by simp
+  have bn: "- B \<le> sfk a n" "sfk a n \<le> B"
+    using bd n by (auto simp: boundedK_def)
+  have bm: "- B \<le> sfk a (n - L)" "sfk a (n - L) \<le> B"
+    using bd mm by (auto simp: boundedK_def)
+  have fb: "- 3329 < sint_seq (fqmul (nth_seq zetas (BASE + (n - L) div TL)) (nth_seq a n))"
+           "sint_seq (fqmul (nth_seq zetas (BASE + (n - L) div TL)) (nth_seq a n)) < 3329"
+    using butterfly_law_kem[OF bn(1) bn(2) Bh] by simp_all
+  have "sfk (F a) n
+      = sint_seq (nth_seq a (n - L) - fqmul (nth_seq zetas (BASE + (n - L) div TL)) (nth_seq a n))"
+    using law[OF n] False by simp
+  also have "\<dots> = sfk a (n - L) - sint_seq (fqmul (nth_seq zetas (BASE + (n - L) div TL)) (nth_seq a n))"
+    by (rule sint_sub16) (use bm fb Blo in linarith)+
+  finally show ?thesis using False by simp
+qed
+
+text \<open>Per-level bound preservation: one level grows the magnitude bound by at most \<open>q\<close>.\<close>
+lemma gen_bound:
+  fixes a :: "[256][16]" and L TL BASE :: nat and B :: int
+  assumes law: "\<And>m. m < 256 \<Longrightarrow> nth_seq (F a) m =
+        (if m mod TL < L
+         then nth_seq a m + fqmul (nth_seq zetas (BASE + m div TL)) (nth_seq a (m + L))
+         else nth_seq a (m - L) - fqmul (nth_seq zetas (BASE + (m - L) div TL)) (nth_seq a m))"
+      and plo: "\<And>m. m < 256 \<Longrightarrow> m mod TL < L \<Longrightarrow> m + L < 256"
+      and phi: "\<And>m. m < 256 \<Longrightarrow> \<not> m mod TL < L \<Longrightarrow> L \<le> m"
+      and bd: "boundedK B a" and Blo: "B \<le> 29439"
+  shows "boundedK (B + 3329) (F a)"
+  unfolding boundedK_def
+proof (intro allI impI)
+  fix n :: nat assume n: "n < 256"
+  have V: "sfk (F a) n =
+        (if n mod TL < L
+         then sfk a n + sint_seq (fqmul (nth_seq zetas (BASE + n div TL)) (nth_seq a (n + L)))
+         else sfk a (n - L) - sint_seq (fqmul (nth_seq zetas (BASE + (n - L) div TL)) (nth_seq a n)))"
+    by (rule gen_val[where F = F, OF law plo phi bd Blo n])
+  have Bh: "B \<le> 32767" using Blo by simp
+  show "- (B + 3329) \<le> sfk (F a) n \<and> sfk (F a) n \<le> B + 3329"
+  proof (cases "n mod TL < L")
+    case True
+    have mp: "n + L < 256" using plo[OF n True] .
+    have bx: "- B \<le> sfk a (n + L)" "sfk a (n + L) \<le> B" using bd mp by (auto simp: boundedK_def)
+    have bn: "- B \<le> sfk a n" "sfk a n \<le> B" using bd n by (auto simp: boundedK_def)
+    have fb: "- 3329 < sint_seq (fqmul (nth_seq zetas (BASE + n div TL)) (nth_seq a (n + L)))"
+             "sint_seq (fqmul (nth_seq zetas (BASE + n div TL)) (nth_seq a (n + L))) < 3329"
+      using butterfly_law_kem[OF bx(1) bx(2) Bh] by simp_all
+    have "sfk (F a) n = sfk a n + sint_seq (fqmul (nth_seq zetas (BASE + n div TL)) (nth_seq a (n + L)))"
+      using V True by simp
+    thus ?thesis using bn fb by linarith
+  next
+    case False
+    have mm: "n - L < 256" using n by simp
+    have bn: "- B \<le> sfk a n" "sfk a n \<le> B" using bd n by (auto simp: boundedK_def)
+    have bm: "- B \<le> sfk a (n - L)" "sfk a (n - L) \<le> B" using bd mm by (auto simp: boundedK_def)
+    have fb: "- 3329 < sint_seq (fqmul (nth_seq zetas (BASE + (n - L) div TL)) (nth_seq a n))"
+             "sint_seq (fqmul (nth_seq zetas (BASE + (n - L) div TL)) (nth_seq a n)) < 3329"
+      using butterfly_law_kem[OF bn(1) bn(2) Bh] by simp_all
+    have "sfk (F a) n = sfk a (n - L) - sint_seq (fqmul (nth_seq zetas (BASE + (n - L) div TL)) (nth_seq a n))"
+      using V False by simp
+    thus ?thesis using bm fb by linarith
+  qed
+qed
+
+text \<open>Per-level congruence preservation: if the input agrees mod \<open>q\<close> with reference \<open>g\<close>, the
+  level output agrees with the abstract layer \<open>bflyK\<close> applied to \<open>g\<close>. Uses \<open>gen_val\<close> for the
+  exact value, then \<open>bfly_cong_kem\<close> to turn the montgomery term into \<open>zntt * coeff\<close>, then the
+  reference congruence at both butterfly partners.\<close>
+lemma gen_cong:
+  fixes a :: "[256][16]" and L TL BASE :: nat and B :: int and g :: "nat \<Rightarrow> int"
+  assumes law: "\<And>m. m < 256 \<Longrightarrow> nth_seq (F a) m =
+        (if m mod TL < L
+         then nth_seq a m + fqmul (nth_seq zetas (BASE + m div TL)) (nth_seq a (m + L))
+         else nth_seq a (m - L) - fqmul (nth_seq zetas (BASE + (m - L) div TL)) (nth_seq a m))"
+      and plo: "\<And>m. m < 256 \<Longrightarrow> m mod TL < L \<Longrightarrow> m + L < 256"
+      and phi: "\<And>m. m < 256 \<Longrightarrow> \<not> m mod TL < L \<Longrightarrow> L \<le> m"
+      and bd: "boundedK B a" and Blo: "B \<le> 29439" and R: "RcongK a g"
+  shows "RcongK (F a) (bflyK L TL BASE g)"
+  unfolding RcongK_def
+proof (intro allI impI)
+  fix n :: nat assume n: "n < 256"
+  have Rg: "\<And>j. j < 256 \<Longrightarrow> sfk a j mod 3329 = g j mod 3329" using R by (simp add: RcongK_def)
+  have Bh: "B \<le> 32767" using Blo by simp
+  have V: "sfk (F a) n =
+        (if n mod TL < L
+         then sfk a n + sint_seq (fqmul (nth_seq zetas (BASE + n div TL)) (nth_seq a (n + L)))
+         else sfk a (n - L) - sint_seq (fqmul (nth_seq zetas (BASE + (n - L) div TL)) (nth_seq a n)))"
+    by (rule gen_val[where F = F, OF law plo phi bd Blo n])
+  show "sfk (F a) n mod 3329 = bflyK L TL BASE g n mod 3329"
+  proof (cases "n mod TL < L")
+    case True
+    have mp: "n + L < 256" using plo[OF n True] .
+    have bx: "- B \<le> sfk a (n + L)" "sfk a (n + L) \<le> B" using bd mp by (auto simp: boundedK_def)
+    have fc: "sint_seq (fqmul (nth_seq zetas (BASE + n div TL)) (nth_seq a (n + L))) mod 3329
+            = (zntt (BASE + n div TL) * sfk a (n + L)) mod 3329"
+      using bfly_cong_kem[OF bx(1) bx(2) Bh] .
+    have c1: "[sfk a n = g n] (mod 3329)" using Rg[OF n] by (simp add: cong_def)
+    have c2: "[sfk a (n + L) = g (n + L)] (mod 3329)" using Rg[OF mp] by (simp add: cong_def)
+    have fcC: "[sint_seq (fqmul (nth_seq zetas (BASE + n div TL)) (nth_seq a (n + L)))
+                = zntt (BASE + n div TL) * sfk a (n + L)] (mod 3329)"
+      using fc by (simp add: cong_def)
+    have congr: "(sfk a n + sint_seq (fqmul (nth_seq zetas (BASE + n div TL)) (nth_seq a (n + L)))) mod 3329
+               = (g n + zntt (BASE + n div TL) * g (n + L)) mod 3329"
+      using cong_add[OF c1 cong_trans[OF fcC cong_mult[OF cong_refl c2]]] by (simp add: cong_def)
+    have "sfk (F a) n mod 3329
+        = (sfk a n + sint_seq (fqmul (nth_seq zetas (BASE + n div TL)) (nth_seq a (n + L)))) mod 3329"
+      using V True by simp
+    also have "\<dots> = (g n + zntt (BASE + n div TL) * g (n + L)) mod 3329" using congr .
+    also have "\<dots> = bflyK L TL BASE g n mod 3329" using True by (simp add: bflyK_def)
+    finally show ?thesis .
+  next
+    case False
+    have nge: "L \<le> n" using phi[OF n False] .
+    have mm: "n - L < 256" using n by simp
+    have bn: "- B \<le> sfk a n" "sfk a n \<le> B" using bd n by (auto simp: boundedK_def)
+    have fc: "sint_seq (fqmul (nth_seq zetas (BASE + (n - L) div TL)) (nth_seq a n)) mod 3329
+            = (zntt (BASE + (n - L) div TL) * sfk a n) mod 3329"
+      using bfly_cong_kem[OF bn(1) bn(2) Bh] .
+    have c1: "[sfk a (n - L) = g (n - L)] (mod 3329)" using Rg[OF mm] by (simp add: cong_def)
+    have c2: "[sfk a n = g n] (mod 3329)" using Rg[OF n] by (simp add: cong_def)
+    have fcC: "[sint_seq (fqmul (nth_seq zetas (BASE + (n - L) div TL)) (nth_seq a n))
+                = zntt (BASE + (n - L) div TL) * sfk a n] (mod 3329)"
+      using fc by (simp add: cong_def)
+    have congr: "(sfk a (n - L) - sint_seq (fqmul (nth_seq zetas (BASE + (n - L) div TL)) (nth_seq a n))) mod 3329
+               = (g (n - L) - zntt (BASE + (n - L) div TL) * g n) mod 3329"
+      using cong_diff[OF c1 cong_trans[OF fcC cong_mult[OF cong_refl c2]]] by (simp add: cong_def)
+    have bK: "bflyK L TL BASE g n mod 3329
+            = (g (n - L) - zntt (BASE + (n - L) div TL) * g n) mod 3329"
+    proof -
+      have "bflyK L TL BASE g n = (g (n - L) - zntt (BASE + (n - L) div TL) * g n) + 3329"
+        using False by (simp add: bflyK_def)
+      thus ?thesis by (simp add: mod_add_self2)
+    qed
+    have "sfk (F a) n mod 3329
+        = (sfk a (n - L) - sint_seq (fqmul (nth_seq zetas (BASE + (n - L) div TL)) (nth_seq a n))) mod 3329"
+      using V False by simp
+    also have "\<dots> = (g (n - L) - zntt (BASE + (n - L) div TL) * g n) mod 3329" using congr .
+    also have "\<dots> = bflyK L TL BASE g n mod 3329" using bK by simp
+    finally show ?thesis .
+  qed
+qed
+
+section \<open>Level-0 instantiation (validates the generic machinery)\<close>
+
+text \<open>Level-0 coefficient law restated in the uniform index form \<open>base + m div twolen\<close> (level 0
+  was proven with the simplified constants: condition \<open>m < 128\<close> and twiddle \<open>zetas[1]\<close>).\<close>
+lemma level0_coeff':
+  fixes a :: "[256][16]"
+  assumes n: "n < 256"
+  shows "nth_seq (nttLevel 0 a) n =
+        (if n mod 256 < 128
+         then nth_seq a n + fqmul (nth_seq zetas (1 + n div 256)) (nth_seq a (n + 128))
+         else nth_seq a (n - 128) - fqmul (nth_seq zetas (1 + (n - 128) div 256)) (nth_seq a n))"
+  using level0_coeff[OF n] n by simp
+
+lemma plo0: "m < 256 \<Longrightarrow> m mod 256 < 128 \<Longrightarrow> m + 128 < (256::nat)" by simp
+lemma phi0: "m < 256 \<Longrightarrow> \<not> m mod 256 < 128 \<Longrightarrow> 128 \<le> (m::nat)" by simp
+
+lemma boundK0:
+  fixes a :: "[256][16]"
+  assumes "boundedK B a" and "B \<le> 29439"
+  shows "boundedK (B + 3329) (nttLevel 0 a)"
+  by (rule gen_bound[where F = "nttLevel 0", OF level0_coeff' plo0 phi0 assms])
+
+lemma presK0:
+  fixes a :: "[256][16]"
+  assumes "boundedK B a" and "B \<le> 29439" and "RcongK a g"
+  shows "RcongK (nttLevel 0 a) (bflyK 128 256 1 g)"
+  by (rule gen_cong[where F = "nttLevel 0", OF level0_coeff' plo0 phi0 assms])
+
 end
 
 end
