@@ -221,6 +221,116 @@ next
   thus ?thesis using level0_hi[OF _ n] False by simp
 qed
 
+section \<open>Level-1 coefficient law (len=64, twolen=128, base=2, twiddle zetas[2 + n div 128])\<close>
+
+text \<open>Levels \<open>i >= 1\<close> carry non-trivial shifts in their length/base constants:
+  \<open>len = 0x80 >> i\<close>, \<open>twolen = 0x100 >> i\<close>, \<open>base = 0x1 << i\<close>. The level-0 narrow
+  unfold does not evaluate these (level 0 was shift-by-0 = identity). These three
+  reductions collapse each constant to its literal \<open>[16]\<close> value by \<open>eval\<close>, so they can
+  be fed to the SAME narrow first simp used at level 0 (no broad \<open>cryptol_prim_defs\<close>
+  unfold, which would otherwise break the \<open>to_nat\<close> helper matching).\<close>
+lemma amt1:      "bl_to_bin (seq_to_list (1::[16])) = 1" by eval
+lemma len1_op:   "right_shift (0x80  :: [16]) 1 = (0x40 :: [16])" by eval
+lemma twolen1_op: "right_shift (0x100 :: [16]) 1 = (0x80 :: [16])" by eval
+lemma base1_op:  "left_shift  (0x1   :: [16]) 1 = (0x2  :: [16])" by eval
+
+text \<open>Level 1 has stride 64 and two twiddle blocks: the twiddle index is \<open>base + m div twolen
+  = 2 + n div 128\<close>, so positions in \<open>[0,128)\<close> use \<open>zetas[2]\<close> and \<open>[128,256)\<close> use \<open>zetas[3]\<close>.\<close>
+
+lemma to_nat_plus64:
+  assumes "n < 65472"
+  shows "to_nat ((from_nat n :: [16]) + 0x40) = n + 64"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_of_nat)
+  done
+
+lemma to_nat_minus64:
+  assumes "64 \<le> n" and "n < 65536"
+  shows "to_nat ((from_nat n :: [16]) - 0x40) = n - 64"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_sub_if' unat_of_nat word_le_nat_alt)
+  done
+
+lemma to_nat_zidx1_lo:
+  assumes "n < 65536"
+  shows "to_nat ((0x2 :: [16]) + (from_nat n :: [16]) div 0x80) = 2 + n div 128"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_div unat_of_nat)
+  done
+
+lemma to_nat_zidx1_hi:
+  assumes "64 \<le> n" and "n < 65536"
+  shows "to_nat ((0x2 :: [16]) + ((from_nat n :: [16]) - 0x40) div 0x80) = 2 + (n - 64) div 128"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_div unat_sub_if' unat_of_nat word_le_nat_alt)
+  done
+
+lemma half_test1:
+  assumes "n < 65536"
+  shows "(((from_nat n :: [16]) mod 0x80 < 0x40)) = (n mod 128 < 64)"
+  using assms
+  apply (simp add: from_nat_def from_int_word_def word_seq_convs cryptol_prim_defs)
+  apply (simp add: word_less_nat_alt unat_mod unat_of_nat)
+  done
+
+lemma level1_lo:
+  fixes a :: "[256][16]"
+  assumes n2: "n < 256" and lo: "n mod 128 < 64"
+  shows "nth_seq (nttLevel 1 a) n
+       = (nth_seq a n) + fqmul (nth_seq zetas (2 + n div 128)) (nth_seq a (n + 64))"
+proof -
+  have n65: "n < 65536" using n2 by simp
+  have np: "n < 65472" using n2 by simp
+  show ?thesis
+    apply (simp add: nttLevel_def Let_def amt1 len1_op twolen1_op base1_op
+                     map_seq_nth nth_seq_conv seq_to_list n2)
+    apply (simp add: half_test1[OF n65] lo n2
+                     to_nat_from_nat16[OF n65] to_nat_plus64[OF np] to_nat_zidx1_lo[OF n65])
+    done
+qed
+
+lemma level1_hi:
+  fixes a :: "[256][16]"
+  assumes n2: "n < 256" and hi: "\<not> n mod 128 < 64"
+  shows "nth_seq (nttLevel 1 a) n
+       = (nth_seq a (n - 64)) - fqmul (nth_seq zetas (2 + (n - 64) div 128)) (nth_seq a n)"
+proof -
+  have n65: "n < 65536" using n2 by simp
+  have n1: "64 \<le> n" using hi by (cases "n < 64") auto
+  show ?thesis
+    apply (simp add: nttLevel_def Let_def amt1 len1_op twolen1_op base1_op
+                     map_seq_nth nth_seq_conv seq_to_list n2)
+    apply (simp add: half_test1[OF n65] hi n2
+                     to_nat_from_nat16[OF n65] to_nat_minus64[OF n1 n65] to_nat_zidx1_hi[OF n1 n65])
+    done
+qed
+
+text \<open>Level-1 coefficient law. The twiddle index is the block index \<open>base + m div twolen\<close>;
+  the upper leg reads it at \<open>m - len\<close>, which stays in the same 128-block, so \<open>2 + (n-64) div
+  128 = 2 + n div 128\<close> (not re-proved here: the two legs are stated in the form each produces).\<close>
+lemma level1_coeff:
+  fixes a :: "[256][16]"
+  assumes n: "n < 256"
+  shows "nth_seq (nttLevel 1 a) n
+       = (if n mod 128 < 64
+          then (nth_seq a n) + fqmul (nth_seq zetas (2 + n div 128)) (nth_seq a (n + 64))
+          else (nth_seq a (n - 64)) - fqmul (nth_seq zetas (2 + (n - 64) div 128)) (nth_seq a n))"
+proof (cases "n mod 128 < 64")
+  case True
+  thus ?thesis using level1_lo[OF n True] by simp
+next
+  case False
+  thus ?thesis using level1_hi[OF n False] by simp
+qed
+
 end
 
 end
