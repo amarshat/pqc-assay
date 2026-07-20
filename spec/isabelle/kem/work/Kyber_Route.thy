@@ -1149,6 +1149,179 @@ lemma presK0:
   shows "RcongK (nttLevel 0 a) (bflyK 128 256 1 g)"
   by (rule gen_cong[where F = "nttLevel 0", OF level0_coeff' plo0 phi0 assms])
 
+section \<open>Levels 1-6 instantiation (the coefficient laws are already in uniform index form)\<close>
+
+text \<open>Partner-index bounds per level. Lower leg: \<open>m + L < 256\<close> from \<open>m mod 2L < L\<close> and the
+  block count \<open>m div 2L < 256 / 2L\<close> (fed to \<open>linarith\<close> with the div/mod decomposition). Upper
+  leg: \<open>L \<le> m\<close> from \<open>L \<le> m mod 2L \<le> m\<close>.\<close>
+
+lemma plo1:
+  assumes "m < 256" and "m mod 128 < 64" shows "m + 64 < (256::nat)"
+proof -
+  have dec: "128 * (m div 128) + m mod 128 = m" by simp
+  have ndlt: "m div 128 < 2" using assms(1) by linarith
+  show ?thesis using dec assms(2) ndlt by linarith
+qed
+lemma phi1:
+  assumes "m < 256" and "\<not> m mod 128 < 64" shows "64 \<le> (m::nat)"
+  using assms(2) mod_less_eq_dividend[of m 128] by simp
+
+lemma plo2:
+  assumes "m < 256" and "m mod 64 < 32" shows "m + 32 < (256::nat)"
+proof -
+  have dec: "64 * (m div 64) + m mod 64 = m" by simp
+  have ndlt: "m div 64 < 4" using assms(1) by linarith
+  show ?thesis using dec assms(2) ndlt by linarith
+qed
+lemma phi2:
+  assumes "m < 256" and "\<not> m mod 64 < 32" shows "32 \<le> (m::nat)"
+  using assms(2) mod_less_eq_dividend[of m 64] by simp
+
+lemma plo3:
+  assumes "m < 256" and "m mod 32 < 16" shows "m + 16 < (256::nat)"
+proof -
+  have dec: "32 * (m div 32) + m mod 32 = m" by simp
+  have ndlt: "m div 32 < 8" using assms(1) by linarith
+  show ?thesis using dec assms(2) ndlt by linarith
+qed
+lemma phi3:
+  assumes "m < 256" and "\<not> m mod 32 < 16" shows "16 \<le> (m::nat)"
+  using assms(2) mod_less_eq_dividend[of m 32] by simp
+
+lemma plo4:
+  assumes "m < 256" and "m mod 16 < 8" shows "m + 8 < (256::nat)"
+proof -
+  have dec: "16 * (m div 16) + m mod 16 = m" by simp
+  have ndlt: "m div 16 < 16" using assms(1) by linarith
+  show ?thesis using dec assms(2) ndlt by linarith
+qed
+lemma phi4:
+  assumes "m < 256" and "\<not> m mod 16 < 8" shows "8 \<le> (m::nat)"
+  using assms(2) mod_less_eq_dividend[of m 16] by simp
+
+lemma plo5:
+  assumes "m < 256" and "m mod 8 < 4" shows "m + 4 < (256::nat)"
+proof -
+  have dec: "8 * (m div 8) + m mod 8 = m" by simp
+  have ndlt: "m div 8 < 32" using assms(1) by linarith
+  show ?thesis using dec assms(2) ndlt by linarith
+qed
+lemma phi5:
+  assumes "m < 256" and "\<not> m mod 8 < 4" shows "4 \<le> (m::nat)"
+  using assms(2) mod_less_eq_dividend[of m 8] by simp
+
+lemma plo6:
+  assumes "m < 256" and "m mod 4 < 2" shows "m + 2 < (256::nat)"
+proof -
+  have dec: "4 * (m div 4) + m mod 4 = m" by simp
+  have ndlt: "m div 4 < 64" using assms(1) by linarith
+  show ?thesis using dec assms(2) ndlt by linarith
+qed
+lemma phi6:
+  assumes "m < 256" and "\<not> m mod 4 < 2" shows "2 \<le> (m::nat)"
+  using assms(2) mod_less_eq_dividend[of m 4] by simp
+
+lemma boundK1:
+  fixes a :: "[256][16]" assumes "boundedK B a" and "B \<le> 29439"
+  shows "boundedK (B + 3329) (nttLevel 1 a)"
+  by (rule gen_bound[where F = "nttLevel 1", OF level1_coeff plo1 phi1 assms])
+lemma boundK2:
+  fixes a :: "[256][16]" assumes "boundedK B a" and "B \<le> 29439"
+  shows "boundedK (B + 3329) (nttLevel 2 a)"
+  by (rule gen_bound[where F = "nttLevel 2", OF level2_coeff plo2 phi2 assms])
+lemma boundK3:
+  fixes a :: "[256][16]" assumes "boundedK B a" and "B \<le> 29439"
+  shows "boundedK (B + 3329) (nttLevel 3 a)"
+  by (rule gen_bound[where F = "nttLevel 3", OF level3_coeff plo3 phi3 assms])
+lemma boundK4:
+  fixes a :: "[256][16]" assumes "boundedK B a" and "B \<le> 29439"
+  shows "boundedK (B + 3329) (nttLevel 4 a)"
+  by (rule gen_bound[where F = "nttLevel 4", OF level4_coeff plo4 phi4 assms])
+lemma boundK5:
+  fixes a :: "[256][16]" assumes "boundedK B a" and "B \<le> 29439"
+  shows "boundedK (B + 3329) (nttLevel 5 a)"
+  by (rule gen_bound[where F = "nttLevel 5", OF level5_coeff plo5 phi5 assms])
+
+lemma presK1:
+  fixes a :: "[256][16]" assumes "boundedK B a" and "B \<le> 29439" and "RcongK a g"
+  shows "RcongK (nttLevel 1 a) (bflyK 64 128 2 g)"
+  by (rule gen_cong[where F = "nttLevel 1", OF level1_coeff plo1 phi1 assms])
+lemma presK2:
+  fixes a :: "[256][16]" assumes "boundedK B a" and "B \<le> 29439" and "RcongK a g"
+  shows "RcongK (nttLevel 2 a) (bflyK 32 64 4 g)"
+  by (rule gen_cong[where F = "nttLevel 2", OF level2_coeff plo2 phi2 assms])
+lemma presK3:
+  fixes a :: "[256][16]" assumes "boundedK B a" and "B \<le> 29439" and "RcongK a g"
+  shows "RcongK (nttLevel 3 a) (bflyK 16 32 8 g)"
+  by (rule gen_cong[where F = "nttLevel 3", OF level3_coeff plo3 phi3 assms])
+lemma presK4:
+  fixes a :: "[256][16]" assumes "boundedK B a" and "B \<le> 29439" and "RcongK a g"
+  shows "RcongK (nttLevel 4 a) (bflyK 8 16 16 g)"
+  by (rule gen_cong[where F = "nttLevel 4", OF level4_coeff plo4 phi4 assms])
+lemma presK5:
+  fixes a :: "[256][16]" assumes "boundedK B a" and "B \<le> 29439" and "RcongK a g"
+  shows "RcongK (nttLevel 5 a) (bflyK 4 8 32 g)"
+  by (rule gen_cong[where F = "nttLevel 5", OF level5_coeff plo5 phi5 assms])
+lemma presK6:
+  fixes a :: "[256][16]" assumes "boundedK B a" and "B \<le> 29439" and "RcongK a g"
+  shows "RcongK (nttLevel 6 a) (bflyK 2 4 64 g)"
+  by (rule gen_cong[where F = "nttLevel 6", OF level6_coeff plo6 phi6 assms])
+
+section \<open>The 7-level composition: the montgomery model computes the abstract CT recurrence mod q\<close>
+
+text \<open>Main routing result. For a reduced input (coefficients \<open>|.| <= q - 1\<close>) the montgomery
+  model \<open>ntt\<close> (the function SAW checks the ML-KEM C against) computes, mod \<open>q\<close>, the 7-fold
+  abstract normal-domain Cooley-Tukey butterfly transform of the input coefficient view. The
+  magnitude bound grows by \<open>q\<close> per level (max \<open>3328 + 6q = 23302 < 29439\<close>), so no int16 overflow
+  occurs and every montgomery butterfly stays a correct normal product. Brick (c) will identify
+  the composed \<open>bflyK\<close> with the FIPS-203 degree-2 residue spec.\<close>
+theorem ntt_recurrence:
+  assumes bw: "boundedK 3328 w" and k: "k < 256"
+  shows "sint_seq (nth_seq (ntt w) k) mod 3329
+       = bflyK 2 4 64 (bflyK 4 8 32 (bflyK 8 16 16 (bflyK 16 32 8
+           (bflyK 32 64 4 (bflyK 64 128 2 (bflyK 128 256 1 (sfk w))))))) k mod 3329"
+proof -
+  have R0: "RcongK w (sfk w)" by (simp add: RcongK_def)
+  have nb1: "boundedK (3328 + 3329) (nttLevel 0 w)"
+    by (rule boundK0[OF bw]) simp
+  have nb2: "boundedK (3328 + 3329 + 3329) (nttLevel 1 (nttLevel 0 w))"
+    by (rule boundK1[OF nb1]) simp
+  have nb3: "boundedK (3328 + 3329 + 3329 + 3329) (nttLevel 2 (nttLevel 1 (nttLevel 0 w)))"
+    by (rule boundK2[OF nb2]) simp
+  have nb4: "boundedK (3328 + 3329 + 3329 + 3329 + 3329)
+                (nttLevel 3 (nttLevel 2 (nttLevel 1 (nttLevel 0 w))))"
+    by (rule boundK3[OF nb3]) simp
+  have nb5: "boundedK (3328 + 3329 + 3329 + 3329 + 3329 + 3329)
+                (nttLevel 4 (nttLevel 3 (nttLevel 2 (nttLevel 1 (nttLevel 0 w)))))"
+    by (rule boundK4[OF nb4]) simp
+  have nb6: "boundedK (3328 + 3329 + 3329 + 3329 + 3329 + 3329 + 3329)
+                (nttLevel 5 (nttLevel 4 (nttLevel 3 (nttLevel 2 (nttLevel 1 (nttLevel 0 w))))))"
+    by (rule boundK5[OF nb5]) simp
+  have R1: "RcongK (nttLevel 0 w) (bflyK 128 256 1 (sfk w))"
+    by (rule presK0[OF bw _ R0]) simp
+  have R2: "RcongK (nttLevel 1 (nttLevel 0 w)) (bflyK 64 128 2 (bflyK 128 256 1 (sfk w)))"
+    by (rule presK1[OF nb1 _ R1]) simp
+  have R3: "RcongK (nttLevel 2 (nttLevel 1 (nttLevel 0 w)))
+                (bflyK 32 64 4 (bflyK 64 128 2 (bflyK 128 256 1 (sfk w))))"
+    by (rule presK2[OF nb2 _ R2]) simp
+  have R4: "RcongK (nttLevel 3 (nttLevel 2 (nttLevel 1 (nttLevel 0 w))))
+                (bflyK 16 32 8 (bflyK 32 64 4 (bflyK 64 128 2 (bflyK 128 256 1 (sfk w)))))"
+    by (rule presK3[OF nb3 _ R3]) simp
+  have R5: "RcongK (nttLevel 4 (nttLevel 3 (nttLevel 2 (nttLevel 1 (nttLevel 0 w)))))
+                (bflyK 8 16 16 (bflyK 16 32 8 (bflyK 32 64 4 (bflyK 64 128 2 (bflyK 128 256 1 (sfk w))))))"
+    by (rule presK4[OF nb4 _ R4]) simp
+  have R6: "RcongK (nttLevel 5 (nttLevel 4 (nttLevel 3 (nttLevel 2 (nttLevel 1 (nttLevel 0 w))))))
+                (bflyK 4 8 32 (bflyK 8 16 16 (bflyK 16 32 8 (bflyK 32 64 4 (bflyK 64 128 2 (bflyK 128 256 1 (sfk w)))))))"
+    by (rule presK5[OF nb5 _ R5]) simp
+  have R7: "RcongK (nttLevel 6 (nttLevel 5 (nttLevel 4 (nttLevel 3 (nttLevel 2 (nttLevel 1 (nttLevel 0 w)))))))
+                (bflyK 2 4 64 (bflyK 4 8 32 (bflyK 8 16 16 (bflyK 16 32 8 (bflyK 32 64 4 (bflyK 64 128 2 (bflyK 128 256 1 (sfk w))))))))"
+    by (rule presK6[OF nb6 _ R6]) simp
+  have Rfull: "RcongK (ntt w)
+                (bflyK 2 4 64 (bflyK 4 8 32 (bflyK 8 16 16 (bflyK 16 32 8 (bflyK 32 64 4 (bflyK 64 128 2 (bflyK 128 256 1 (sfk w))))))))"
+    using R7 by (simp add: ntt_unfold)
+  thus ?thesis using k by (simp add: RcongK_def)
+qed
+
 end
 
 end
