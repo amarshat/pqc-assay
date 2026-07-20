@@ -826,6 +826,89 @@ next
   thus ?thesis using level6_hi[OF n False] by simp
 qed
 
+section \<open>Normal-domain twiddle value and the per-butterfly normal congruence\<close>
+
+text \<open>The montgomery-domain twiddle table stores \<open>zeta * 2^16 mod q\<close> (signed). The
+  normal twiddle value is recovered by multiplying by the inverse of \<open>2^16\<close> mod \<open>q\<close>,
+  which is \<open>169\<close> (\<open>65536 * 169 = 3329 * 3327 + 1\<close>). We keep it reduced into \<open>[0, q)\<close>.
+  This is the ML-KEM analogue of the ML-DSA normal table \<open>zetabrv\<close> (there the C table
+  is \<open>zeta * 2^32\<close> and the inverse factor is baked into a separate literal table); here
+  the montgomery table is the only concrete twiddle data, so the normal value is defined
+  from it directly. Brick (c) will later identify \<open>zntt (base + blk)\<close> with the FIPS-203
+  closed form \<open>17^(2*brv7 i + 1) mod q\<close> by evaluation.\<close>
+definition zntt :: "nat \<Rightarrow> int" where
+  "zntt k = (169 * sint_seq (nth_seq zetas k)) mod 3329"
+
+lemma zntt_bound: "0 \<le> zntt k \<and> zntt k < 3329"
+  unfolding zntt_def by simp
+
+text \<open>The defining relation: \<open>2^16 * zntt k \<equiv> sint(zetas[k]) (mod q)\<close>, i.e. \<open>zntt\<close> is the
+  montgomery table pulled back out of the montgomery domain. Since \<open>65536 * 169 \<equiv> 1 (mod q)\<close>
+  the factor cancels.\<close>
+lemma zntt_rel:
+  "(65536 * zntt k) mod 3329 = sint_seq (nth_seq zetas k) mod 3329"
+proof -
+  define s where "s = sint_seq (nth_seq zetas k)"
+  have step1: "(65536 * zntt k) mod 3329 = (11075584 * s) mod 3329"
+  proof -
+    have "(65536 * zntt k) mod 3329
+        = (65536 * ((169 * s) mod 3329)) mod 3329"
+      unfolding zntt_def s_def by simp
+    also have "\<dots> = (65536 * (169 * s)) mod 3329"
+      by (simp add: mod_mult_right_eq)
+    also have "\<dots> = (11075584 * s) mod 3329"
+      by (simp add: mult.assoc)
+    finally show ?thesis .
+  qed
+  have base: "[(11075584::int) = 1] (mod 3329)" by (simp add: cong_def)
+  have r: "[s = s] (mod 3329)" by (simp add: cong_def)
+  have "[11075584 * s = 1 * s] (mod 3329)" using cong_mult[OF base r] .
+  hence "[11075584 * s = s] (mod 3329)" by simp
+  hence "(11075584 * s) mod 3329 = s mod 3329" by (simp add: cong_def)
+  thus ?thesis using step1 unfolding s_def by simp
+qed
+
+text \<open>Per-butterfly normal congruence: the montgomery butterfly term \<open>fqmul zetas[k] x\<close> is,
+  modulo \<open>q\<close>, the normal-domain product \<open>zntt k * x\<close>. Combines \<open>butterfly_law_kem\<close> (the fqmul
+  congruence \<open>2^16 * fqmul \<equiv> sint(zetas[k]) * x\<close>) with \<open>zntt_rel\<close>, cancelling the montgomery
+  factor \<open>2^16\<close> (coprime to the prime \<open>q\<close>). ML-KEM analogue of ML-DSA \<open>butterfly_cong\<close>.\<close>
+lemma bfly_cong_kem:
+  fixes x :: "[16]" and B :: int
+  assumes xlo: "- B \<le> sint_seq x" and xhi: "sint_seq x \<le> B" and Bhi: "B \<le> 32767"
+  shows "sint_seq (fqmul (nth_seq zetas k) x) mod 3329 = (zntt k * sint_seq x) mod 3329"
+proof -
+  have cong: "(65536 * sint_seq (fqmul (nth_seq zetas k) x)) mod 3329
+            = (sint_seq (nth_seq zetas k) * sint_seq x) mod 3329"
+    using conjunct2[OF conjunct2[OF butterfly_law_kem[OF xlo xhi Bhi]]] .
+  have e: "(sint_seq (nth_seq zetas k) * sint_seq x) mod 3329
+         = (65536 * (zntt k * sint_seq x)) mod 3329"
+  proof -
+    have "(sint_seq (nth_seq zetas k) * sint_seq x) mod 3329
+        = ((sint_seq (nth_seq zetas k) mod 3329) * sint_seq x) mod 3329"
+      by (simp add: mod_mult_left_eq)
+    also have "\<dots> = (((65536 * zntt k) mod 3329) * sint_seq x) mod 3329"
+      by (simp add: zntt_rel)
+    also have "\<dots> = ((65536 * zntt k) * sint_seq x) mod 3329"
+      by (simp add: mod_mult_left_eq)
+    also have "\<dots> = (65536 * (zntt k * sint_seq x)) mod 3329"
+      by (simp add: mult.assoc)
+    finally show ?thesis .
+  qed
+  have comb: "(65536 * sint_seq (fqmul (nth_seq zetas k) x)) mod 3329
+            = (65536 * (zntt k * sint_seq x)) mod 3329"
+    using cong e by simp
+  have cop: "coprime (65536::int) 3329"
+  proof -
+    have "gcd (65536::int) 3329 = 1" by eval
+    thus ?thesis by (simp add: coprime_iff_gcd_eq_1)
+  qed
+  have "[65536 * sint_seq (fqmul (nth_seq zetas k) x) = 65536 * (zntt k * sint_seq x)] (mod 3329)"
+    using comb by (simp add: cong_def)
+  hence "[sint_seq (fqmul (nth_seq zetas k) x) = zntt k * sint_seq x] (mod 3329)"
+    using cop by (simp add: cong_mult_lcancel)
+  thus ?thesis by (simp add: cong_def)
+qed
+
 end
 
 end
