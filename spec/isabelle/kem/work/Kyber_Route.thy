@@ -331,6 +331,501 @@ next
   thus ?thesis using level1_hi[OF n False] by simp
 qed
 
+section \<open>Level-2 coefficient law (len=32, twolen=64, base=4, twiddle zetas[4 + n div 64])\<close>
+
+lemma amt2:       "bl_to_bin (seq_to_list (2::[16])) = 2" by eval
+lemma len2_op:    "right_shift (0x80  :: [16]) 2 = (0x20 :: [16])" by eval
+lemma twolen2_op: "right_shift (0x100 :: [16]) 2 = (0x40 :: [16])" by eval
+lemma base2_op:   "left_shift  (0x1   :: [16]) 2 = (0x4  :: [16])" by eval
+
+lemma to_nat_plus32:
+  assumes "n < 65504"
+  shows "to_nat ((from_nat n :: [16]) + 0x20) = n + 32"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_of_nat)
+  done
+
+lemma to_nat_minus32:
+  assumes "32 \<le> n" and "n < 65536"
+  shows "to_nat ((from_nat n :: [16]) - 0x20) = n - 32"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_sub_if' unat_of_nat word_le_nat_alt)
+  done
+
+lemma to_nat_zidx2_lo:
+  assumes "n < 65536"
+  shows "to_nat ((0x4 :: [16]) + (from_nat n :: [16]) div 0x40) = 4 + n div 64"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_div unat_of_nat)
+  done
+
+lemma to_nat_zidx2_hi:
+  assumes "32 \<le> n" and "n < 65536"
+  shows "to_nat ((0x4 :: [16]) + ((from_nat n :: [16]) - 0x20) div 0x40) = 4 + (n - 32) div 64"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_div unat_sub_if' unat_of_nat word_le_nat_alt)
+  done
+
+lemma half_test2:
+  assumes "n < 65536"
+  shows "(((from_nat n :: [16]) mod 0x40 < 0x20)) = (n mod 64 < 32)"
+  using assms
+  apply (simp add: from_nat_def from_int_word_def word_seq_convs cryptol_prim_defs)
+  apply (simp add: word_less_nat_alt unat_mod unat_of_nat)
+  done
+
+lemma level2_lo:
+  fixes a :: "[256][16]"
+  assumes n2: "n < 256" and lo: "n mod 64 < 32"
+  shows "nth_seq (nttLevel 2 a) n
+       = (nth_seq a n) + fqmul (nth_seq zetas (4 + n div 64)) (nth_seq a (n + 32))"
+proof -
+  have n65: "n < 65536" using n2 by simp
+  have np: "n < 65504" using n2 by simp
+  show ?thesis
+    apply (simp add: nttLevel_def Let_def amt2 len2_op twolen2_op base2_op
+                     map_seq_nth nth_seq_conv seq_to_list n2)
+    apply (simp add: half_test2[OF n65] lo n2
+                     to_nat_from_nat16[OF n65] to_nat_plus32[OF np] to_nat_zidx2_lo[OF n65])
+    done
+qed
+
+lemma level2_hi:
+  fixes a :: "[256][16]"
+  assumes n2: "n < 256" and hi: "\<not> n mod 64 < 32"
+  shows "nth_seq (nttLevel 2 a) n
+       = (nth_seq a (n - 32)) - fqmul (nth_seq zetas (4 + (n - 32) div 64)) (nth_seq a n)"
+proof -
+  have n65: "n < 65536" using n2 by simp
+  have n1: "32 \<le> n" using hi by (cases "n < 32") auto
+  show ?thesis
+    apply (simp add: nttLevel_def Let_def amt2 len2_op twolen2_op base2_op
+                     map_seq_nth nth_seq_conv seq_to_list n2)
+    apply (simp add: half_test2[OF n65] hi n2
+                     to_nat_from_nat16[OF n65] to_nat_minus32[OF n1 n65] to_nat_zidx2_hi[OF n1 n65])
+    done
+qed
+
+lemma level2_coeff:
+  fixes a :: "[256][16]"
+  assumes n: "n < 256"
+  shows "nth_seq (nttLevel 2 a) n
+       = (if n mod 64 < 32
+          then (nth_seq a n) + fqmul (nth_seq zetas (4 + n div 64)) (nth_seq a (n + 32))
+          else (nth_seq a (n - 32)) - fqmul (nth_seq zetas (4 + (n - 32) div 64)) (nth_seq a n))"
+proof (cases "n mod 64 < 32")
+  case True
+  thus ?thesis using level2_lo[OF n True] by simp
+next
+  case False
+  thus ?thesis using level2_hi[OF n False] by simp
+qed
+
+section \<open>Level-3 coefficient law (len=16, twolen=32, base=8, twiddle zetas[8 + n div 32])\<close>
+
+lemma amt3:       "bl_to_bin (seq_to_list (3::[16])) = 3" by eval
+lemma len3_op:    "right_shift (0x80  :: [16]) 3 = (0x10 :: [16])" by eval
+lemma twolen3_op: "right_shift (0x100 :: [16]) 3 = (0x20 :: [16])" by eval
+lemma base3_op:   "left_shift  (0x1   :: [16]) 3 = (0x8  :: [16])" by eval
+
+lemma to_nat_plus16:
+  assumes "n < 65520"
+  shows "to_nat ((from_nat n :: [16]) + 0x10) = n + 16"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_of_nat)
+  done
+
+lemma to_nat_minus16:
+  assumes "16 \<le> n" and "n < 65536"
+  shows "to_nat ((from_nat n :: [16]) - 0x10) = n - 16"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_sub_if' unat_of_nat word_le_nat_alt)
+  done
+
+lemma to_nat_zidx3_lo:
+  assumes "n < 65536"
+  shows "to_nat ((0x8 :: [16]) + (from_nat n :: [16]) div 0x20) = 8 + n div 32"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_div unat_of_nat)
+  done
+
+lemma to_nat_zidx3_hi:
+  assumes "16 \<le> n" and "n < 65536"
+  shows "to_nat ((0x8 :: [16]) + ((from_nat n :: [16]) - 0x10) div 0x20) = 8 + (n - 16) div 32"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_div unat_sub_if' unat_of_nat word_le_nat_alt)
+  done
+
+lemma half_test3:
+  assumes "n < 65536"
+  shows "(((from_nat n :: [16]) mod 0x20 < 0x10)) = (n mod 32 < 16)"
+  using assms
+  apply (simp add: from_nat_def from_int_word_def word_seq_convs cryptol_prim_defs)
+  apply (simp add: word_less_nat_alt unat_mod unat_of_nat)
+  done
+
+lemma level3_lo:
+  fixes a :: "[256][16]"
+  assumes n2: "n < 256" and lo: "n mod 32 < 16"
+  shows "nth_seq (nttLevel 3 a) n
+       = (nth_seq a n) + fqmul (nth_seq zetas (8 + n div 32)) (nth_seq a (n + 16))"
+proof -
+  have n65: "n < 65536" using n2 by simp
+  have np: "n < 65520" using n2 by simp
+  show ?thesis
+    apply (simp add: nttLevel_def Let_def amt3 len3_op twolen3_op base3_op
+                     map_seq_nth nth_seq_conv seq_to_list n2)
+    apply (simp add: half_test3[OF n65] lo n2
+                     to_nat_from_nat16[OF n65] to_nat_plus16[OF np] to_nat_zidx3_lo[OF n65])
+    done
+qed
+
+lemma level3_hi:
+  fixes a :: "[256][16]"
+  assumes n2: "n < 256" and hi: "\<not> n mod 32 < 16"
+  shows "nth_seq (nttLevel 3 a) n
+       = (nth_seq a (n - 16)) - fqmul (nth_seq zetas (8 + (n - 16) div 32)) (nth_seq a n)"
+proof -
+  have n65: "n < 65536" using n2 by simp
+  have n1: "16 \<le> n" using hi by (cases "n < 16") auto
+  show ?thesis
+    apply (simp add: nttLevel_def Let_def amt3 len3_op twolen3_op base3_op
+                     map_seq_nth nth_seq_conv seq_to_list n2)
+    apply (simp add: half_test3[OF n65] hi n2
+                     to_nat_from_nat16[OF n65] to_nat_minus16[OF n1 n65] to_nat_zidx3_hi[OF n1 n65])
+    done
+qed
+
+lemma level3_coeff:
+  fixes a :: "[256][16]"
+  assumes n: "n < 256"
+  shows "nth_seq (nttLevel 3 a) n
+       = (if n mod 32 < 16
+          then (nth_seq a n) + fqmul (nth_seq zetas (8 + n div 32)) (nth_seq a (n + 16))
+          else (nth_seq a (n - 16)) - fqmul (nth_seq zetas (8 + (n - 16) div 32)) (nth_seq a n))"
+proof (cases "n mod 32 < 16")
+  case True
+  thus ?thesis using level3_lo[OF n True] by simp
+next
+  case False
+  thus ?thesis using level3_hi[OF n False] by simp
+qed
+
+section \<open>Level-4 coefficient law (len=8, twolen=16, base=16, twiddle zetas[16 + n div 16])\<close>
+
+lemma amt4:       "bl_to_bin (seq_to_list (4::[16])) = 4" by eval
+lemma len4_op:    "right_shift (0x80  :: [16]) 4 = (0x8  :: [16])" by eval
+lemma twolen4_op: "right_shift (0x100 :: [16]) 4 = (0x10 :: [16])" by eval
+lemma base4_op:   "left_shift  (0x1   :: [16]) 4 = (0x10 :: [16])" by eval
+
+lemma to_nat_plus8:
+  assumes "n < 65528"
+  shows "to_nat ((from_nat n :: [16]) + 0x8) = n + 8"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_of_nat)
+  done
+
+lemma to_nat_minus8:
+  assumes "8 \<le> n" and "n < 65536"
+  shows "to_nat ((from_nat n :: [16]) - 0x8) = n - 8"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_sub_if' unat_of_nat word_le_nat_alt)
+  done
+
+lemma to_nat_zidx4_lo:
+  assumes "n < 65536"
+  shows "to_nat ((0x10 :: [16]) + (from_nat n :: [16]) div 0x10) = 16 + n div 16"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_div unat_of_nat)
+  done
+
+lemma to_nat_zidx4_hi:
+  assumes "8 \<le> n" and "n < 65536"
+  shows "to_nat ((0x10 :: [16]) + ((from_nat n :: [16]) - 0x8) div 0x10) = 16 + (n - 8) div 16"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_div unat_sub_if' unat_of_nat word_le_nat_alt)
+  done
+
+lemma half_test4:
+  assumes "n < 65536"
+  shows "(((from_nat n :: [16]) mod 0x10 < 0x8)) = (n mod 16 < 8)"
+  using assms
+  apply (simp add: from_nat_def from_int_word_def word_seq_convs cryptol_prim_defs)
+  apply (simp add: word_less_nat_alt unat_mod unat_of_nat)
+  done
+
+lemma level4_lo:
+  fixes a :: "[256][16]"
+  assumes n2: "n < 256" and lo: "n mod 16 < 8"
+  shows "nth_seq (nttLevel 4 a) n
+       = (nth_seq a n) + fqmul (nth_seq zetas (16 + n div 16)) (nth_seq a (n + 8))"
+proof -
+  have n65: "n < 65536" using n2 by simp
+  have np: "n < 65528" using n2 by simp
+  show ?thesis
+    apply (simp add: nttLevel_def Let_def amt4 len4_op twolen4_op base4_op
+                     map_seq_nth nth_seq_conv seq_to_list n2)
+    apply (simp add: half_test4[OF n65] lo n2
+                     to_nat_from_nat16[OF n65] to_nat_plus8[OF np] to_nat_zidx4_lo[OF n65])
+    done
+qed
+
+lemma level4_hi:
+  fixes a :: "[256][16]"
+  assumes n2: "n < 256" and hi: "\<not> n mod 16 < 8"
+  shows "nth_seq (nttLevel 4 a) n
+       = (nth_seq a (n - 8)) - fqmul (nth_seq zetas (16 + (n - 8) div 16)) (nth_seq a n)"
+proof -
+  have n65: "n < 65536" using n2 by simp
+  have n1: "8 \<le> n" using hi by (cases "n < 8") auto
+  show ?thesis
+    apply (simp add: nttLevel_def Let_def amt4 len4_op twolen4_op base4_op
+                     map_seq_nth nth_seq_conv seq_to_list n2)
+    apply (simp add: half_test4[OF n65] hi n2
+                     to_nat_from_nat16[OF n65] to_nat_minus8[OF n1 n65] to_nat_zidx4_hi[OF n1 n65])
+    done
+qed
+
+lemma level4_coeff:
+  fixes a :: "[256][16]"
+  assumes n: "n < 256"
+  shows "nth_seq (nttLevel 4 a) n
+       = (if n mod 16 < 8
+          then (nth_seq a n) + fqmul (nth_seq zetas (16 + n div 16)) (nth_seq a (n + 8))
+          else (nth_seq a (n - 8)) - fqmul (nth_seq zetas (16 + (n - 8) div 16)) (nth_seq a n))"
+proof (cases "n mod 16 < 8")
+  case True
+  thus ?thesis using level4_lo[OF n True] by simp
+next
+  case False
+  thus ?thesis using level4_hi[OF n False] by simp
+qed
+
+section \<open>Level-5 coefficient law (len=4, twolen=8, base=32, twiddle zetas[32 + n div 8])\<close>
+
+lemma amt5:       "bl_to_bin (seq_to_list (5::[16])) = 5" by eval
+lemma len5_op:    "right_shift (0x80  :: [16]) 5 = (0x4  :: [16])" by eval
+lemma twolen5_op: "right_shift (0x100 :: [16]) 5 = (0x8  :: [16])" by eval
+lemma base5_op:   "left_shift  (0x1   :: [16]) 5 = (0x20 :: [16])" by eval
+
+lemma to_nat_plus4:
+  assumes "n < 65532"
+  shows "to_nat ((from_nat n :: [16]) + 0x4) = n + 4"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_of_nat)
+  done
+
+lemma to_nat_minus4:
+  assumes "4 \<le> n" and "n < 65536"
+  shows "to_nat ((from_nat n :: [16]) - 0x4) = n - 4"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_sub_if' unat_of_nat word_le_nat_alt)
+  done
+
+lemma to_nat_zidx5_lo:
+  assumes "n < 65536"
+  shows "to_nat ((0x20 :: [16]) + (from_nat n :: [16]) div 0x8) = 32 + n div 8"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_div unat_of_nat)
+  done
+
+lemma to_nat_zidx5_hi:
+  assumes "4 \<le> n" and "n < 65536"
+  shows "to_nat ((0x20 :: [16]) + ((from_nat n :: [16]) - 0x4) div 0x8) = 32 + (n - 4) div 8"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_div unat_sub_if' unat_of_nat word_le_nat_alt)
+  done
+
+lemma half_test5:
+  assumes "n < 65536"
+  shows "(((from_nat n :: [16]) mod 0x8 < 0x4)) = (n mod 8 < 4)"
+  using assms
+  apply (simp add: from_nat_def from_int_word_def word_seq_convs cryptol_prim_defs)
+  apply (simp add: word_less_nat_alt unat_mod unat_of_nat)
+  done
+
+lemma level5_lo:
+  fixes a :: "[256][16]"
+  assumes n2: "n < 256" and lo: "n mod 8 < 4"
+  shows "nth_seq (nttLevel 5 a) n
+       = (nth_seq a n) + fqmul (nth_seq zetas (32 + n div 8)) (nth_seq a (n + 4))"
+proof -
+  have n65: "n < 65536" using n2 by simp
+  have np: "n < 65532" using n2 by simp
+  show ?thesis
+    apply (simp add: nttLevel_def Let_def amt5 len5_op twolen5_op base5_op
+                     map_seq_nth nth_seq_conv seq_to_list n2)
+    apply (simp add: half_test5[OF n65] lo n2
+                     to_nat_from_nat16[OF n65] to_nat_plus4[OF np] to_nat_zidx5_lo[OF n65])
+    done
+qed
+
+lemma level5_hi:
+  fixes a :: "[256][16]"
+  assumes n2: "n < 256" and hi: "\<not> n mod 8 < 4"
+  shows "nth_seq (nttLevel 5 a) n
+       = (nth_seq a (n - 4)) - fqmul (nth_seq zetas (32 + (n - 4) div 8)) (nth_seq a n)"
+proof -
+  have n65: "n < 65536" using n2 by simp
+  have n1: "4 \<le> n" using hi by (cases "n < 4") auto
+  show ?thesis
+    apply (simp add: nttLevel_def Let_def amt5 len5_op twolen5_op base5_op
+                     map_seq_nth nth_seq_conv seq_to_list n2)
+    apply (simp add: half_test5[OF n65] hi n2
+                     to_nat_from_nat16[OF n65] to_nat_minus4[OF n1 n65] to_nat_zidx5_hi[OF n1 n65])
+    done
+qed
+
+lemma level5_coeff:
+  fixes a :: "[256][16]"
+  assumes n: "n < 256"
+  shows "nth_seq (nttLevel 5 a) n
+       = (if n mod 8 < 4
+          then (nth_seq a n) + fqmul (nth_seq zetas (32 + n div 8)) (nth_seq a (n + 4))
+          else (nth_seq a (n - 4)) - fqmul (nth_seq zetas (32 + (n - 4) div 8)) (nth_seq a n))"
+proof (cases "n mod 8 < 4")
+  case True
+  thus ?thesis using level5_lo[OF n True] by simp
+next
+  case False
+  thus ?thesis using level5_hi[OF n False] by simp
+qed
+
+section \<open>Level-6 coefficient law (len=2, twolen=4, base=64, twiddle zetas[64 + n div 4])\<close>
+
+text \<open>Final level, stride 2. The ML-KEM NTT stops here (128 degree-2 residues), so unlike
+  the ML-DSA layer schedule there is no stride-1 level and no \<open>mod 2 < 1\<close> collapse. The
+  partner index is the word literal \<open>+ 0x2\<close> / \<open>- 0x2\<close>, so the same helper form as level 5
+  applies (no nat-level \<open>Suc\<close>-tower normalisation).\<close>
+
+lemma amt6:       "bl_to_bin (seq_to_list (6::[16])) = 6" by eval
+lemma len6_op:    "right_shift (0x80  :: [16]) 6 = (0x2  :: [16])" by eval
+lemma twolen6_op: "right_shift (0x100 :: [16]) 6 = (0x4  :: [16])" by eval
+lemma base6_op:   "left_shift  (0x1   :: [16]) 6 = (0x40 :: [16])" by eval
+
+lemma to_nat_plus2:
+  assumes "n < 65534"
+  shows "to_nat ((from_nat n :: [16]) + 0x2) = n + 2"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_of_nat)
+  done
+
+lemma to_nat_minus2:
+  assumes "2 \<le> n" and "n < 65536"
+  shows "to_nat ((from_nat n :: [16]) - 0x2) = n - 2"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_sub_if' unat_of_nat word_le_nat_alt)
+  done
+
+lemma to_nat_zidx6_lo:
+  assumes "n < 65536"
+  shows "to_nat ((0x40 :: [16]) + (from_nat n :: [16]) div 0x4) = 64 + n div 4"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_div unat_of_nat)
+  done
+
+lemma to_nat_zidx6_hi:
+  assumes "2 \<le> n" and "n < 65536"
+  shows "to_nat ((0x40 :: [16]) + ((from_nat n :: [16]) - 0x2) div 0x4) = 64 + (n - 2) div 4"
+  using assms
+  apply (simp add: to_nat_def to_int_word_def from_nat_def from_int_word_def
+                   word_seq_convs cryptol_prim_defs)
+  apply (simp add: unat_word_ariths unat_div unat_sub_if' unat_of_nat word_le_nat_alt)
+  done
+
+lemma half_test6:
+  assumes "n < 65536"
+  shows "(((from_nat n :: [16]) mod 0x4 < 0x2)) = (n mod 4 < 2)"
+  using assms
+  apply (simp add: from_nat_def from_int_word_def word_seq_convs cryptol_prim_defs)
+  apply (simp add: word_less_nat_alt unat_mod unat_of_nat)
+  done
+
+lemma level6_lo:
+  fixes a :: "[256][16]"
+  assumes n2: "n < 256" and lo: "n mod 4 < 2"
+  shows "nth_seq (nttLevel 6 a) n
+       = (nth_seq a n) + fqmul (nth_seq zetas (64 + n div 4)) (nth_seq a (n + 2))"
+proof -
+  have n65: "n < 65536" using n2 by simp
+  have np: "n < 65534" using n2 by simp
+  show ?thesis
+    apply (simp add: nttLevel_def Let_def amt6 len6_op twolen6_op base6_op
+                     map_seq_nth nth_seq_conv seq_to_list n2)
+    apply (simp add: half_test6[OF n65] lo n2
+                     to_nat_from_nat16[OF n65] to_nat_plus2[OF np] to_nat_zidx6_lo[OF n65])
+    done
+qed
+
+lemma level6_hi:
+  fixes a :: "[256][16]"
+  assumes n2: "n < 256" and hi: "\<not> n mod 4 < 2"
+  shows "nth_seq (nttLevel 6 a) n
+       = (nth_seq a (n - 2)) - fqmul (nth_seq zetas (64 + (n - 2) div 4)) (nth_seq a n)"
+proof -
+  have n65: "n < 65536" using n2 by simp
+  have n1: "2 \<le> n" using hi by (cases "n < 2") auto
+  show ?thesis
+    apply (simp add: nttLevel_def Let_def amt6 len6_op twolen6_op base6_op
+                     map_seq_nth nth_seq_conv seq_to_list n2)
+    apply (simp add: half_test6[OF n65] hi n2
+                     to_nat_from_nat16[OF n65] to_nat_minus2[OF n1 n65] to_nat_zidx6_hi[OF n1 n65])
+    done
+qed
+
+lemma level6_coeff:
+  fixes a :: "[256][16]"
+  assumes n: "n < 256"
+  shows "nth_seq (nttLevel 6 a) n
+       = (if n mod 4 < 2
+          then (nth_seq a n) + fqmul (nth_seq zetas (64 + n div 4)) (nth_seq a (n + 2))
+          else (nth_seq a (n - 2)) - fqmul (nth_seq zetas (64 + (n - 2) div 4)) (nth_seq a n))"
+proof (cases "n mod 4 < 2")
+  case True
+  thus ?thesis using level6_lo[OF n True] by simp
+next
+  case False
+  thus ?thesis using level6_hi[OF n False] by simp
+qed
+
 end
 
 end
