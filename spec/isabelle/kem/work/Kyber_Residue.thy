@@ -142,4 +142,134 @@ lemma zwrap_eval: "((17::int) ^ 128) mod 3329 = 3328" by eval
 lemma zwrap_cong: "[(17::int) ^ 128 = - 1] (mod 3329)"
   unfolding cong_def by eval
 
+section \<open>The 7-layer schedule and the stage invariant\<close>
+
+text \<open>One abstract layer of the ML-KEM schedule, indexed by step \<open>s = 0..6\<close>: stride
+  \<open>2^(7-s)\<close>, block size \<open>2^(8-s)\<close>, twiddle base \<open>2^s\<close>. Matches the \<open>ntt_recurrence\<close>
+  composition order (\<open>bstepK 0\<close> is the outermost-applied first layer).\<close>
+definition bstepK :: "nat \<Rightarrow> (nat \<Rightarrow> int) \<Rightarrow> (nat \<Rightarrow> int)" where
+  "bstepK s g = bflyK (2^(7-s)) (2^(8-s)) (2^s) g"
+
+fun applyNK :: "nat \<Rightarrow> (nat \<Rightarrow> int) \<Rightarrow> (nat \<Rightarrow> int)" where
+  "applyNK 0 g = g"
+| "applyNK (Suc s) g = bstepK s (applyNK s g)"
+
+text \<open>The 7-fold schedule unfolds to the explicit \<open>bflyK\<close> composition that is the
+  right-hand side of \<open>ntt_recurrence\<close>.\<close>
+lemma applyNK_7_eq:
+  "applyNK 7 g = bflyK 2 4 64 (bflyK 4 8 32 (bflyK 8 16 16 (bflyK 16 32 8
+       (bflyK 32 64 4 (bflyK 64 128 2 (bflyK 128 256 1 g))))))"
+  by (simp add: bstepK_def eval_nat_numeral)
+
+text \<open>The stage invariant (no inner mod; carried as a congruence mod q). After \<open>s\<close> layers,
+  position \<open>n = a*B + c\<close> (with \<open>B = 2^(8-s)\<close>, \<open>A = 2^s\<close>, \<open>a = n div B\<close>, \<open>c = n mod B\<close>) holds
+  the length-\<open>A\<close> sub-DFT of the stride-\<open>B\<close> subvector at offset \<open>c\<close>, evaluated at frequency
+  \<open>2*brv\<^sub>s a + 1\<close>. Note the exponent factor is \<open>2^(7-s)\<close> (ML-KEM is the incomplete NTT with
+  \<open>zeta = 17\<close> of order 256), one power of two less than the ML-DSA \<open>inv_form\<close>.\<close>
+definition inv_formK :: "nat \<Rightarrow> (nat \<Rightarrow> int) \<Rightarrow> nat \<Rightarrow> int" where
+  "inv_formK s g n =
+     (\<Sum>m < 2^s. g (n mod 2^(8-s) + m * 2^(8-s))
+                 * 17 ^ ((2 * brv s (n div 2^(8-s)) + 1) * m * 2^(7-s)))"
+
+lemma inv_formK_0: "n < 256 \<Longrightarrow> inv_formK 0 g n = g n"
+  by (simp add: inv_formK_def)
+
+text \<open>Target specialisation: at \<open>s = 7\<close> the invariant is the FIPS-203 degree-2 residue
+  coefficient. Position \<open>n = 2i + c\<close> (c the parity) holds \<open>SUM j<128. g(c + 2j) * 17^((2*brv 7 i + 1)*j)\<close>,
+  i.e. the even (\<open>c=0\<close>) / odd (\<open>c=1\<close>) coefficient of \<open>f mod (X^2 - 17^(2*brv 7 i + 1))\<close>.\<close>
+lemma inv_formK_7:
+  "inv_formK 7 g n = (\<Sum>m<128. g (n mod 2 + m * 2) * 17 ^ ((2 * brv 7 (n div 2) + 1) * m))"
+  by (simp add: inv_formK_def)
+
+subsection \<open>Twiddle-index identity for the induction step\<close>
+
+text \<open>Bit-reversal of a single top bit plus a low residue: \<open>brv\<^sub>7(2^s + a)\<close>. The bit \<open>2^s\<close>
+  reverses to weight \<open>2^(6-s)\<close>; the low \<open>s\<close> bits \<open>a\<close> reverse and shift up to weight \<open>2^(7-s)\<close>.
+  This is the ML-KEM analogue of ML-DSA \<open>brv8_pow_add\<close> (7 instead of 8 bits), giving the level-\<open>s\<close>
+  twiddle \<open>zntt(2^s + a) = 17^(2^(6-s) * (2*brv s a + 1))\<close>.\<close>
+lemma brv7_pow_add:
+  assumes s: "s < 7" and a: "a < 2^s"
+  shows "brv 7 (2^s + a) = 2^(6-s) + brv s a * 2^(7-s)"
+proof (rule bit_eqI)
+  fix j :: nat
+  have arg: "bit (2^s + a) i = (if i < s then bit a i else i = s)" for i
+  proof (cases "i < s")
+    case True
+    thus ?thesis using bit_add_push[OF a, of 1 i] by (simp add: add.commute)
+  next
+    case False
+    have bit1: "bit (1::nat) k = (k = 0)" for k by (auto simp: bit_simps)
+    have step: "bit (2^s + a) i = bit (1::nat) (i - s)"
+      using bit_add_push[OF a, of 1 i] False by (simp add: add.commute)
+    have "bit (1::nat) (i - s) = (i = s)" using bit1[of "i - s"] False by presburger
+    thus ?thesis using step False by simp
+  qed
+  have res: "bit (2^(6-s) + brv s a * 2^(7-s)) j
+             = (if j < 7 - s then j = 6 - s else bit (brv s a) (j - (7 - s)))"
+  proof -
+    have r: "(2::nat)^(6-s) < 2^(7-s)" using s by simp
+    have "bit (2^(6-s) + brv s a * 2^(7-s)) j
+          = (if j < 7-s then bit ((2::nat)^(6-s)) j else bit (brv s a) (j-(7-s)))"
+      using bit_add_push[OF r, of "brv s a" j] by simp
+    moreover have "bit ((2::nat)^(6-s)) j = (j = 6 - s)"
+      by (auto simp: bit_simps)
+    ultimately show ?thesis by simp
+  qed
+  show "bit (brv 7 (2^s + a)) j = bit (2^(6-s) + brv s a * 2^(7-s)) j"
+  proof (cases "j < 7")
+    case True
+    have "bit (brv 7 (2^s + a)) j = bit (2^s + a) (6 - j)"
+      using True by (simp add: bit_brv)
+    also have "\<dots> = (if 6 - j < s then bit a (6 - j) else 6 - j = s)" by (subst arg) simp
+    finally have L: "bit (brv 7 (2^s + a)) j = (if 6-j < s then bit a (6-j) else 6-j = s)" .
+    show ?thesis
+    proof (cases "j < 7 - s")
+      case True
+      have "\<not> 6 - j < s" using True s by linarith
+      hence "bit (brv 7 (2^s+a)) j = (6 - j = s)" using L by simp
+      moreover have "(6 - j = s) = (j = 6 - s)" using True s \<open>j<7\<close> by linarith
+      ultimately show ?thesis using True res by simp
+    next
+      case False
+      have hj: "6 - j < s" using False \<open>j<7\<close> s by linarith
+      hence "bit (brv 7 (2^s+a)) j = bit a (6 - j)" using L by simp
+      moreover have "bit (brv s a) (j - (7-s)) = bit a (6 - j)"
+      proof -
+        have lt: "j - (7 - s) < s" using False \<open>j<7\<close> s by linarith
+        have "bit (brv s a) (j-(7-s)) = bit a (s - Suc (j - (7-s)))"
+          using lt by (simp add: bit_brv)
+        moreover have "s - Suc (j - (7-s)) = 6 - j" using False \<open>j<7\<close> s by linarith
+        ultimately show ?thesis by simp
+      qed
+      ultimately show ?thesis using False res by simp
+    qed
+  next
+    case False
+    have "\<not> j < 7 - s" using False by simp
+    have "bit (brv 7 (2^s+a)) j = False" using False by (simp add: bit_brv)
+    moreover have "bit (2^(6-s) + brv s a * 2^(7-s)) j = bit (brv s a) (j-(7-s))"
+      using res \<open>\<not> j < 7 - s\<close> by simp
+    moreover have "brv s a < 2^s" by (rule brv_lt)
+    hence "bit (brv s a) (j - (7-s)) = False"
+      using bit_lt[of "brv s a" s "j-(7-s)"] False s by force
+    ultimately show ?thesis by simp
+  qed
+qed
+
+text \<open>Hence the level-\<open>s\<close> twiddle in normal-domain closed form.\<close>
+lemma zntt_level:
+  assumes s: "s < 7" and a: "a < 2^s"
+  shows "zntt (2^s + a) = (17 ^ (2^(6-s) + brv s a * 2^(7-s))) mod 3329"
+proof -
+  have lt: "(2::nat)^s + a < 128"
+  proof -
+    have sle: "Suc s \<le> 7" using s by simp
+    have "(2::nat)^s + a < 2^(Suc s)" using a by simp
+    also have "(2::nat)^(Suc s) \<le> 2^7"
+      using power_increasing[of "Suc s" 7 "2::nat"] sle by simp
+    finally show ?thesis by simp
+  qed
+  show ?thesis using zntt_pow[OF lt] brv7_pow_add[OF s a] by simp
+qed
+
 end
