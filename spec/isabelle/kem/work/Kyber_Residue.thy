@@ -558,4 +558,160 @@ proof -
   show ?thesis using c1 L3 by (simp add: cong_def e_def)
 qed
 
+subsection \<open>Main induction and the FIPS-203 residue theorem\<close>
+
+text \<open>The stage invariant holds (mod q) after every layer, by induction on \<open>s\<close>: the base is the
+  identity layer, the step unfolds one \<open>bflyK\<close> and matches it to the recursion via the induction
+  hypothesis at \<open>n\<close> and \<open>n \<plusminus> 2^(7-s)\<close> and the twiddle closed form \<open>zntt_level\<close>. ML-KEM analogue
+  of ML-DSA \<open>applyN_inv\<close>.\<close>
+lemma applyNK_inv:
+  fixes g :: "nat \<Rightarrow> int"
+  shows "s \<le> 7 \<Longrightarrow> \<forall>n<256. [applyNK s g n = inv_formK s g n] (mod 3329)"
+proof (induct s)
+  case 0
+  show ?case
+  proof (intro allI impI)
+    fix n :: nat assume "n < 256"
+    hence "inv_formK 0 g n = g n" by (rule inv_formK_0)
+    thus "[applyNK 0 g n = inv_formK 0 g n] (mod 3329)" by simp
+  qed
+next
+  case (Suc s)
+  from Suc.prems have s7: "s < 7" by simp
+  have IH: "\<forall>n<256. [applyNK s g n = inv_formK s g n] (mod 3329)" using Suc by simp
+  show ?case
+  proof (intro allI impI)
+    fix n :: nat assume n: "n < 256"
+    have suc: "8 - s = Suc (7 - s)" using s7 by linarith
+    have h7:  "7 - s = Suc (6 - s)" using s7 by linarith
+    have B2L: "(2::nat) ^ (8-s) = 2 * 2 ^ (7-s)" by (simp add: suc)
+    define a where "a = n div 2 ^ (8-s)"
+    define off where "off = n mod 2 ^ (8-s)"
+    have na: "n = a * 2 ^ (8-s) + off" unfolding a_def off_def by (rule div_mult_mod_eq[symmetric])
+    have offB: "off < 2 ^ (8-s)" by (simp add: off_def)
+    have e8: "s + (8 - s) = 8" using s7 by linarith
+    have p256: "(2::nat) ^ s * 2 ^ (8-s) = 256" by (simp add: power_add[symmetric] e8)
+    have aB: "a < 2 ^ s"
+    proof -
+      have "n < 2 ^ s * 2 ^ (8-s)" using n p256 by simp
+      thus ?thesis by (simp add: a_def less_mult_imp_div_less)
+    qed
+    have mdiv: "n div 2 ^ (8-s) = a" by (simp add: a_def)
+    have mmod: "n mod 2 ^ (8-s) = off" by (simp add: off_def)
+    have cz: "[zntt (2^s + a) = 17 ^ ((2 * brv s a + 1) * 2 ^ (6-s))] (mod 3329)"
+    proof -
+      have eE: "2 ^ (6-s) + brv s a * 2 ^ (7-s) = (2 * brv s a + 1) * 2 ^ (6-s)"
+        by (simp add: h7 algebra_simps)
+      have "zntt (2^s + a) = 17 ^ (2 ^ (6-s) + brv s a * 2 ^ (7-s)) mod 3329"
+        by (rule zntt_level[OF s7 aB])
+      also have "\<dots> = 17 ^ ((2 * brv s a + 1) * 2 ^ (6-s)) mod 3329" by (simp add: eE)
+      finally show ?thesis by (simp add: cong_def)
+    qed
+    show "[applyNK (Suc s) g n = inv_formK (Suc s) g n] (mod 3329)"
+    proof (cases "off < 2 ^ (7-s)")
+      case True
+      have nL: "n + 2 ^ (7-s) < 256"
+      proof -
+        have "n + 2 ^ (7-s) < a * 2 ^ (8-s) + 2 ^ (8-s)" using na True B2L by simp
+        also have "\<dots> = (a+1) * 2 ^ (8-s)" by (simp add: algebra_simps)
+        also have "\<dots> \<le> 2 ^ s * 2 ^ (8-s)"
+        proof -
+          have "a + 1 \<le> 2 ^ s" using aB by simp
+          thus ?thesis by (rule mult_le_mono1)
+        qed
+        also have "\<dots> = 256" by (rule p256)
+        finally show ?thesis .
+      qed
+      have bl: "applyNK (Suc s) g n = applyNK s g n + zntt (2^s + a) * applyNK s g (n + 2^(7-s))"
+        by (simp add: bstepK_def bflyK_def mdiv mmod True)
+      have cyn:  "[applyNK s g n = inv_formK s g n] (mod 3329)" using IH n by blast
+      have cynL: "[applyNK s g (n + 2^(7-s)) = inv_formK s g (n + 2^(7-s))] (mod 3329)"
+        using IH nL by blast
+      have e3: "[applyNK s g n + zntt (2^s+a) * applyNK s g (n+2^(7-s))
+            = inv_formK s g n + 17 ^ ((2*brv s a+1)*2^(6-s)) * inv_formK s g (n+2^(7-s))] (mod 3329)"
+        by (rule cong_add[OF cyn cong_mult[OF cz cynL]])
+      have e4: "[inv_formK s g n + 17 ^ ((2*brv s a+1)*2^(6-s)) * inv_formK s g (n+2^(7-s))
+            = inv_formK (Suc s) g n] (mod 3329)"
+        using inv_formK_lower[OF s7 True, of g a] by (simp add: na[symmetric] cong_def)
+      have p: "[applyNK (Suc s) g n
+            = applyNK s g n + zntt (2^s+a) * applyNK s g (n+2^(7-s))] (mod 3329)"
+        unfolding bl by (rule cong_refl)
+      from p e3 have B: "[applyNK (Suc s) g n
+            = inv_formK s g n + 17 ^ ((2*brv s a+1)*2^(6-s)) * inv_formK s g (n+2^(7-s))] (mod 3329)"
+        by (rule cong_trans)
+      from B e4 show ?thesis by (rule cong_trans)
+    next
+      case False
+      hence offge: "2 ^ (7-s) \<le> off" by simp
+      have nL: "n - 2 ^ (7-s) < 256" using n by simp
+      have mdivU: "(n - 2^(7-s)) div 2 ^ (8-s) = a"
+      proof -
+        have eq: "n - 2^(7-s) = a * 2^(8-s) + (off - 2^(7-s))" using na offge by simp
+        have lt: "off - 2^(7-s) < 2^(8-s)" using offB by simp
+        show ?thesis unfolding eq using lt by simp
+      qed
+      have bl: "applyNK (Suc s) g n
+          = applyNK s g (n - 2^(7-s)) + 3329 - zntt (2^s + a) * applyNK s g n"
+        by (simp add: bstepK_def bflyK_def mmod mdivU False)
+      have cyn:  "[applyNK s g n = inv_formK s g n] (mod 3329)" using IH n by blast
+      have cynL: "[applyNK s g (n - 2^(7-s)) = inv_formK s g (n - 2^(7-s))] (mod 3329)"
+        using IH nL by blast
+      have e2: "[applyNK s g (n-2^(7-s)) + 3329 - zntt (2^s+a) * applyNK s g n
+            = applyNK s g (n-2^(7-s)) - zntt (2^s+a) * applyNK s g n] (mod 3329)"
+      proof -
+        have "(applyNK s g (n-2^(7-s)) + 3329 - zntt (2^s+a) * applyNK s g n) mod 3329
+            = (applyNK s g (n-2^(7-s)) - zntt (2^s+a) * applyNK s g n + 3329) mod 3329"
+          by (simp add: algebra_simps)
+        also have "\<dots> = (applyNK s g (n-2^(7-s)) - zntt (2^s+a) * applyNK s g n) mod 3329"
+          by (simp add: mod_add_self2)
+        finally show ?thesis by (simp add: cong_def)
+      qed
+      have e3: "[applyNK s g (n-2^(7-s)) - zntt (2^s+a) * applyNK s g n
+            = inv_formK s g (n-2^(7-s)) - 17 ^ ((2*brv s a+1)*2^(6-s)) * inv_formK s g n] (mod 3329)"
+        by (rule cong_diff[OF cynL cong_mult[OF cz cyn]])
+      have iu: "[inv_formK (Suc s) g n
+            = inv_formK s g (n-2^(7-s)) - 17 ^ ((2*brv s a+1)*2^(6-s)) * inv_formK s g n] (mod 3329)"
+      proof -
+        have "[inv_formK (Suc s) g (a*2^(8-s)+off)
+              = inv_formK s g (a*2^(8-s)+(off-2^(7-s)))
+                - 17 ^ ((2*brv s a+1)*2^(6-s)) * inv_formK s g (a*2^(8-s)+off)] (mod 3329)"
+          by (rule inv_formK_upper[OF s7 offge offB])
+        thus ?thesis by (simp only: na add_diff_assoc[OF offge, symmetric])
+      qed
+      have A: "[applyNK (Suc s) g n
+            = applyNK s g (n-2^(7-s)) - zntt (2^s+a) * applyNK s g n] (mod 3329)"
+        using e2 unfolding bl .
+      from A e3 have B: "[applyNK (Suc s) g n
+            = inv_formK s g (n-2^(7-s)) - 17 ^ ((2*brv s a+1)*2^(6-s)) * inv_formK s g n] (mod 3329)"
+        by (rule cong_trans)
+      from B cong_sym[OF iu] show ?thesis by (rule cong_trans)
+    qed
+  qed
+qed
+
+text \<open>Final routing correctness: the montgomery model \<open>ntt\<close> (the function SAW checks the ML-KEM
+  C against) computes, at each output position \<open>k\<close>, the FIPS-203 degree-2 residue coefficient of
+  the input, mod q. For \<open>k = 2i + c\<close> the value is \<open>SUM j<128. w[c + 2j] * 17^((2*brv 7 i + 1)*j)\<close>,
+  i.e. the even (\<open>c=0\<close>) / odd (\<open>c=1\<close>) coefficient of \<open>f mod (X^2 - 17^(2*brv 7 i + 1))\<close>. This is the
+  FIPS-203 forward NTT. Composes the routing recurrence (\<open>ntt_recurrence\<close>) with the closed-form
+  stage invariant proven above. Assumes a reduced input (coefficients \<open>|.| <= q - 1\<close>).\<close>
+theorem ntt_residue:
+  assumes bw: "boundedK 3328 w" and k: "k < 256"
+  shows "sint_seq (nth_seq (ntt w) k) mod 3329
+       = (\<Sum>m<128. sfk w (k mod 2 + m * 2) * 17 ^ ((2 * brv 7 (k div 2) + 1) * m)) mod 3329"
+proof -
+  have allc: "\<forall>n<256. [applyNK 7 (sfk w) n = inv_formK 7 (sfk w) n] (mod 3329)"
+    by (rule applyNK_inv) simp
+  have "sint_seq (nth_seq (ntt w) k) mod 3329 = applyNK 7 (sfk w) k mod 3329"
+    using ntt_recurrence[OF bw k] by (simp add: applyNK_7_eq)
+  also have "\<dots> = inv_formK 7 (sfk w) k mod 3329"
+  proof -
+    have "[applyNK 7 (sfk w) k = inv_formK 7 (sfk w) k] (mod 3329)" using allc k by blast
+    thus ?thesis by (simp add: cong_def)
+  qed
+  also have "\<dots> = (\<Sum>m<128. sfk w (k mod 2 + m * 2) * 17 ^ ((2 * brv 7 (k div 2) + 1) * m)) mod 3329"
+    by (simp add: inv_formK_7)
+  finally show ?thesis .
+qed
+
 end
