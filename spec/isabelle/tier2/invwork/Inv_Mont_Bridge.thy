@@ -2392,8 +2392,10 @@ text \<open>OVERFLOW-FREEDOM (piece 5; inverse analog of \<open>ntt_overflow_fre
   \<open>montgomery_reduce\<close> input \<open>zeta * (...)\<close> stays \<open>< 2^31 * Q\<close>), and the final
   \<open>montgomery_reduce(invf * .)\<close> scale brings the output back to \<open>< Q\<close>. Unlike the forward NTT (which
   tolerates a wide input window because each level grows the bound by only \<open>+Q\<close>), the Gentleman-Sande
-  low leg is unreduced and DOUBLES the bound per level, so this holds only for the tight
-  \<open>|coeff| < Q\<close> window: \<open>256 * (Q - 1) = 2145386496\<close> just fits int32, \<open>256 * Q\<close> would not.
+  low leg is unreduced and DOUBLES the bound per level, reaching \<open>256 * (Q - 1) = 2145386496 < 2^31\<close>
+  after 8 levels. The \<open>|coeff| < Q\<close> window is invntt_tomont's DOCUMENTED precondition (ntt.c:71-73),
+  not the tightest safe window: the int32-safe ceiling is \<open>B_0 <= 2^23 - 1 = 8388607\<close>, just above
+  \<open>Q - 1 = 8380416\<close>, and a full doubling to a \<open>2Q\<close> window would overflow (\<open>512 * (Q - 1) > 2^31\<close>).
 
   The bound tower (\<open>invlevelN_bounded\<close>, \<open>gs_node_*\<close>) is stated on the symmetric-signed
   \<open>ntt_bounded\<close> and is therefore sign-agnostic; the input window enters ONLY through the level-0 base

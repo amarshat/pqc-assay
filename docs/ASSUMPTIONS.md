@@ -55,8 +55,13 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   sign-agnostic; the input window enters ONLY through the level-0 base bound (`ntt_bounded_of_sbounded`),
   so lifting `[0,Q)` → signed `|coeff| < Q` is a base-case swap, and the overflow bound does NOT depend on
   the montgomery-vs-normal functional bridge. `sbounded` subsumes the old `bounded` window
-  (`sbounded_of_bounded`). The window is still tight (GS low leg unreduced, doubles per level:
-  `256*(Q-1) = 2145386496` just fits int32, `256*Q` would not).
+  (`sbounded_of_bounded`), so the theorem is non-vacuous. The `|coeff| < Q` window is `invntt_tomont`'s
+  DOCUMENTED precondition (target/pqclean/ntt.c:71-73: inputs `|coeff| < Q`, outputs `|coeff| < Q`), not a
+  tightness argument: the GS low leg is unreduced so the bound doubles per level, reaching
+  `256*(Q-1) = 2145386496 < 2^31` after 8 levels. (Earlier ledger + comment wording "256*Q would not fit
+  int32" was WRONG: 256*Q = 2145386752 < 2^31 = 2147483648, headroom ~2.1M. The true int32-safe ceiling is
+  `B_0 <= 2^23-1 = 8388607`, above `Q-1 = 8380416` by ~8191, so `|coeff| < Q` sits inside it with slack; a
+  full doubling to a `2Q` window WOULD overflow: `512*(Q-1) = 4290772992 > 2^31`.)
   ★ REMAINING GAP (functional, still open): the FUNCTIONAL `invntt_bridge` (montgomery model ≡ FIPS mod q)
   is still proven only under `bounded` = `[0, Q)` non-negative, because `Rcong_invcore`/`Rcong_base`
   relate the signed and unsigned coefficient views through the montgomery factor and rest on
