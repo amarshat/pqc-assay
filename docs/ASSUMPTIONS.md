@@ -33,29 +33,39 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   all ~3000 signed-overflow side conditions AND functional equality to the model in one proof
   (SAW 1.5.1 + bitwuzla 0.9.1, a trusted SMT oracle in the same class as z3/yices; 12.5 h wall,
   out of band, not in `make saw`/CI). The inverse's meta-step remains argued (see below).
-- **Inverse NTT: functional chain AND overflow-freedom machine-checked (under `|coeff| < Q`).** SAW
+- **Inverse NTT: functional chain (under `[0,Q)`) AND overflow-freedom (under signed `|coeff| < Q`, covers the call site) machine-checked.** SAW
   proves `invntt_tomont(a[256])` ≡ Cryptol montgomery `invntt` under two's-complement wrapping (same
   `-fwrapv` bitcode as the forward). The Isabelle chain is closed mod q: montgomery model ≡ normal
   `nttInvAllRef` (`Rcong_invcore` + the `invf = mont²/256` final scale, `invntt_scale_bridge`),
   `nttInvAllRef` ≡ the FIPS-204 inverse negacyclic DFT (`inv_ntt_correct`), composed into
   `invntt_bridge`: `bounded w ⟹ k<256 ⟹ 4294967296 · sint(invntt w ! k) ≡ sint(invf) · (∑ m<256.
   cf w m · ζ^(−(2·brv₈ m + 1)·k)) (mod q)` (`Tier2_InvWork` session, gated in `make verify` via
-  `tier2-inv`). Overflow-freedom is now proven too (`invntt_overflow_free`) under the input predicate
-  `bounded w`. ★ CORRECTED PRECONDITION (2026-07-01, verified vs source): `bounded w` means every
-  coefficient's UNSIGNED 32-bit value is `< Q`, i.e. coefficients in `[0, Q)`, NON-NEGATIVE
-  (`spec/isabelle/tier2/work/CT_Routing.thy:20`: `uint_seq (w i) < 8380417`). This is NOT the symmetric
-  signed `|coeff| < Q`; an earlier version of this ledger wrongly equated the two. `B_0 = 8380416` is the
-  DERIVED output bound, not the input predicate. Under `bounded w`, the eight Gentleman-Sande layers keep
-  coefficients within `2^8*B_0 = 2145386496 < 2^31` (so every unreduced int32 add `a[j]+a[j+len]` and
-  difference `a[j+len]-a[j]`, and every `montgomery_reduce` input, stays in range), and the final scale
-  reduces the output to `< Q`. The window is tight (the Gentleman-Sande low leg is unreduced and doubles
-  the bound per level: `256*(Q-1) = 2145386496` just fits int32, `256*Q` would not). ★ SCOPE LIMITATION:
-  because the domain is `[0, Q)` non-negative, this result does NOT cover the SIGNED centered coefficients
-  `invntt_tomont` actually receives at the reference call site (`montgomery_reduce`/`reduce32` outputs are
-  centered and can be negative). Closing that gap needs a re-proof under a genuine signed `|coeff| < Q`
-  hypothesis (the montgomery bridge is built on non-negativity, so this is real work) or an honest
-  statement of the reduced scope. Open. Still
-  argued (not mechanized), as for the forward: `-fwrapv` ⇒ no-signed-overflow-UB in the C.
+  `tier2-inv`). The functional bridge `invntt_bridge` uses the input predicate `bounded w` = every
+  coefficient's UNSIGNED 32-bit value `< Q`, i.e. coefficients in `[0, Q)`, NON-NEGATIVE
+  (`spec/isabelle/tier2/work/CT_Routing.thy:20`: `uint_seq (w i) < 8380417`); this is NOT the symmetric
+  signed `|coeff| < Q`. `B_0 = 8380416` is the DERIVED output bound.
+  ★ OVERFLOW-FREEDOM NOW ON THE SIGNED CALL-SITE WINDOW (2026-07-22, `Tier2_InvWork` builds exit 0, no
+  sorry/oops): `invntt_overflow_free` is re-proven under `sbounded w` = signed `|coeff| < Q`
+  (`-8380416 ≤ sint_seq (w i) ≤ 8380416`, defined in `Inv_Mont_Bridge.thy`), the CENTERED domain the
+  reference's `montgomery_reduce`/`reduce32` outputs occupy at the `invntt_tomont` call site (they are
+  centered and can be negative). So the overflow result now DOES cover the deployed call site, closing the
+  former `[0,Q)` scope gap for overflow-freedom. Why it was cheap and NOT the "real work" an earlier
+  version of this ledger predicted: the eight-layer bound tower (`invlevel*_bounded`, `gs_node_*`,
+  `invlevel_bounded_gen`) runs entirely on the symmetric-signed magnitude predicate `ntt_bounded` and is
+  sign-agnostic; the input window enters ONLY through the level-0 base bound (`ntt_bounded_of_sbounded`),
+  so lifting `[0,Q)` → signed `|coeff| < Q` is a base-case swap, and the overflow bound does NOT depend on
+  the montgomery-vs-normal functional bridge. `sbounded` subsumes the old `bounded` window
+  (`sbounded_of_bounded`). The window is still tight (GS low leg unreduced, doubles per level:
+  `256*(Q-1) = 2145386496` just fits int32, `256*Q` would not).
+  ★ REMAINING GAP (functional, still open): the FUNCTIONAL `invntt_bridge` (montgomery model ≡ FIPS mod q)
+  is still proven only under `bounded` = `[0, Q)` non-negative, because `Rcong_invcore`/`Rcong_base`
+  relate the signed and unsigned coefficient views through the montgomery factor and rest on
+  non-negativity. THAT is the "real work" (re-derive the bridge over signed coefficients); it does not lift
+  for free. So on the centered call-site inputs we have machine-checked overflow-freedom but not yet
+  functional model-to-spec equality. Open.
+  The `-fwrapv` ⇒ no-signed-overflow-UB step for the inverse is still argued (not mechanized; the nsw SAW
+  route was measured impractical), but now rests on an overflow bound covering the signed call-site window
+  rather than only `[0,Q)`.
 - Input range: the C documents the precondition `-2^31 * Q <= a <= Q * 2^31`. The SAW proof IS
   discharged under exactly this precondition (`mont_in_range` in the model); equivalence outside it
   is NOT claimed by the proof. (Empirically the Cryptol model is a bit-exact transcription that also
@@ -78,10 +88,12 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
     `±(2³¹−2²⁷)`, every signed add/sub is overflow-free and the result equals the model (SAW +
     bitwuzla, 12.5 h, out of band). The Isabelle `ntt_overflow_free` bound is the induction-style
     twin of the same fact on the model, so the forward `-fwrapv` ⇒ no-UB step is no longer an
-    assumption on that domain. The **inverse** is overflow-free on the model under `[0, Q)`
-    (`invntt_overflow_free`; see the inverse-NTT scope bullet above); its `-fwrapv` ⇒ no-UB seam
-    REMAINS the argued meta-step, and that domain does not cover the reference call site's centered
-    inputs. A direct nsw-build attempt for the inverse (2026-07-10..12, `proof/saw/
+    assumption on that domain. The **inverse** is overflow-free on the model under signed `|coeff| < Q`
+    (`invntt_overflow_free` under `sbounded`, 2026-07-22; see the inverse-NTT scope bullet above), the
+    centered domain that DOES cover the reference call site's `montgomery_reduce`/`reduce32` outputs; its
+    `-fwrapv` ⇒ no-UB seam REMAINS the argued meta-step, but now rests on a bound covering that call-site
+    window rather than only `[0,Q)`. (The functional `invntt_bridge` model≡FIPS leg is still `[0,Q)`;
+    that gap is separate and open.) A direct nsw-build attempt for the inverse (2026-07-10..12, `proof/saw/
     invntt_nsw_probe.saw` + the goal-dump sweep) was closed as impractical: of 4609 obligations,
     3747 discharged unsat (most in seconds), 36 hit a 2 h per-goal cap, none was sat, and the
     late-level band (where the Gentleman-Sande doubling makes terms widest) resists the same

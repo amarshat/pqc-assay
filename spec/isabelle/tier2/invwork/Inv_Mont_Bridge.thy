@@ -2293,14 +2293,49 @@ definition invnttCore :: "[256][32] \<Rightarrow> [256][32]" where
   "invnttCore w = invnttLevel 7 (invnttLevel 6 (invnttLevel 5 (invnttLevel 4
                   (invnttLevel 3 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w)))))))"
 
-text \<open>The core stays overflow-free: eight doublings from \<open>B_0 = 8380416\<close> reach
-  \<open>2^8 * B_0 = 2145386496 < 2^31\<close> (the largest layer INPUT, \<open>2^7 * B_0 = 1072693248\<close>, is within
-  the per-layer cap, so no int32 add/sub overflows).\<close>
-lemma invcore_bounded:
-  assumes bw: "bounded w"
+text \<open>Signed input predicate: every coefficient's SIGNED value is in \<open>[-(Q-1), Q-1]\<close>, i.e.
+  \<open>|coeff| < Q\<close>. This is the deployed centered domain (\<open>montgomery_reduce\<close> / \<open>reduce32\<close> outputs
+  are centered and can be negative), NOT the non-negative \<open>[0,Q)\<close> of \<open>bounded\<close>. It strictly
+  subsumes \<open>bounded\<close> (\<open>sbounded_of_bounded\<close> below).\<close>
+definition sbounded :: "[256][32] \<Rightarrow> bool" where
+  "sbounded w \<longleftrightarrow> (\<forall>i<256. - 8380416 \<le> sint_seq (nth_seq w i)
+                            \<and> sint_seq (nth_seq w i) \<le> 8380416)"
+
+text \<open>\<open>sbounded\<close> feeds the level-0 signed magnitude bound directly. Same \<open>oob255\<close> wrapper as
+  \<open>ntt_bounded_of_bounded\<close>, but the \<open>main\<close> step is trivial: \<open>sbounded\<close> IS \<open>ntt_bounded\<close> restricted
+  to \<open>i < 256\<close>.\<close>
+lemma ntt_bounded_of_sbounded:
+  assumes sw: "sbounded w"
+  shows "ntt_bounded 8380416 w"
+proof -
+  have main: "- 8380416 \<le> sint_seq (nth_seq w k) \<and> sint_seq (nth_seq w k) \<le> 8380416"
+    if k: "k < 256" for k using sw k by (auto simp: sbounded_def)
+  show ?thesis unfolding ntt_bounded_def
+  proof (intro allI)
+    fix m show "- 8380416 \<le> sint_seq (nth_seq w m) \<and> sint_seq (nth_seq w m) \<le> 8380416"
+    proof (cases "m < 256")
+      case True thus ?thesis using main by simp
+    next
+      case False hence ge: "256 \<le> m" by simp
+      show ?thesis using main[of 255] oob255[OF ge, of w] by simp
+    qed
+  qed
+qed
+
+text \<open>The non-negative \<open>[0,Q)\<close> window is a special case of the signed \<open>|coeff| < Q\<close> window:
+  \<open>uint < Q < 2^31\<close> gives \<open>sint = uint \<in> [0,Q) \<subseteq> [-(Q-1), Q-1]\<close>. So the signed overflow
+  result below subsumes the old \<open>bounded\<close>-hypothesis one.\<close>
+lemma sbounded_of_bounded:
+  assumes "bounded w" shows "sbounded w"
+  using ntt_bounded_of_bounded[OF assms] unfolding ntt_bounded_def sbounded_def by blast
+
+text \<open>The eight-layer doubling, taken from the \<open>ntt_bounded\<close> magnitude hypothesis directly (the
+  sign-agnostic core of \<open>invcore_bounded\<close>). Every rung is a symmetric-signed magnitude bound, so
+  it does not care whether the input window was \<open>[0,Q)\<close> or \<open>|coeff| < Q\<close>.\<close>
+lemma invcore_bounded_nb:
+  assumes nb0: "ntt_bounded 8380416 w"
   shows "ntt_bounded 2145386496 (invnttCore w)"
 proof -
-  have nb0: "ntt_bounded 8380416 w" by (rule ntt_bounded_of_bounded[OF bw])
   have nb1: "ntt_bounded 16760832 (invnttLevel 0 w)" using invlevel0_bounded[OF nb0] by simp
   have nb2: "ntt_bounded 33521664 (invnttLevel 1 (invnttLevel 0 w))" using invlevel1_bounded[OF nb1] by simp
   have nb3: "ntt_bounded 67043328 (invnttLevel 2 (invnttLevel 1 (invnttLevel 0 w)))" using invlevel2_bounded[OF nb2] by simp
@@ -2312,6 +2347,14 @@ proof -
     using invlevel7_bounded[OF nb7] by simp
   show ?thesis using nb8 unfolding invnttCore_def by simp
 qed
+
+text \<open>The core stays overflow-free: eight doublings from \<open>B_0 = 8380416\<close> reach
+  \<open>2^8 * B_0 = 2145386496 < 2^31\<close> (the largest layer INPUT, \<open>2^7 * B_0 = 1072693248\<close>, is within
+  the per-layer cap, so no int32 add/sub overflows).\<close>
+lemma invcore_bounded:
+  assumes bw: "bounded w"
+  shows "ntt_bounded 2145386496 (invnttCore w)"
+  by (rule invcore_bounded_nb[OF ntt_bounded_of_bounded[OF bw]])
 
 text \<open>The per-coefficient scale unfold: position \<open>k\<close> of \<open>invntt w\<close> is the montgomery reduce
   of \<open>invf\<close> against the core coefficient at \<open>k\<close>. Unfolds the inner foldl (\<open>foldl_seq.rep_eq\<close>,
@@ -2341,30 +2384,43 @@ lemma invf_sint_bound: "- 4194304 \<le> sint_seq invf \<and> sint_seq invf \<le>
   unfolding invf_def by eval
 
 text \<open>OVERFLOW-FREEDOM (piece 5; inverse analog of \<open>ntt_overflow_free\<close>). Given the inverse C input
-  precondition \<open>bounded w\<close> (every coefficient's unsigned value \<open>< Q\<close>, i.e. \<open>coeff \<in> [0,Q)\<close>
-  non-negative, NOT symmetric \<open>|coeff| < Q\<close>; \<open>B_0 = 8380416\<close>), the montgomery inverse NTT is overflow-
-  free: every one of the eight Gentleman-Sande layers keeps coefficients within \<open>2^8 * B_0 =
-  2145386496 < 2^31\<close> (so every int32 add/sub \<open>a[j] + a[j+len]\<close> and difference \<open>a[j+len] - a[j]\<close>
-  stays in range, and every \<open>montgomery_reduce\<close> input \<open>zeta * (...)\<close> stays \<open>< 2^31 * Q\<close>), and the
-  final \<open>montgomery_reduce(invf * .)\<close> scale brings the output back to \<open>< Q\<close>. Unlike the forward NTT
-  (which tolerates a wide input window because each level grows the bound by only \<open>+Q\<close>), the
-  Gentleman-Sande low leg is unreduced and DOUBLES the bound per level, so this holds only for the
-  tight \<open>|coeff| < Q\<close> window: \<open>256 * (Q - 1) = 2145386496\<close> just fits int32, \<open>256 * Q\<close> would not.
+  precondition \<open>sbounded w\<close> (every coefficient's SIGNED value in \<open>[-(Q-1), Q-1]\<close>, i.e. \<open>|coeff| < Q\<close>;
+  \<open>B_0 = 8380416\<close>) -- the deployed centered domain that \<open>montgomery_reduce\<close> / \<open>reduce32\<close> outputs
+  live in, which can be negative -- the montgomery inverse NTT is overflow-free: every one of the
+  eight Gentleman-Sande layers keeps coefficients within \<open>2^8 * B_0 = 2145386496 < 2^31\<close> (so every
+  int32 add/sub \<open>a[j] + a[j+len]\<close> and difference \<open>a[j+len] - a[j]\<close> stays in range, and every
+  \<open>montgomery_reduce\<close> input \<open>zeta * (...)\<close> stays \<open>< 2^31 * Q\<close>), and the final
+  \<open>montgomery_reduce(invf * .)\<close> scale brings the output back to \<open>< Q\<close>. Unlike the forward NTT (which
+  tolerates a wide input window because each level grows the bound by only \<open>+Q\<close>), the Gentleman-Sande
+  low leg is unreduced and DOUBLES the bound per level, so this holds only for the tight
+  \<open>|coeff| < Q\<close> window: \<open>256 * (Q - 1) = 2145386496\<close> just fits int32, \<open>256 * Q\<close> would not.
+
+  The bound tower (\<open>invlevelN_bounded\<close>, \<open>gs_node_*\<close>) is stated on the symmetric-signed
+  \<open>ntt_bounded\<close> and is therefore sign-agnostic; the input window enters ONLY through the level-0 base
+  bound \<open>ntt_bounded_of_sbounded\<close>. That is why lifting the old non-negative \<open>[0,Q)\<close> hypothesis to
+  signed \<open>|coeff| < Q\<close> is a base-case swap rather than a re-proof of the tower, and why this overflow
+  bound does NOT depend on the montgomery-vs-normal functional bridge (\<open>Rcong_invcore\<close>), which is a
+  separate theorem that genuinely rests on non-negativity. The signed window subsumes the old one
+  (\<open>sbounded_of_bounded\<close>). NB: the FUNCTIONAL \<open>invntt_bridge\<close> (model \<open>\<equiv>\<close> FIPS mod q) remains
+  \<open>bounded\<close> ([0,Q))-scoped; only overflow-freedom is lifted here.
+
   Composed with the SAW \<open>-fwrapv\<close> C==model equivalence, the C \<open>invntt_tomont\<close> has no signed-overflow
   UB under this input bound (and, no wrapping occurring, equals the spec) -- the same scoped
   \<open>-fwrapv\<close> ⇒ no-UB meta-step as the forward.\<close>
 theorem invntt_overflow_free:
-  assumes bw: "bounded w"
+  assumes sbw: "sbounded w"
   shows "ntt_bounded 2145386496 (invnttCore w)"
     and "ntt_bounded 8380416 (invntt w)"
 proof -
-  show "ntt_bounded 2145386496 (invnttCore w)" by (rule invcore_bounded[OF bw])
+  have icb: "ntt_bounded 2145386496 (invnttCore w)"
+    by (rule invcore_bounded_nb[OF ntt_bounded_of_sbounded[OF sbw]])
+  show "ntt_bounded 2145386496 (invnttCore w)" by (rule icb)
   have out: "- 8380416 \<le> sint_seq (nth_seq (invntt w) k)
            \<and> sint_seq (nth_seq (invntt w) k) \<le> 8380416" if k: "k < 256" for k
   proof -
     have cb: "- 2145386496 \<le> sint_seq (nth_seq (invnttCore w) k)"
              "sint_seq (nth_seq (invnttCore w) k) \<le> 2145386496"
-      using invcore_bounded[OF bw] unfolding ntt_bounded_def by auto
+      using icb unfolding ntt_bounded_def by auto
     have ivb: "- 4194304 \<le> sint_seq invf" "sint_seq invf \<le> 4194304" using invf_sint_bound by auto
     have ok: "mont_input_ok (sint_seq invf * sint_seq (nth_seq (invnttCore w) k))"
       by (rule mont_input_ok_of_bounds'[OF ivb(1) ivb(2) cb(1) cb(2)]) simp
