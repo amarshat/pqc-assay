@@ -187,8 +187,8 @@ the 20 to "where this exact pipeline has an edge" collapses it to a handful:
   + a montgomery bridge (the zetas table and fqmul are montgomery-domain, as in ML-DSA Mont_Bridge);
   (b) the 7-layer Cooley-Tukey routing == the even/odd length-128 sub-transforms (the incomplete-split
   analogue of the ML-DSA CT_Routing/Negacyclic_Bridge, NOT a direct reuse); (c) the degree-2 residue
-  characterization as the spec, chained onto AFP length-128 NTT facts. Session is WIP, excluded from
-  make verify until hole-free.
+  characterization as the spec, chained onto AFP length-128 NTT facts. All three bricks have since
+  landed hole-free; Kem_Work is now gated in `make verify` (see the 2026-07-23 progress entry below).
   Progress (2026-07-17): brick (a) COMPLETE. `Kyber_Mont.thy` (Kem_Base builds green, 0 sorry),
   theorem `montgomery_reduce_correct_kem`: for -2^15*q <= sint_seq a < 2^15*q, the lifted ML-KEM
   `montgomery_reduce` satisfies 2^16 * sint_seq(result) == sint_seq a (mod q=3329) and strict
@@ -246,6 +246,38 @@ the 20 to "where this exact pipeline has an edge" collapses it to a handful:
   n<256, nttLevel 1 a at n = n mod 128<64 ? a[n] + fqmul(zetas[2 + n div 128], a[n+64]) :
   a[n-64] - fqmul(zetas[2 + (n-64) div 128], a[n])). Next: levels 2..6 by the same recipe, then
   chain the 7 levels via the magnitude-bound invariant into the sint recurrence. Then brick (c).
+  Progress (2026-07-20, cont.): levels 2..6 coefficient laws LANDED (Kem_Work green, 0 sorry), same
+  recipe as level 1 with the per-i shift reductions (len=128>>i, twolen=256>>i, base=2^i) and the
+  widening twiddle span (zetas index base..base+2^i-1). The 7 levels chain through a per-level
+  magnitude-bound + congruence invariant (generic machinery: |coeff| grows <= q per level, stays
+  < 2^15) into the sint recurrence `ntt_recurrence` (the montgomery model `ntt` at output k equals
+  `applyNK 7 (sfk w) k` mod q on a reduced input). Brick (b) done.
+  Progress (2026-07-22..23): brick (c) COMPLETE, and the whole ML-KEM forward chain is now CI-gated.
+  `work/Kyber_Residue.thy` (session Kem_Work, 0 sorry/oops) proves the closed-form stage invariant
+  (`inv_formK` lower/upper-leg recursion + `applyNK_inv` induction, twiddle bit-reversal reduction)
+  and composes it with `ntt_recurrence` into the final theorem `ntt_residue`: for a reduced input
+  (`boundedK 3328 w`) and k < 256,
+
+      sint_seq (ntt w ! k) mod 3329
+        = (SUM m<128. sfk w (k mod 2 + m*2) * 17^((2*brv7 (k div 2) + 1)*m)) mod 3329
+
+  i.e. output position k = 2i+c is the even (c=0) / odd (c=1) coefficient of the FIPS-203 degree-2
+  residue f mod (X^2 - 17^(2*brv7(i)+1)); `ntt` is the montgomery-domain model SAW checks the C
+  against. That is the FIPS-203 forward NTT for Kyber's incomplete split. Verified in-session
+  2026-07-23 (`isabelle build -d spec/isabelle/kem -v Kem_Work` -> `Finished Kem_Base` +
+  `Finished Kem_Work`, exit 0; re-runs and fails on an injected false lemma, so the gate is not
+  vacuous). Wired into `make verify` via the new `mlkem-isabelle` target (was excluded); the
+  no-sorry grep in verify.yml already covers spec/isabelle/kem. The C == Cryptol legs (mlkem-reduce,
+  mlkem-ntt) stay gated on every push in saw.yml. Also confirmed the brick-(a) "si16 == sint_seq
+  deferred cosmetic bridge" is genuinely cosmetic, not a seam: the whole chain
+  (montgomery_reduce_correct_kem, butterfly_law_kem, ntt_residue) is stated over sint_seq, the signed
+  reading of the exact bits SAW checks; si16 is only an internal model alt-predicate of equal value.
+  Scope, stated plainly: this is FORWARD NTT + reduce ONLY for ML-KEM. There is no ML-KEM inverse
+  NTT (contrast ML-DSA, which has forward + inverse). Overflow-freedom needs no coefficient-bound
+  induction here: the int16 butterfly cannot overflow int32, so the C is UB-free with no coefficient
+  bound (see ASSUMPTIONS, ML-KEM forward NTT slice 2). The honest paper claim is "the method
+  generalizes across two NIST standards, shown end-to-end on the forward transform + reduce for
+  both," NOT "complete NTT for both." ML-KEM inverse NTT is future work.
 - **Tier B (greenfield, deliberate new domain):** **bitcoin-core/secp256k1 field reduction** (the
   5×52 / 10×26 limb reduce — same shape as our Montgomery/Barrett work). Best *external* story
   (wallet/Bitcoin money, name recognition) and clean methodological transfer. Caveat: novelty is

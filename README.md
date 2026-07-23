@@ -40,6 +40,16 @@ Montgomery reduction is an
 implementation device the NTT uses; it is not defined in FIPS 204. None of this is the
 optimized/assembly code that ships in production (see [Roadmap](docs/ROADMAP.md)).
 
+A **second scheme**, ML-KEM-512 (FIPS 203), shows the method is not ML-DSA-specific: the same
+SAW → Cryptol → Isabelle pipeline verifies the ML-KEM-512 `clean` reduce layer and forward NTT.
+C ≡ Cryptol for `montgomery_reduce`, `barrett_reduce`, and the 7-level `ntt` (SAW, gated on every push
+in `saw.yml`), and Cryptol ≡ FIPS 203 for the forward transform in Isabelle: `ntt_residue` (session
+`Kem_Work`, gated in `make verify`) proves the montgomery model computes the FIPS-203 degree-2 residue
+coefficients, the *incomplete* NTT that mod 3329 splits X²⁵⁶+1 into 128 degree-2 factors. Forward NTT
++ reduce only: ML-KEM inverse NTT is future work, and the overflow story is simpler than ML-DSA's (the
+int16 butterfly cannot overflow int32, so no coefficient-bound proof is needed). ML-KEM claim table
+below.
+
 A **second target**, the unmodified RustCrypto `ml-dsa` Rust crate (reached through `mir-json`, the
 `rust` CI badge), adds a MIR-level study of the field arithmetic and its tractability boundary. Its one
 hard obligation, wide-domain Barrett reduction, is machine-checked via bitwuzla, with an oracle-free
@@ -215,6 +225,30 @@ nsw row above); the inverse's only non-mechanized step is its `-fwrapv` ⇒ no-U
 `invntt_overflow_free`); the inverse needs a tight non-negative `[0,Q)` input window (`256·(Q−1)` just
 fits int32), which does not cover the signed centered inputs at the reference call site (open). What is *not* claimed: that this is the hard or shipping code (it
 is the reference C, and the field arithmetic is the easy primitive), or constant-time.
+
+### Second scheme: ML-KEM-512 (FIPS 203) forward NTT + reduce
+
+The same pipeline on a different NIST standard, to show the method is not ML-DSA-specific. Target:
+PQClean `ml-kem-512/clean` (`reduce.c`, `ntt.c`, same pin). Forward transform + reduce layer only;
+ML-KEM inverse NTT is future work.
+
+| Link in the chain | Status |
+|---|---|
+| `montgomery_reduce` / `barrett_reduce` ≡ Cryptol (16-bit, direct SMT, result+1 mutants rejected) | machine-checked (SAW + Z3, `make mlkem-reduce`, `saw.yml`) |
+| C `ntt(a[256])` ≡ Cryptol montgomery `ntt` (7 levels, under `-fwrapv`; functional) | machine-checked (SAW, `make mlkem-ntt`, `saw.yml`) |
+| brick (a) montgomery `montgomery_reduce` ≡ FIPS-203 residue (`2¹⁶·r ≡ a mod 3329`, `-q<r<q`) | machine-checked (Isabelle `montgomery_reduce_correct_kem`) |
+| brick (b) 7-level Cooley-Tukey routing ≡ abstract recurrence on the coefficient view | machine-checked (Isabelle `ntt_recurrence`) |
+| brick (c) montgomery `ntt` ≡ FIPS-203 degree-2 residue transform (mod 3329), composed | machine-checked (Isabelle `ntt_residue`, `make mlkem-isabelle` / `make verify`) |
+| `-fwrapv` wrapping ⇒ no signed-overflow UB in the C | argued (meta-step); simpler than ML-DSA (int16 butterfly cannot overflow int32) |
+| ML-KEM inverse NTT | not done (future work) |
+| overflow-freedom coefficient bound | not needed (int16 → int32 cannot overflow) |
+| constant-time / side channels | not claimed |
+
+`ntt_residue` states: for a reduced input and `k < 256`, output `k = 2i+c` equals the even (`c=0`) /
+odd (`c=1`) coefficient of `f mod (X² − 17^(2·brv₇(i)+1))`. Kyber's `X²⁵⁶+1` has a 256th root of unity
+but no 512th mod 3329, so it factors only into 128 degree-2 terms: the transform is the *incomplete*
+NTT, distinct math from the ML-DSA complete split. The C ≡ Cryptol and Cryptol ≡ FIPS-203 ends join at
+the montgomery-domain model `ntt` that both check.
 
 ## Second target: RustCrypto `ml-dsa` (Rust, via MIR)
 

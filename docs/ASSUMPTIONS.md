@@ -414,8 +414,45 @@ Target: `target/pqclean-mlkem/ntt.c` (same pin `202a8f9`). Model: `model/cryptol
   goal under either backend (both time out). We therefore use `-fwrapv` for the equivalence, as with
   ML-DSA, and record UB-freedom as an argued meta-step (narrower width removes the overflow ML-DSA
   had to bound; the nsw and `-fwrapv` bitcodes differ only in poison, absent when nothing overflows).
-- Not yet claimed for the ML-KEM NTT: FIPS 203 forward-transform correctness in Isabelle (slice 3,
-  planned via the Tier-2 stage-invariant machinery); a mechanized nsw/`-fwrapv` overflow bridge.
+- **FIPS 203 forward-transform correctness: PROVEN (2026-07-23), gated in `make verify`** (see the
+  next section). Still argued (shared with ML-DSA, per the no-UB note above): the nsw/`-fwrapv`
+  overflow bridge to the C. Not claimed for ML-KEM: the INVERSE NTT (forward direction only, unlike
+  ML-DSA which has both).
+
+## ML-KEM-512 forward NTT FIPS-203 residue correctness (go-wide slice 3, 2026-07-23)
+
+Model ≡ FIPS-203, in Isabelle. Sessions `Kem_Base` (brick a) + `Kem_Work` (bricks b, c), on the AFP
+`Number_Theoretic_Transform` + SAW `Cryptol` base. Proof: `make mlkem-isabelle` (also pulled by
+`make verify`), 0 `sorry`/`oops`/`admit`; verified in-session 2026-07-23 (`Finished Kem_Base` +
+`Finished Kem_Work`, exit 0; re-runs and fails on an injected false lemma, so the gate is not
+vacuous). The no-sorry grep in verify.yml covers `spec/isabelle/kem`.
+
+- **brick (a) `montgomery_reduce_correct_kem`** (`kem/Kyber_Mont.thy`): the lifted ML-KEM
+  `montgomery_reduce` satisfies `2^16 * r ≡ a (mod 3329)` and `-q < r < q` on the input range
+  `-2^15*q ≤ a < 2^15*q`. Stated over `sint_seq` (signed reading of the bits SAW checks the C
+  against); full integer→word→seq chain, no admits.
+- **brick (b) 7-level routing** (`kem/work/Kyber_Route.thy`): the model foldl over levels 0..6 ==
+  the abstract Cooley-Tukey recurrence on the `sint_seq` coefficient view; per-level coefficient
+  laws (level0..6) plus a magnitude-bound/congruence invariant compose into `ntt_recurrence`.
+- **brick (c) `ntt_residue`** (`kem/work/Kyber_Residue.thy`): for `boundedK 3328 w` (reduced input,
+  |coeff| ≤ q-1) and k < 256,
+
+      sint_seq (ntt w ! k) mod 3329
+        = (SUM m<128. sfk w (k mod 2 + m*2) * 17^((2*brv7 (k div 2) + 1)*m)) mod 3329
+
+  output position k = 2i+c is the even (c=0) / odd (c=1) coefficient of the FIPS-203 degree-2 residue
+  `f mod (X^2 - 17^(2*brv7(i)+1))`. `ntt` is the montgomery-domain model the SAW C ≡ Cryptol leg
+  checks. This is the FIPS-203 forward NTT for Kyber's incomplete split (mod 3329, X^256+1 factors
+  into 128 degree-2 terms: a 256th root of unity exists but no 512th, so unlike ML-DSA the transform
+  does not split down to degree 1).
+- **si16 vs sint_seq (brick a flagged it as a deferred bridge): confirmed cosmetic, not a gap.** The
+  whole chain (`montgomery_reduce_correct_kem`, `butterfly_law_kem`, `ntt_residue`) is stated
+  uniformly over `sint_seq`. `si16` is only an internal alternate predicate on the model of equal
+  value; no correctness theorem or routing step depends on it.
+- **Scope (stated plainly): forward only.** No ML-KEM inverse NTT, and no ML-KEM overflow-bound
+  theorem (not needed: the int16 butterfly cannot overflow int32, per the slice-2 no-UB note). The
+  published claim is "the method generalizes across two NIST standards on the forward transform +
+  reduce," not "complete NTT for ML-KEM." Inverse NTT is future work.
 
 ## Tool/version pins
 Pinned and installed by `scripts/setup.sh` into `.tools/` (gitignored). Platform of record:
