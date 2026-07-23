@@ -17,14 +17,16 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
 ## Full pipeline: target bytes pinned (target-identity) → lift in sync (lift-check) → C ≡ Cryptol
 ## (SAW) → reduce.c model ≡ FIPS spec (Isabelle) → forward-NTT model ≡ FIPS-204 transform (Isabelle,
-## Tier2) → inverse-NTT model ≡ FIPS-204 inverse transform (Isabelle, Tier2_InvWork)
-verify: target-identity lift-check saw isabelle tier2 tier2-inv barrett
+## Tier2) → inverse-NTT model ≡ FIPS-204 inverse transform (Isabelle, Tier2_InvWork) → ML-KEM
+## forward-NTT model ≡ FIPS-203 residue transform (Isabelle, Kem_Work). The ML-KEM C ≡ Cryptol legs
+## (mlkem-reduce, mlkem-ntt) gate separately on every push in saw.yml.
+verify: target-identity lift-check saw isabelle tier2 tier2-inv barrett mlkem-isabelle
 	@echo "✔ pipeline complete — all checked steps passed"
 
 ## Integrity gate: the vendored C under proof is byte-for-byte the pinned snapshot.
@@ -66,6 +68,16 @@ mlkem-ntt:
 	CLANG=$(CLANG) ./scripts/build_bitcode.sh target/pqclean-mlkem build/mlkem_ntt.bc
 	@echo ">> SAW: ML-KEM-512 forward NTT == Cryptol model (7 levels, wrapv, SBV unint_z3)"
 	$(SAW) proof/saw/mlkem_ntt.saw
+
+## ML-KEM-512 Isabelle: lifted forward NTT model ≡ FIPS-203 degree-2 residue transform. Builds
+## Kem_Work, which pulls its parent Kem_Base (AFP Number_Theoretic_Transform + SAW Cryptol) first.
+## Kem_Base = brick (a) montgomery_reduce_correct_kem. Kem_Work = brick (b) 7-level CT routing +
+## brick (c) ntt_residue (ntt output k == the FIPS-203 residue coeff of f mod (X^2 - 17^(2*brv7 i+1))).
+## Kem_Work is a leaf checking-session (no persisted heap), so it re-checks whenever its content
+## changes. The no-sorry/oops/admit grep in verify.yml already covers spec/isabelle/kem.
+mlkem-isabelle:
+	@echo ">> Isabelle (Kem_Work): ML-KEM forward NTT model ≡ FIPS-203 residue spec (bricks a/b/c)"
+	$(ISABELLE) build -d spec/isabelle/kem -v Kem_Work
 
 ## Run the Isabelle session: model ≡ FIPS-204 spec
 isabelle:
