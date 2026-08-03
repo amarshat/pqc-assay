@@ -42,3 +42,22 @@ session Tier2_InvWork in "invwork" = Tier2 +
   options [document = false]
   theories
     Inv_Mont_Bridge
+
+(* Signed-window extension of the forward bridge: ntt_signed_correct lifts ntt_bridge
+   from the non-negative [0,Q) window to the signed centered |coeff| < Q window (the
+   inputs the reference forward NTT actually receives). Thin child on the forward Tier2
+   heap so it reuses mbfly0..7 / ntt_bounded / nttLevel_bounded / applyN_inv without
+   reproving the forward chain. *)
+session Tier2_Signed in "signwork" = Tier2 +
+  options [document = false]
+  theories
+    Signed_Bridge
+
+(* Inverse mirror of Tier2_Signed: invntt_signed_correct lifts invntt_bridge from the
+   non-negative [0,Q) window to the signed centered |coeff| < Q window. Thin child on the
+   inverse Tier2_InvWork heap so it reuses mbfly_inv0..7 / invlevelN_bounded / applyG_inv /
+   the invf-scale helpers without reproving the inverse chain. *)
+session Tier2_InvSigned in "invsignwork" = Tier2_InvWork +
+  options [document = false]
+  theories
+    Inv_Signed_Bridge

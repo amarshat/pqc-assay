@@ -96,6 +96,29 @@ The forward+inverse chain is now the **complete-NTT** publication anchor (it clo
 one argued link" gap that drew the ePrint rejections); both directions are functional-correct AND
 overflow-free in Isabelle, with the single argued `-fwrapv` ⇒ no-UB link shared by both.
 
+6. **Forward functional theorem lifted to the signed centered window (DONE, 2026-08-01).**
+   `ntt_signed_correct` (`spec/isabelle/tier2/signwork/Signed_Bridge.thy`, session `Tier2_Signed`, no
+   sorry/oops/smt, in-session verified, gated in `make verify` via `tier2-signed`) extends the functional
+   forward bridge from the non-negative `[0,Q)` input window (`ntt_bridge`) to the signed centered window
+   `|coeff| < Q` (`ntt_bounded 8380416 w`), the inputs the deployed forward NTT actually receives
+   (keygen/sign feed negative `s1`/`s2` coefficients). This closes the forward half of the `[0,Q)`
+   functional restriction: on deployed centered inputs the forward now has BOTH overflow-freedom and
+   functional model-to-spec equality. Cheap (~200 lines) because the abstract closed form `applyN_inv`
+   needs no non-negativity and `mbfly0..7` are already on the signed view, so the fix was swapping
+   `ntt_bridge`'s non-negative Rcong base for a reflexive one.
+
+7. **Inverse functional theorem lifted to the signed centered window (DONE, 2026-08-02).**
+   `invntt_signed_correct` (`spec/isabelle/tier2/invsignwork/Inv_Signed_Bridge.thy`, session
+   `Tier2_InvSigned`, no sorry/oops/smt, in-session verified, gated in `make verify` via
+   `tier2-invsigned`) is the inverse mirror: it lifts `invntt_bridge` from `[0,Q)` to the signed
+   `|coeff| < Q` window (`ntt_bounded 8380416 w`) the same way. `invntt_scale_bridge` split into a
+   sign-agnostic scale part (`invntt_scale_coeff` + `invf_scale_cong`) and one `[0,Q)`-locked step
+   (`Rcong_invcore`); only the locked step was replaced, by the abstract route
+   (`sf(invnttCore w) ≡ invBfly(sf w) mod q` via `mbfly_inv0..7` + reflexive base, then the abstract
+   `applyG_inv`). So **both NTT directions are now functional-correct on the signed centered window the
+   deployed code uses** (overflow-freedom was already there for both). This was the last remaining
+   `[0,Q)` functional restriction in the whole NTT chain.
+
 ## v2 — verify a used-but-unverified implementation
 **Target chosen by survey (2026-06-11): the RustCrypto `ml-dsa` crate.** Rationale over the earlier
 `mldsa-native` plan: `mldsa-native` is a verification flagship (CBMC for the C, HOL-Light/s2n-bignum
@@ -107,7 +130,7 @@ with a **history of advisories in non-trivial paths** — a timing side-channel 
 `<` became `<=`, violating FIPS 204 (GHSA-5x2r-hc65-25f9). That last one is exactly the spec-conformance
 class a verify-against-FIPS-204 pipeline checks, and it slipped in via a one-character change — evidence
 the arithmetic is subtle enough to warrant independent machine-checking. SAW reaches Rust via `mir-json`
-+ `crucible-mir` (maintained, schema v11). Any issue is handled by coordinated disclosure through
++ `crucible-mir` (maintained; the SAW 1.5.1 bundle is schema v8). Any issue is handled by coordinated disclosure through
 RustCrypto's RUSTSEC/GHSA process (per CLAUDE.md: recorded privately, human-routed, never auto-filed).
 
 Crate layout maps to targets (highest-risk first):
@@ -117,7 +140,7 @@ Crate layout maps to targets (highest-risk first):
 
 Phased (multi-month):
 - **v2.0 — toolchain spike.** Stand up SAW-Rust: pinned Rust nightly + build `mir-json` matching SAW
-  1.5.1's schema (v11); get the crate's `algebra.rs`/`ntt.rs` core to MIR and a first trivial
+  1.5.1's schema (v8); get the crate's `algebra.rs`/`ntt.rs` core to MIR and a first trivial
   `mir_verify`. De-risks the whole effort; this is the gating unknown.
 - **v2.1 — spec-conformance of the hint/verify logic.** Model FIPS 204's hint rules (strictly
   increasing indices, `MakeHint`/`UseHint`) and prove `hint.rs`/`verifying.rs` conform. This is where

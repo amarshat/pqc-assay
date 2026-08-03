@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -26,7 +26,7 @@ all: verify
 ## Tier2) → inverse-NTT model ≡ FIPS-204 inverse transform (Isabelle, Tier2_InvWork) → ML-KEM
 ## forward-NTT model ≡ FIPS-203 residue transform (Isabelle, Kem_Work). The ML-KEM C ≡ Cryptol legs
 ## (mlkem-reduce, mlkem-ntt) gate separately on every push in saw.yml.
-verify: target-identity lift-check saw isabelle tier2 tier2-inv barrett mlkem-isabelle
+verify: target-identity lift-check saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett mlkem-isabelle
 	@echo "✔ pipeline complete — all checked steps passed"
 
 ## Integrity gate: the vendored C under proof is byte-for-byte the pinned snapshot.
@@ -97,6 +97,22 @@ tier2:
 tier2-inv:
 	@echo ">> Isabelle (Tier2_InvWork): inverse NTT ≡ FIPS-204 inverse transform + montgomery-model bridge"
 	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -v Tier2_InvWork
+
+## Tier2_Signed Isabelle session: the forward transform theorem on the SIGNED centered window
+## (ntt_signed_correct) — ntt_bridge extended from the non-negative [0,Q) input window to
+## |coeff| < Q (ntt_bounded 8380416 w), the inputs the deployed reference forward NTT receives.
+## Child of Tier2; reuses mbfly0..7 / nttLevel_bounded / applyN_inv without reproving the chain.
+tier2-signed:
+	@echo ">> Isabelle (Tier2_Signed): forward NTT ≡ FIPS-204 transform on the signed |coeff| < Q window"
+	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -v Tier2_Signed
+
+## Tier2_InvSigned Isabelle session: the inverse transform theorem on the SIGNED centered window
+## (invntt_signed_correct) — invntt_bridge extended from [0,Q) to |coeff| < Q (ntt_bounded 8380416 w),
+## the centered inputs invntt_tomont's call site receives. Child of Tier2_InvWork; reuses
+## mbfly_inv0..7 / invlevelN_bounded / applyG_inv / the invf-scale helpers.
+tier2-invsigned:
+	@echo ">> Isabelle (Tier2_InvSigned): inverse NTT ≡ FIPS-204 inverse transform on the signed |coeff| < Q window"
+	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -v Tier2_InvSigned
 
 ## Barrett Route Y session: the lifted BV Barrett model (barrettBV) == x mod q for x < 2^46,
 ## proven in Isabelle Word_Lib (barrettBV_bridge_holds). Mechanizes the escape-2 wide-Barrett

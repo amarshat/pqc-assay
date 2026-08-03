@@ -33,6 +33,21 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   all ~3000 signed-overflow side conditions AND functional equality to the model in one proof
   (SAW 1.5.1 + bitwuzla 0.9.1, a trusted SMT oracle in the same class as z3/yices; 12.5 h wall,
   out of band, not in `make saw`/CI). The inverse's meta-step remains argued (see below).
+  ★ FORWARD FUNCTIONAL NOW ON THE SIGNED CENTERED WINDOW (2026-08-01, `Tier2_Signed` builds exit 0, no
+  sorry/oops/smt, in-session verified, gated in `make verify` via `tier2-signed`): `ntt_signed_correct`
+  (`spec/isabelle/tier2/signwork/Signed_Bridge.thy`) lifts the FUNCTIONAL forward bridge from the
+  non-negative `[0,Q)` window (`ntt_bridge`, `bounded w` = unsigned `< Q`) to the SIGNED centered window
+  `|coeff| < Q` (`ntt_bounded 8380416 w`), the inputs the deployed reference forward NTT actually receives
+  (keygen/sign feed centered `s1`/`s2` coefficients that can be negative): `ntt_bounded 8380416 w ⟹ k<256
+  ⟹ sint_seq (ntt w ! k) mod q = (∑ j<256. sf w j · ζ^((2·brv₈ k+1)·j)) mod q`, where `sf w j =
+  sint_seq (w j)` is the SIGNED coefficient value. Route (cheap, ~200 lines, all existing machinery
+  reused): the abstract closed form `applyN_inv` holds for ANY integer coefficient function (no
+  non-negativity), and `mbfly0..7` already land on the signed view `sf`, so propagating
+  `sf(ntt w) ≡ fwdBfly(sf w) (mod q)` (`sf_ntt_eq_fwdbfly`, a mirror of `ntt_bridge`'s Rcong chain but
+  with a REFLEXIVE base `sf w ≡ sf w` instead of `sf w = cf w`, which is where non-negativity entered)
+  dissolves the `[0,Q)` restriction. So on the deployed centered forward inputs we now have BOTH
+  overflow-freedom AND functional model-to-spec equality. The `-fwrapv`⇒no-UB meta-step is unchanged
+  (mechanized for the forward via `ntt_nsw.saw`).
 - **Inverse NTT: functional chain (under `[0,Q)`) AND overflow-freedom (under signed `|coeff| < Q`, covers the call site) machine-checked.** SAW
   proves `invntt_tomont(a[256])` ≡ Cryptol montgomery `invntt` under two's-complement wrapping (same
   `-fwrapv` bitcode as the forward). The Isabelle chain is closed mod q: montgomery model ≡ normal
@@ -62,12 +77,23 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   int32" was WRONG: 256*Q = 2145386752 < 2^31 = 2147483648, headroom ~2.1M. The true int32-safe ceiling is
   `B_0 <= 2^23-1 = 8388607`, above `Q-1 = 8380416` by ~8191, so `|coeff| < Q` sits inside it with slack; a
   full doubling to a `2Q` window WOULD overflow: `512*(Q-1) = 4290772992 > 2^31`.)
-  ★ REMAINING GAP (functional, still open): the FUNCTIONAL `invntt_bridge` (montgomery model ≡ FIPS mod q)
-  is still proven only under `bounded` = `[0, Q)` non-negative, because `Rcong_invcore`/`Rcong_base`
-  relate the signed and unsigned coefficient views through the montgomery factor and rest on
-  non-negativity. THAT is the "real work" (re-derive the bridge over signed coefficients); it does not lift
-  for free. So on the centered call-site inputs we have machine-checked overflow-freedom but not yet
-  functional model-to-spec equality. Open.
+  ★ GAP NOW CLOSED (functional, inverse) — 2026-08-02: `invntt_signed_correct`
+  (`spec/isabelle/tier2/invsignwork/Inv_Signed_Bridge.thy`, session `Tier2_InvSigned`, no sorry/oops/smt,
+  in-session verified, gated in `make verify` via `tier2-invsigned`) lifts the FUNCTIONAL inverse bridge
+  from `[0,Q)` to the signed centered `|coeff| < Q` window (`ntt_bounded 8380416 w`): `ntt_bounded 8380416
+  w ⟹ k<256 ⟹ (2^32 · sint(invntt w!k)) mod q = (sint(invf) · (∑ m<256. sf w m · zpw(−(2·brv₈ m+1)·k))) mod
+  q`, the RHS over the SIGNED coefficient values `sf w m` (was `cf w m` = unsigned in `invntt_bridge`).
+  Route, exactly the forward's + the scale: `invntt_scale_bridge` split into (i) a SIGN-AGNOSTIC scale
+  part (`invntt_scale_coeff` + `invf_scale_cong`: `2^32·sf(invntt w) ≡ invf·sf(invnttCore w) mod q`, whose
+  only bound need `invcore_bounded_nb` already runs on the signed `ntt_bounded`) and (ii) ONE `[0,Q)`-locked
+  step (`Rcong_invcore`: `sf(invnttCore w) ≡ cf(nttInvAllRef w) mod q`). Only (ii) was replaced, by the
+  abstract route `sf(invnttCore w) ≡ invBfly(sf w) mod q` (`mbfly_inv0..7` already on `sf` + a reflexive
+  base) composed with the abstract closed form `applyG_inv` (holds for any coefficient function). The
+  earlier ledger's prediction that this needed "re-deriving the bridge over signed coefficients" (the
+  "real work") was WRONG: the abstract closed form + reflexive base made it as cheap as the forward.
+  So BOTH NTT directions now have machine-checked functional model-to-spec equality on the signed centered
+  window the deployed code uses (overflow-freedom was already there for both). No `[0,Q)` functional
+  restriction remains anywhere in the NTT chain.
   The `-fwrapv` ⇒ no-signed-overflow-UB step for the inverse is still argued (not mechanized; the nsw SAW
   route was measured impractical), but now rests on an overflow bound covering the signed call-site window
   rather than only `[0,Q)`.
