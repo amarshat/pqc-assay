@@ -28,7 +28,7 @@ source "$HOME/.cargo/env"
 # 2. the pinned nightly, with the compiler internals mir-json links against
 rustup toolchain install "$NIGHTLY" --force --component rustc-dev,rust-src
 
-# 3. build + install mir-json at the pinned commit (schema v11)
+# 3. build + install mir-json at the pinned commit (schema v8)
 if [ ! -d "$MIRJSON_DIR/.git" ]; then
   git clone https://github.com/GaloisInc/mir-json.git "$MIRJSON_DIR"
 fi
