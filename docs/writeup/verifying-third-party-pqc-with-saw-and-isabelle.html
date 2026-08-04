@@ -204,191 +204,175 @@ third-party post-quantum C against its spec, with SAW + Cryptol +
 Isabelle</h1>
 <p><em>Amar Akshat · <a
 href="https://github.com/amarshat">github.com/amarshat</a></em></p>
-<p>This applies the SAW + Cryptol + Isabelle approach Apple open-sourced
-for <code>corecrypto</code> in May 2026 to third-party reference code:
-the unmodified PQClean / pq-crystals ML-DSA reference C, and separately
-the RustCrypto <code>ml-dsa</code> crate. No Apple code, proofs, or
-theories are used; the Isabelle spec is written from FIPS 204 directly.
-Everything below is machine-checked in this session’s toolchain unless
-it’s explicitly marked argued or assumed; nothing here is claimed proven
-that a tool didn’t actually discharge.</p>
+<p>Apple open-sourced their SAW + Cryptol + Isabelle verification of
+<code>corecrypto</code> in May 2026. I ran the same approach on code
+Apple didn’t write: the unmodified PQClean / pq-crystals ML-DSA
+reference C, and separately the RustCrypto <code>ml-dsa</code> crate. No
+Apple code, proofs, or theories in here; the Isabelle spec is written
+from FIPS 204 directly. Everything below is machine-checked in this
+session’s toolchain unless I say otherwise. If I couldn’t get a tool to
+actually prove something, I call it argued or assumed, not proven.</p>
 <h2 id="why">1. Why</h2>
-<p>Apple’s corecrypto release showed the toolchain, SAW plus Cryptol
-plus an Isabelle-formalized FIPS specification, works end to end on
-production crypto. But it was driven on Apple’s own code, which Apple
-wrote, controls, and could annotate for the prover. Most ML-DSA
-deployments don’t run Apple’s code. They run the PQClean / pq-crystals
-reference, or a third-party reimplementation like RustCrypto’s, as-is,
-without cooperation from the authors and without the freedom to rewrite
-the source for verifiability. That is the position any third-party
-auditor is actually in, and it’s a different problem: the target wasn’t
-built to be proved about.</p>
-<p>The NTT is the right subroutine to test this on. It’s the arithmetic
-core of both ML-DSA and ML-KEM, verification-grade bugs in it (reduction
-placement, overflow) pass test vectors and have shown up in real
-implementations, and a single-primitive proof of the modular reduction
-alone doesn’t reach it: the transform composes hundreds of reductions
-across eight interleaved levels, and getting a bound or a correctness
-statement through that composition is where the difficulty actually
-lives.</p>
+<p>Apple’s release proved the toolchain works end to end on production
+crypto. But it was Apple’s own code: they wrote it, they control it,
+they can annotate it however the prover needs. Almost nobody runs
+Apple’s ML-DSA. Most deployments run the PQClean / pq-crystals
+reference, or something like RustCrypto’s reimplementation, as-is, with
+no help from the authors and no freedom to touch the source for
+verifiability. That’s the position a third-party auditor is actually
+in.</p>
+<p>I picked the NTT because it’s the arithmetic core of both ML-DSA and
+ML-KEM, and because the bugs that matter there (wrong reduction
+placement, overflow) pass test vectors and have shown up in shipped
+code. A proof of the modular reduction on its own doesn’t get you there.
+The transform chains hundreds of those reductions across eight levels,
+and that’s where a correctness argument actually gets hard.</p>
 <h2 id="the-toolchain">2. The toolchain</h2>
 <p>SAW (the Software Analysis Workbench) proves a compiled function
-equivalent to a Cryptol specification by symbolic execution plus SMT; it
-targets LLVM bitcode for C and, via <code>mir-json</code>, Rust MIR.
-Cryptol is a word-level specification language. Isabelle/HOL is an
-interactive theorem prover. <code>cryptol-to-isabelle</code>, first
-shipped with saw-script 1.5.1, lifts a Cryptol module into an Isabelle
-theory, which is what lets a SAW proof (C or Rust equal to a Cryptol
-model) and an Isabelle proof (that same model equal to a closed-form
-spec) compose into one chain instead of two disconnected results. All of
-it is from Galois and the open verification ecosystem; nothing here is a
-new tool.</p>
+equal to a Cryptol spec, by symbolic execution and SMT. It targets LLVM
+bitcode for C and, through <code>mir-json</code>, Rust MIR. Cryptol is a
+word-level spec language. Isabelle/HOL is an interactive theorem prover.
+<code>cryptol-to-isabelle</code>, shipped with saw-script 1.5.1, lifts a
+Cryptol module into an Isabelle theory, so a SAW proof (C or Rust equal
+to a Cryptol model) and an Isabelle proof (that model equal to a
+closed-form spec) chain into one result instead of sitting as two
+separate ones. All Galois tooling. Nothing here is a new tool.</p>
 <h2 id="setup-the-parts-the-docs-skip">3. Setup (the parts the docs
 skip)</h2>
-<p>Version pins and the gotchas hit along the way: arm64 macOS
-code-signing and quarantine producing <code>Killed: 9</code> on a
-perfectly good binary; building the AFP plus SAW <code>Cryptol</code>
-Isabelle session (heavy, tens of minutes cold); GNU Make 3.81 resolving
-single-command recipes against its own PATH rather than the shell’s, so
-a bare tool name silently fails to resolve even after
-<code>export PATH</code>. All of it is in <code>scripts/setup.sh</code>,
-pinned, so it doesn’t need rediscovering.</p>
+<p>Version pins, and the gotchas: arm64 macOS quarantine killing a
+perfectly good binary with <code>Killed: 9</code>; building the AFP plus
+SAW <code>Cryptol</code> Isabelle session, which takes tens of minutes
+cold; GNU Make 3.81 resolving single-command recipes against its own
+PATH instead of the shell’s, so a bare tool name fails to resolve even
+after <code>export PATH</code>. All pinned in
+<code>scripts/setup.sh</code> so nobody has to hit these twice.</p>
 <h2 id="the-target">4. The target</h2>
-<p>Two independent targets, on two toolchains:</p>
+<p>Two targets, two toolchains:</p>
 <ul>
-<li><strong>PQClean / pq-crystals ML-DSA-44 reference C</strong>,
+<li><strong>PQClean / pq-crystals ML-DSA-44 reference C</strong>:
 <code>reduce.c</code> (<code>montgomery_reduce</code>,
 <code>reduce32</code>, <code>caddq</code>, <code>freeze</code>) and
-<code>ntt.c</code> (the forward and inverse NTT), vendored and pinned by
-commit hash, byte-identical to the pq-crystals/dilithium origin up to a
-namespace prefix.</li>
+<code>ntt.c</code> (forward and inverse NTT). Vendored and pinned by
+commit hash; byte-identical to pq-crystals/dilithium up to a namespace
+prefix.</li>
 <li><strong>RustCrypto’s <code>ml-dsa</code> crate</strong>, reached
 through <code>mir-json</code> and <code>crucible-mir</code>, verified
-directly against its MIR rather than a hand transcription.</li>
+against its MIR directly, not a hand transcription.</li>
 </ul>
-<p>Both directions of the ML-DSA NTT are modeled and verified now, not
-just the reduction layer: SAW proves the C forward and inverse
-transforms bit-exactly equal to Cryptol models under an
-overflow-checking build, and Isabelle proves those lifted models equal,
-mod q, to the FIPS-204 forward and inverse negacyclic DFT. The same
-construction is also applied to ML-KEM-512’s forward NTT against FIPS
-203, as a check that the method isn’t specific to ML-DSA (Section
-7).</p>
+<p>Both NTT directions are done now, not just the reduction layer. SAW
+proves the C forward and inverse transforms bit-exact equal to Cryptol
+models on an overflow-checking build, and Isabelle proves those lifted
+models equal, mod q, to the FIPS-204 forward and inverse negacyclic DFT.
+I also ran the same thing on ML-KEM-512’s forward NTT against FIPS 203,
+mostly to check the method wasn’t a one-off (Section 7).</p>
 <h2 id="c-to-cryptol-to-saw">5. C to Cryptol to SAW</h2>
-<p>Modeling at bit-exact widths: arithmetic versus logical shift, the
-documented preconditions, the int32 overflow that forces
-<code>reduce32</code>’s particular bound. Every reduction-layer and NTT
-proof carries a mutation test, a deliberately wrong model or spec,
-checked to be rejected with a counterexample, so a proof that happens to
-hold vacuously (an unsatisfiable precondition, say) gets caught rather
-than banked.</p>
+<p>Bit-exact widths: arithmetic vs. logical shift, the documented
+preconditions, the int32 overflow that forces <code>reduce32</code>’s
+particular bound. Every reduction-layer and NTT proof gets a mutation
+test, a deliberately broken model or spec that has to be rejected with a
+counterexample. Catches vacuous proofs before they get banked as
+results.</p>
 <h2 id="lifting-to-isabelle-and-proving-equivalence">6. Lifting to
 Isabelle and proving equivalence</h2>
 <p><code>cryptol-to-isabelle</code> in practice: the
-<code>seq</code>/<code>word</code> coercion library, and a proof
-structure that recurs across every layer, an integer core, a
-<code>seq</code>-to-<code>word</code> bridge, the <code>sint</code> of
-the word computation, and a congruence back to the arithmetic contract
-(<code>T ≡ a·QINV (mod 2³²)</code> for Montgomery reduction, the
-analogous shape for Barrett). The lift itself is mechanized so it can’t
-silently drift from what SAW checks: a CI step regenerates the Isabelle
-theory from the <code>.cry</code> source with
-<code>cryptol-to-isabelle</code> and diffs it, byte for byte, against
+<code>seq</code>/<code>word</code> coercion library, and the same proof
+shape every time, an integer core, a
+<code>seq</code>-to-<code>word</code> bridge, <code>sint</code> of the
+word computation, a congruence back to the arithmetic contract
+(<code>T ≡ a·QINV (mod 2³²)</code> for Montgomery reduction, similar
+shape for Barrett). The lift itself is checked mechanically, not by eye:
+CI regenerates the Isabelle theory from the <code>.cry</code> source
+with <code>cryptol-to-isabelle</code> and diffs it byte for byte against
 the committed copy.</p>
-<p>The NTT proofs add one more device worth naming on its own, because
-it’s the thing that made an eight-level induction tractable at all.
-Cryptol’s index operation is strict, but an out-of-bounds access returns
-the last element of the sequence rather than failing. That means a
-coefficient bound can be stated as a <em>total</em> invariant, over
-every index, not only the ones the current level actually touches. Every
-indexed access is then just a bounded list member, in-bounds or not, so
-the induction never has to reason about the level-parameterized shifts
-and divisions that address the butterfly network, the exact arithmetic
-that makes the direct SMT approach to this class of goal intractable
-(Section 8). It’s a change of proof structure, not of solver, and it’s
-reused unchanged for the overflow bound, the transform congruence, both
-NTT directions, and the ML-KEM transfer.</p>
+<p>One trick made the eight-level induction tractable, and it’s worth
+calling out on its own. Cryptol’s index operation is strict, but an
+out-of-bounds access returns the last element of the sequence instead of
+failing. So the coefficient bound can be stated over <em>every</em>
+index, not just the ones the current level touches. Every indexed access
+becomes a bounded list member whether it’s in range or not, and the
+induction never has to reason about the level-parameterized shifts and
+divisions that address the butterfly network. That index arithmetic is
+exactly what makes the direct SMT approach fall over (Section 8). Same
+trick, reused unchanged, for the overflow bound, the transform
+congruence, both NTT directions, and the ML-KEM transfer.</p>
 <h2 id="results-and-limits">7. Results and limits</h2>
 <p>What’s proven, and under which window (full detail in
 <code>docs/ASSUMPTIONS.md</code>):</p>
 <ul>
-<li><code>reduce.c</code>’s four primitives, C equal to Cryptol (SAW)
-and model equal to FIPS-derived spec (Isabelle), each on its true
-reachable output window.</li>
-<li>The forward NTT: one connected chain, SAW (C equal to model) plus
+<li><code>reduce.c</code>’s four primitives: C equal to Cryptol (SAW),
+model equal to FIPS-derived spec (Isabelle), each on its true reachable
+output window.</li>
+<li>The forward NTT, one connected chain: SAW (C equal to model),
 Isabelle (model equal to the FIPS-204 negacyclic DFT, mod q), on the
-signed centered window the deployed code actually uses. The last link,
-that the overflow-checking build coincides with the ordinary one, is
-mechanized too: SAW re-verifies the <em>default</em> build directly,
-discharging around 3000 unrolled signed-overflow side conditions
-together with the model equality, via <code>bitwuzla</code> (12.5 hours,
-run out of band, not part of the fast CI gate).</li>
-<li>The inverse NTT: the same chain, mirrored in the Gentleman-Sande
+signed centered window the deployed code uses. I also closed the last
+link, that the overflow-checking build behaves the same as the ordinary
+one: SAW re-verifies the <em>default</em> build directly, roughly 3000
+unrolled signed-overflow side conditions plus the model equality, via
+<code>bitwuzla</code>. Took 12.5 hours. Runs out of band, not in the
+fast CI gate.</li>
+<li>The inverse NTT, same chain, mirrored in the Gentleman-Sande
 direction, with ML-DSA’s 256⁻¹ normalization folded into the mechanized
-theorem rather than argued around it. Its overflow-freedom bound is
-likewise mechanized on the signed window. The one link that stays
-argued, not mechanized, is that same
-overflow-build-coincides-with-default step; a same-shape attempt at
-closing it the way the forward one closed ran a measured 55 hours across
-roughly 4600 obligations and didn’t finish (Section 8’s boundary, it
-turns out, has more than one edge).</li>
+theorem instead of argued around it. Overflow-freedom is mechanized on
+the signed window too. What’s still argued: the same
+overflow-build-matches-default step. I tried closing it the same way the
+forward one closed. Ran 55 hours across about 4600 obligations and
+didn’t finish. Turns out the boundary in Section 8 has more than one
+edge.</li>
 <li>ML-KEM-512’s <code>reduce.c</code> and forward NTT against FIPS 203,
-the same three-tool construction, re-derived for a structurally
-different, <em>incomplete</em> transform (Kyber’s modulus has no 512th
-root of unity, so the output is 128 degree-two residues, not 256 single
+same three-tool construction, re-derived for a structurally different,
+<em>incomplete</em> transform (Kyber’s modulus has no 512th root of
+unity, so the output is 128 degree-two residues, not 256 single
 coefficients).</li>
-<li>Two documentation off-by-ones in the reference’s stated output
-windows (<code>montgomery_reduce</code>’s and <code>reduce32</code>’s
-comments are each wrong at one boundary input), disclosed upstream to
-pq-crystals/dilithium. Neither is a functional bug: on every input this
-verification checked, the reference NTT computes the correct transform.
-That absence of a real finding is itself part of the result, not just a
-footnote to it.</li>
+<li>Two doc off-by-ones in the reference’s stated output windows
+(<code>montgomery_reduce</code>’s and <code>reduce32</code>’s comments
+are each wrong at one boundary input), disclosed upstream to
+pq-crystals/dilithium. Neither is a functional bug. On every input I
+checked, the reference NTT computes the correct transform, and that’s a
+result on its own, not just an absence of findings to report.</li>
 </ul>
-<p>What’s not proven: the optimized AVX2/aarch64 paths, the
+<p>Not proven: the optimized AVX2/aarch64 paths, the
 <code>mldsa-native</code> successor, constant-time behavior of any of
-it. Reduction-bound composition across a full transform, not a single
-primitive, is where the real risk in this class of code lives (an eprint
-audit and Apple’s own disclosed inverse-NTT bug both found exactly this
-class of defect); a lone <code>montgomery_reduce</code> proof, however
-clean, doesn’t reach it.</p>
+it. The real risk in this class of code is reduction-bound composition
+across a full transform, not a single primitive: an eprint audit and
+Apple’s own disclosed inverse-NTT bug both landed exactly there. A clean
+<code>montgomery_reduce</code> proof by itself doesn’t reach that.</p>
 <h2
 id="second-case-study-rustcrypto-ml-dsa-and-the-barrett-reduction-wall">8.
 Second case study: RustCrypto <code>ml-dsa</code> and the Barrett
 reduction wall</h2>
-<p>The <code>reduce.c</code> work above targets PQClean C. The second
-target is the RustCrypto <code>ml-dsa</code> crate, pinned to 0.1.1, the
-de-facto pure-Rust ML-DSA. SAW reaches it through <code>mir-json</code>
-and <code>crucible-mir</code>, so the object under proof is the crate’s
-MIR, not a C transcription. The crate has never been independently
-audited, and one of its disclosed advisories is exactly the kind a
-verify-against-FIPS-204 pipeline is meant to catch: a <code>&lt;</code>
-that should have been <code>&lt;=</code> accepted duplicate hint
-indices, later assigned CVE-2026-24850.</p>
-<p>The arithmetic at issue is <code>barrett_reduce</code>. The NTT
+<p>The <code>reduce.c</code> work above is PQClean C. The second target
+is RustCrypto’s <code>ml-dsa</code> crate, pinned to 0.1.1, the de-facto
+pure-Rust ML-DSA. SAW reaches it through <code>mir-json</code> and
+<code>crucible-mir</code>, so the proof is against the crate’s actual
+MIR, not a transcription. The crate’s never been independently audited,
+and one of its disclosed advisories is exactly what a
+verify-against-FIPS-204 pipeline should catch: a <code>&lt;</code> that
+should’ve been <code>&lt;=</code>, accepting duplicate hint indices,
+later assigned CVE-2026-24850.</p>
+<p>The arithmetic in question is <code>barrett_reduce</code>. The NTT
 butterflies multiply two field elements
-<code>a, b &lt; q = 8380417</code>, so the product is below
-<code>2^46</code>, and reduce it with Barrett’s method: widen to
+<code>a, b &lt; q = 8380417</code>, so the product is under
+<code>2^46</code>. Barrett’s method reduces it: widen to
 <code>u128</code>, multiply by
-<code>M = floor(2^46 / q) = 8396807</code>, shift right by 46, subtract
-<code>quotient * q</code>, then do one conditional subtract. The
-obligation is <code>barrett_reduce(x) == x mod q</code> for every
+<code>M = floor(2^46 / q) = 8396807</code>, shift right 46, subtract
+<code>quotient * q</code>, one conditional subtract. The obligation is
+<code>barrett_reduce(x) == x mod q</code> for every
 <code>x &lt; 2^46</code>.</p>
 <h3 id="the-wall">The wall</h3>
-<p>That obligation does not go through as a bit-vector proof, at least
-not with the eager back-ends most SAW setups reach for. The
-<code>u128</code> multiply by <code>M</code> puts a full 128-bit
-multiplier in the SAT/SMT problem, and multiplier reasoning is where
-these solvers fall over. A direct <code>mir_verify</code> with z3 ran
-over three hours without converging. A SAW maintainer put it plainly on
-saw-script discussion #3306: “proving the implementation of Barrett
+<p>I expected this to be routine. It wasn’t. The <code>u128</code>
+multiply by <code>M</code> puts a full 128-bit multiplier straight into
+the SMT problem, and multiplier reasoning is where these solvers fall
+apart. I ran a direct <code>mir_verify</code> with z3. After three hours
+it still hadn’t converged, so I killed it. A SAW maintainer’s answer to
+the same question, on <a
+href="https://github.com/GaloisInc/saw-script/discussions/3306">saw-script
+discussion #3306</a>, was blunt: “proving the implementation of Barrett
 reduction is one of those things that SMT-based tools like SAW
-fundamentally struggle with.” Checking the equivalence against a
-bit-exact model instead of against <code>x mod q</code> directly, and
-against a <code>urem</code>-free carry-fold reference, doesn’t help
-either: abc’s default SAT sweep and z3 on the carry-fold form both stall
-at the timeout. Across an increasing input bound the pattern is stark
-and reproducible (z3, single thread, 300s cap):</p>
+fundamentally struggle with.” I also tried checking against a bit-exact
+model instead of <code>x mod q</code> directly, and against a
+<code>urem</code>-free carry-fold rewrite. Neither helped; abc and z3
+both stalled at the same timeout on those too. The pattern across an
+increasing input bound is stark (z3, single thread, 300s cap):</p>
 <table>
 <thead>
 <tr>
@@ -427,107 +411,92 @@ and reproducible (z3, single thread, 300s cap):</p>
 </tr>
 </tbody>
 </table>
-<p>Flat, then a factor of four to seven per two added bits, crossing the
-timeout between 2^34 and 2^36. The formula doesn’t change size with the
-input bound; the live bit width does, and that’s what the solvers choke
-on.</p>
+<p>Flat, then roughly four to seven times slower per two added bits,
+dead between 2^34 and 2^36. The formula doesn’t grow with the input
+bound. The live bit width does, and that’s what breaks the solver.</p>
 <h3 id="splitting-the-obligation">Splitting the obligation</h3>
-<p>The Barrett identity is arithmetic, so the way around an intractable
-bit-vector proof is to prove it as arithmetic, in a proof assistant, and
-keep the bit-vector work to the part that’s actually tractable. To
-isolate whether bit-blasting itself, not the underlying relation, is the
-wall, pose the identical obligation in unbounded-integer arithmetic
-instead: ask z3 (logic NIA) whether <code>x - floor(x*M/2^46)*q</code>
-lands in <code>[0, 2q)</code> for every x in <code>[0, 2^46)</code>. It
-returns <code>unsat</code> (the identity holds everywhere) in
-<strong>0.04 seconds</strong>. The bit-vector form of the exact same
-goal doesn’t complete in over 300. A mutation check, replacing
-<code>q</code> by <code>q+1</code>, flips the integer query to
-<code>sat</code> with an explicit witness, so the fast answer isn’t a
-modeling artifact letting something vacuous through. Same relation, same
-domain, two encodings, about four orders of magnitude apart.</p>
-<p>That gave three routes past the wall, all now realized rather than
-just proposed:</p>
+<p>If bit-blasting is the wall and not the arithmetic itself, the
+arithmetic should go through fine somewhere else. I posed the same
+identity in unbounded-integer arithmetic: ask z3 (logic NIA) whether
+<code>x - floor(x*M/2^46)*q</code> lands in <code>[0, 2q)</code> for
+every x in <code>[0, 2^46)</code>. It came back <code>unsat</code>,
+meaning the identity holds everywhere, in 0.04 seconds. Same relation,
+same domain, four orders of magnitude faster than the bit-vector
+version, which hadn’t finished at all. I mutated <code>q</code> to
+<code>q+1</code> to check the fast answer wasn’t vacuous; it flipped
+straight to <code>sat</code> with an explicit witness.</p>
+<p>That gave three ways past the wall. All three are now real, not just
+ideas on paper:</p>
 <ol type="1">
-<li><strong>The total-invariant induction</strong> (Section 6) is what
-makes the NTT’s own overflow bound tractable in the first place,
-independent of Barrett specifically.</li>
-<li><strong>An integer-and-word lift</strong>:
+<li><strong>The total-invariant induction</strong> from Section 6 is
+what makes the NTT’s own overflow bound go through. Nothing
+Barrett-specific about it.</li>
+<li><strong>Lift Barrett into Isabelle as integers.</strong>
 <code>cryptol-to-isabelle</code> lifts the bit-exact Cryptol model of
-<code>barrett_reduce</code> into Isabelle, and a proof pushes the
-unsigned interpretation through each word operation (the
-<code>zext</code>, the two multiplies, the shift, the subtract, the
-truncation) onto that same integer core, closing
-<code>barrettBV(x) == x mod q</code> for all <code>x &lt; 2^46</code>
-with no SMT call at all, checked oracle-free by the Isabelle kernel’s
-own dependency tracker. This is the piece that used to be the open admit
-here; it isn’t anymore.</li>
-<li><strong>A compositional layer specification</strong>: build the NTT
-layer’s spec from the same uninterpreted field operations the SAW
-override already returns, so an obligation over 256 output positions
-discharges by term rewriting instead of bit-blasting 256 independent
-modular reductions. All eight forward layers verify against FIPS-204
-Algorithm 41 this way.</li>
+<code>barrett_reduce</code>, and a proof pushes the unsigned
+interpretation through each word operation (<code>zext</code>, the two
+multiplies, the shift, the subtract, the truncation) down onto that same
+integer core. Closes <code>barrettBV(x) == x mod q</code> for all
+<code>x &lt; 2^46</code>, no SMT call anywhere, checked oracle-free by
+Isabelle’s own dependency tracker. This used to be an open admit in the
+proof. Not anymore.</li>
+<li><strong>Build the layer spec out of the same uninterpreted field
+operations the SAW override already returns</strong>, so an obligation
+over 256 output positions gets solved by rewriting instead of
+bit-blasting 256 separate modular reductions. All eight forward layers
+verify against FIPS-204 Algorithm 41 this way.</li>
 </ol>
-<p>And separately from the Isabelle route, adding <code>bitwuzla</code>
-(CEGAR-style abstraction-refinement, aimed specifically at wide
-multiplication) to the pinned toolchain closes the deployed obligation
-directly: it proves <code>barrett_reduce(x) == x mod q</code> on the
-actual MIR, full <code>2^46</code> domain, in 1402 seconds, where every
-eager back-end tried failed to complete at all. The same backend later
-retired the forward NTT’s overflow-build link too (Section 7). So the
-wide-domain Barrett obligation is now closed two ways: by a
-multiplier-strong solver directly on the deployed code, and,
-independently, oracle-free, in Isabelle on the lifted model.</p>
+<p>Separately, I added <code>bitwuzla</code> (CEGAR-style
+abstraction-refinement, built for exactly this kind of wide
+multiplication) to the toolchain, and it closes the deployed obligation
+directly: <code>barrett_reduce(x) == x mod q</code> on the actual MIR,
+full <code>2^46</code> domain, in 1402 seconds. Every eager back-end I
+tried didn’t finish at all. The same solver later closed the forward
+NTT’s overflow-build link too (Section 7). So the wide-domain Barrett
+obligation is closed two separate ways now: a multiplier-strong solver
+directly on the deployed code, and, independently, oracle-free, in
+Isabelle.</p>
 <h3 id="what-this-closes-and-whats-still-argued">What this closes, and
 what’s still argued</h3>
-<p>The MIR-to-Cryptol crossing (that the lifted <code>barrettBV</code>
-model faithfully transcribes the deployed <code>barrett_reduce</code>)
-rests on construction, a line-for-line transcription, plus the
-bit-vector equivalence holding at narrower widths where SAW does prove
-it directly; it isn’t a symbolic full-width proof of faithfulness on its
-own; <code>bitwuzla</code>’s direct MIR proof is what removes the need
-to lean on that. The Cryptol-to-Isabelle crossing is gated mechanically
-(byte-for-byte diff against the regenerated lift), so it doesn’t drift.
-Being precise about exactly which seam is which matters, because this is
-exactly the kind of gap that recent critiques of verified-crypto
-pipelines go after: a source-to-proof-object translation, or a verified
-system generally, is only as trustworthy as its stated boundary between
-what’s machine-checked and what’s taken on trust, and blurring that
-boundary is what produces false assurance. The discipline here is a
-claim table (in the paper) that tags every result mechanized, argued, or
-assumed, and nothing above that table.</p>
+<p>The MIR-to-Cryptol crossing, that the lifted <code>barrettBV</code>
+model actually matches the deployed <code>barrett_reduce</code>, rests
+on construction (a line-for-line transcription) plus SAW proving the
+bit-vector equivalence at narrower widths. It’s not a symbolic
+full-width proof of faithfulness by itself. <code>bitwuzla</code>’s
+direct MIR proof is what removes the need to lean on that. The
+Cryptol-to-Isabelle crossing is gated mechanically, so it can’t drift. I
+try to keep these seams named separately rather than blurred into one
+“it’s verified” claim, because blurring exactly this kind of seam is
+what recent critiques of verified-crypto pipelines go after, and rightly
+so. The paper carries a claim table tagging every result mechanized,
+argued, or assumed, and I don’t claim anything past what’s in that
+table.</p>
 <h3 id="positioning">Positioning</h3>
-<p>Barrett reduction has been verified before, and the
-algebra-over-bit-blasting move isn’t new: libcrux (Cryspen, via hax and
-F*) verifies ML-DSA and ML-KEM field arithmetic,
-<code>barrett_reduce</code> included, on shipped Rust; CryptoLine
+<p>None of this is a first proof of Barrett, and
+algebra-over-bit-blasting isn’t a new idea. libcrux (Cryspen, via hax
+and F*) verifies ML-DSA and ML-KEM field arithmetic,
+<code>barrett_reduce</code> included, on shipped Rust. CryptoLine
 verifies Kyber and Dilithium NTT arithmetic, Barrett and Montgomery
 included, by discharging the nonlinear multiplies algebraically and the
-range conditions with SMT, precisely to keep the multiply out of the
-bit-blaster, and the Jazzline work composes such proofs into Jasmin and
-EasyCrypt developments. So the contribution isn’t a first proof of
-Barrett, and it isn’t that SMT categorically can’t do this arithmetic
-while some other technique can. What’s specific here is the combination
-on an unmodified third-party target: a reproducible, kernel-checked
-audit of a crate that was never written for verification, coupling
-MIR-level SAW proofs with an Isabelle arithmetic proof, a measured map
-of exactly where eager bit-blasting gives out, and three concrete,
-realized routes past it rather than one.</p>
+range conditions with SMT, the same move of keeping the multiply out of
+the bit-blaster. Jazzline composes that into Jasmin and EasyCrypt
+developments. What I think is new here: doing this on an unmodified
+third-party crate that was never written for verification, coupling
+MIR-level SAW proofs with an Isabelle arithmetic proof, with a measured
+map of exactly where eager bit-blasting gives out and three separate
+routes past it instead of one.</p>
 <h2 id="what-id-want-from-the-tools-next">9. What I’d want from the
 tools next</h2>
-<p>The ask this write-up made a version ago, a multiplier-aware
-equivalence backend reachable from SAW, is now answered:
-<code>bitwuzla</code> is in the pinned toolchain and closes exactly the
-obligation that motivated the ask. What’s still open: a SAW-native
-tactic that automates the bit-vector-to-bounded-integer lift (a Galois
-maintainer’s read on the same discussion thread was that SAW “ought to
-have some kind of solver or tactic” for this and doesn’t yet), so this
-class of proof stops being a bespoke Isabelle detour every time it comes
-up. And, separately, pointing the same pipeline at the deployed
-optimized AVX2/aarch64 kernels, where the error-prone arithmetic
-actually ships, is the natural next target; everything here is the
-reference C and one third-party crate, not the fast paths.</p>
+<p>Last version of this writeup asked for a multiplier-aware equivalence
+backend reachable from SAW. Answered now: <code>bitwuzla</code> is in
+the pinned toolchain and closes exactly that obligation. Still open: a
+SAW-native tactic that automates the bit-vector-to-bounded-integer lift,
+so this doesn’t stay a bespoke Isabelle detour every time it comes up. A
+Galois maintainer on the same discussion thread said SAW “ought to have
+some kind of solver or tactic” for this and doesn’t yet. And the obvious
+next target: point the same pipeline at the deployed optimized
+AVX2/aarch64 kernels, where the error-prone arithmetic actually ships.
+Everything here is the reference C and one third-party crate.</p>
 <h2 id="appendix-reproduce">Appendix: reproduce</h2>
 <p><code>./scripts/setup.sh &amp;&amp; ./scripts/setup_isabelle_cryptol.sh &amp;&amp; make verify</code></p>
 </body>
