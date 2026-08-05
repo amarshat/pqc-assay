@@ -2,23 +2,28 @@
 
 *Amar Akshat &middot; [github.com/amarshat](https://github.com/amarshat)*
 
-Post-quantum signatures are going into production now. ML-DSA (the NIST standard, formerly Dilithium) is
-showing up in eSIMs, in TLS libraries, in the Linux kernel. All of it gets tested the normal way: run the
-implementation against a set of known input/output pairs, check the outputs match.
+Post-quantum signatures are going into production now. [ML-DSA](https://doi.org/10.6028/NIST.FIPS.204)
+(the NIST standard, formerly Dilithium) is showing up in eSIMs, in TLS libraries, in the Linux kernel. All
+of it gets tested the normal way: run the implementation against a set of known input/output pairs, check
+the outputs match.
 
 Test vectors are not the same thing as correctness. They tell you the code is right on the inputs someone
 thought to check. They don't tell you it's right on the inputs nobody thought to check, and the arithmetic
 bugs that matter in this kind of code (an overflow, a missing reduction step, an off-by-one in a bound)
 are exactly the kind that pass test vectors and fail somewhere else. This isn't hypothetical. A real
 ML-DSA crate had a `<` that should have been `<=` in its signature verification, which let through
-signatures it should have rejected. It passed every test vector. It got a CVE.
+signatures it should have rejected. It passed every test vector. It got a CVE
+([CVE-2026-24850](https://github.com/RustCrypto/signatures/security/advisories/GHSA-5x2r-hc65-25f9)).
 
 I spent the last couple months machine-checking two independent, real-world ML-DSA implementations
-(the reference C code most deployments are built on, and a separate Rust crate) against the actual FIPS
-204 mathematical specification, not against a test suite. Using the same formal-verification toolchain
-Apple open-sourced in May for their own crypto library, SAW, Cryptol, and the Isabelle theorem prover.
-The difference from Apple's work: they verified code they wrote and control. I verified code neither I nor
-anyone I know wrote, exactly as any third party integrating it would have to.
+(the [reference C code](https://github.com/pq-crystals/dilithium) most deployments are built on, and a
+separate [Rust crate](https://github.com/RustCrypto/signatures)) against the actual FIPS 204 mathematical
+specification, not against a test suite. Using the same formal-verification toolchain
+[Apple open-sourced in May](https://security.apple.com/blog/formal-verification-corecrypto/) for their own
+crypto library: [SAW](https://github.com/GaloisInc/saw-script), [Cryptol](https://github.com/GaloisInc/cryptol),
+and the [Isabelle](https://isabelle.in.tum.de/) theorem prover. The difference from Apple's work: they
+verified code they wrote and control. I verified code neither I nor anyone I know wrote, exactly as any
+third party integrating it would have to.
 
 ## What "machine-checked" actually means here
 
@@ -35,7 +40,8 @@ The core arithmetic transform at the heart of both signing and verifying (the NT
 checks out against the spec, both directions, on both implementations. Along the way I also found two
 places where the reference code's own documentation comments describe the wrong output range at an edge
 case. Neither is a real bug, the code itself is correct there, but it's the kind of thing that only turns
-up when you actually try to prove the stated contract rather than trust the comment. I reported it upstream.
+up when you actually try to prove the stated contract rather than trust the comment. I reported it
+[upstream](https://github.com/pq-crystals/dilithium/issues/114).
 
 The more interesting result wasn't a bug at all. It was where the verification tools themselves stopped
 working. One piece of arithmetic (a wide modular reduction used inside the transform) turned out to be

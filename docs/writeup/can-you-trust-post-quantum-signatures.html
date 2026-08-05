@@ -214,11 +214,12 @@ id="can-you-trust-your-post-quantum-signature-code-or-just-its-test-suite">Can
 you trust your post-quantum signature code, or just its test suite?</h1>
 <p><em>Amar Akshat · <a
 href="https://github.com/amarshat">github.com/amarshat</a></em></p>
-<p>Post-quantum signatures are going into production now. ML-DSA (the
-NIST standard, formerly Dilithium) is showing up in eSIMs, in TLS
-libraries, in the Linux kernel. All of it gets tested the normal way:
-run the implementation against a set of known input/output pairs, check
-the outputs match.</p>
+<p>Post-quantum signatures are going into production now. <a
+href="https://doi.org/10.6028/NIST.FIPS.204">ML-DSA</a> (the NIST
+standard, formerly Dilithium) is showing up in eSIMs, in TLS libraries,
+in the Linux kernel. All of it gets tested the normal way: run the
+implementation against a set of known input/output pairs, check the
+outputs match.</p>
 <p>Test vectors are not the same thing as correctness. They tell you the
 code is right on the inputs someone thought to check. They don’t tell
 you it’s right on the inputs nobody thought to check, and the arithmetic
@@ -227,13 +228,20 @@ step, an off-by-one in a bound) are exactly the kind that pass test
 vectors and fail somewhere else. This isn’t hypothetical. A real ML-DSA
 crate had a <code>&lt;</code> that should have been <code>&lt;=</code>
 in its signature verification, which let through signatures it should
-have rejected. It passed every test vector. It got a CVE.</p>
+have rejected. It passed every test vector. It got a CVE (<a
+href="https://github.com/RustCrypto/signatures/security/advisories/GHSA-5x2r-hc65-25f9">CVE-2026-24850</a>).</p>
 <p>I spent the last couple months machine-checking two independent,
-real-world ML-DSA implementations (the reference C code most deployments
-are built on, and a separate Rust crate) against the actual FIPS 204
-mathematical specification, not against a test suite. Using the same
-formal-verification toolchain Apple open-sourced in May for their own
-crypto library, SAW, Cryptol, and the Isabelle theorem prover. The
+real-world ML-DSA implementations (the <a
+href="https://github.com/pq-crystals/dilithium">reference C code</a>
+most deployments are built on, and a separate <a
+href="https://github.com/RustCrypto/signatures">Rust crate</a>) against
+the actual FIPS 204 mathematical specification, not against a test
+suite. Using the same formal-verification toolchain <a
+href="https://security.apple.com/blog/formal-verification-corecrypto/">Apple
+open-sourced in May</a> for their own crypto library: <a
+href="https://github.com/GaloisInc/saw-script">SAW</a>, <a
+href="https://github.com/GaloisInc/cryptol">Cryptol</a>, and the <a
+href="https://isabelle.in.tum.de/">Isabelle</a> theorem prover. The
 difference from Apple’s work: they verified code they wrote and control.
 I verified code neither I nor anyone I know wrote, exactly as any third
 party integrating it would have to.</p>
@@ -255,7 +263,8 @@ places where the reference code’s own documentation comments describe
 the wrong output range at an edge case. Neither is a real bug, the code
 itself is correct there, but it’s the kind of thing that only turns up
 when you actually try to prove the stated contract rather than trust the
-comment. I reported it upstream.</p>
+comment. I reported it <a
+href="https://github.com/pq-crystals/dilithium/issues/114">upstream</a>.</p>
 <p>The more interesting result wasn’t a bug at all. It was where the
 verification tools themselves stopped working. One piece of arithmetic
 (a wide modular reduction used inside the transform) turned out to be
