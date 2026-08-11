@@ -60,13 +60,15 @@ mlkem-reduce:
 	@echo ">> SAW: ML-KEM-512 reduce layer == Cryptol model + math correctness (16-bit, direct SMT)"
 	$(SAW) proof/saw/mlkem_reduce.saw
 
-## ML-KEM-512 forward NTT: C ntt() == Cryptol model (7 Cooley-Tukey levels, -fwrapv bitcode,
-## montgomery_reduce uninterpreted override). Uses SBV unint_z3: the what4 w4_unint_z3 backend
-## does not terminate on this goal within 9 min, the reverse of the reduce-layer solver behaviour.
+## ML-KEM-512 forward + inverse NTT: C ntt()/invntt() == Cryptol model (7 Cooley-Tukey /
+## Gentleman-Sande levels, -fwrapv bitcode, montgomery_reduce + barrett_reduce uninterpreted
+## overrides). Uses SBV unint_z3: the what4 w4_unint_z3 backend does not terminate on the forward
+## goal within 9 min, the reverse of the reduce-layer solver behaviour. Both directions carry
+## inline result(+1) non-vacuity mutants.
 mlkem-ntt:
 	@mkdir -p build
 	CLANG=$(CLANG) ./scripts/build_bitcode.sh target/pqclean-mlkem build/mlkem_ntt.bc
-	@echo ">> SAW: ML-KEM-512 forward NTT == Cryptol model (7 levels, wrapv, SBV unint_z3)"
+	@echo ">> SAW: ML-KEM-512 forward + inverse NTT == Cryptol model (wrapv, SBV unint_z3)"
 	$(SAW) proof/saw/mlkem_ntt.saw
 
 ## ML-KEM-512 Isabelle: lifted forward NTT model ≡ FIPS-203 degree-2 residue transform. Builds

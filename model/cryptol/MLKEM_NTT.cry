@@ -177,3 +177,65 @@ nttLevel i a = [ bf m | m <- [0 .. 255] : [256][16] ]
 ntt : [256][16] -> [256][16]
 ntt a0 = foldl step a0 ([0, 1, 2, 3, 4, 5, 6] : [7][16])
   where step a i = nttLevel i a
+
+// --- inverse NTT (ntt.c invntt_tomont) --------------------------------------------------
+// Bit-exact model of the C `invntt_tomont`. 7 Gentleman-Sande levels (len = 2 << ell for
+// ell = 0..6, i.e. len = 2,4,...,128 -- the reverse of the forward level order), then a
+// final per-coefficient multiply by f = mont^2/128 = 1441 that folds in the 128^{-1}
+// normalization and leaves the result in the Montgomery domain (the "tomont" in the name).
+//
+// Unlike ML-DSA's inverse, this C re-reduces the low leg every level
+// (`r[j] = barrett_reduce(t + r[j+len])`) instead of leaving it unreduced to double, so
+// there is no per-level magnitude growth to bound here -- a simpler overflow story than
+// ML-DSA's inverse needed.
+//
+// Built element-wise from the previous array, mirroring the C's read-before-write: at level
+// ell (len = 2 << ell, twolen = 2*len), index m is a "low" leg j when (m mod twolen) < len,
+// with new value barrett_reduce(a[j] + a[j+len]) (both OLD legs); otherwise it is a "high"
+// leg j+len, with new value fqmul(zeta, a[j+len] - a[j]) (also OLD legs). The C counter runs
+// k = 127 down to 1 with `zeta = zetas[k--]`, so block b of level ell (b = m / twolen) uses
+// zeta = zetas[top - b], where base = 1 << (6 - ell) and top = 2*base - 1: level ell covers
+// exactly the same zeta range [base .. top] the forward model's mirror level (128 >> (6-ell)
+// = 2 << ell = len) covers, just walked top-down here instead of bottom-up.
+invnttLevel : [16] -> [256][16] -> [256][16]
+invnttLevel ell a = [ bf m | m <- [0 .. 255] : [256][16] ]
+  where
+    len    = 2 << ell
+    twolen = len << 1
+    base   = 1 << (6 - ell)
+    top    = 2 * base - 1
+    bf : [16] -> [16]
+    bf m = if (m % twolen) < len
+             then barrett_reduce ((a @ m) + (a @ (m + len)))
+             else fqmul (zetas @ (top - ((m - len) / twolen))) ((a @ m) - (a @ (m - len)))
+
+// f = mont^2 / 128 mod q (ntt.c: `const int16_t f = 1441;`), applied via fqmul like every
+// other Montgomery multiply in the C.
+invf : [16]
+invf = 1441
+
+invntt : [256][16] -> [256][16]
+invntt a0 = [ fqmul (b @ j) invf | j <- [0 .. 255] : [256][16] ]
+  where
+    b = foldl step a0 ([0, 1, 2, 3, 4, 5, 6] : [7][16])
+    step a ell = invnttLevel ell a
+
+// Round-trip sanity: invntt(ntt(x)) == MONT * x (mod q), the same montgomery_reduce convention
+// this module already uses everywhere else (MONT = 2^16 mod q = -1044 centered, reduce.h).
+// Reduces the raw random [16] input through barrett_reduce first, so every test actually lands
+// in the domain a real polynomial's coefficients are kept in (|coeff| <= (q-1)/2 = 1664) instead
+// of vacuously satisfying a guard: unrestricted [16] input can push a bare `fqmul` argument pair
+// outside montgomery_reduce's documented precondition (only the low leg gets re-reduced by
+// barrett_reduce every level; the high leg's raw subtraction feeds fqmul directly), which is a
+// property of testing with unrealistic input, not a defect in the level derivation -- verified by
+// cross-checking the closed form against a direct transliteration of the C's k-counter loop in
+// Python first. Checked here via `:check` (random sampling), not proved -- the SAW/Isabelle legs
+// are what carry the actual assurance; this just catches a wrong index/sign derivation early.
+property roundtrip x0 = and [ (si16 (b @ i) - mont * si16 (x @ i)) % q == 0 | i <- [0 .. 255] ]
+  where
+    x : [256][16]
+    x = [ barrett_reduce xi | xi <- x0 ]
+    b : [256][16]
+    b = invntt (ntt x)
+    mont : Integer
+    mont = -1044

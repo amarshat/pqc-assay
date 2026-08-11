@@ -442,8 +442,8 @@ Target: `target/pqclean-mlkem/ntt.c` (same pin `202a8f9`). Model: `model/cryptol
   had to bound; the nsw and `-fwrapv` bitcodes differ only in poison, absent when nothing overflows).
 - **FIPS 203 forward-transform correctness: PROVEN (2026-07-23), gated in `make verify`** (see the
   next section). Still argued (shared with ML-DSA, per the no-UB note above): the nsw/`-fwrapv`
-  overflow bridge to the C. Not claimed for ML-KEM: the INVERSE NTT (forward direction only, unlike
-  ML-DSA which has both).
+  overflow bridge to the C. The INVERSE NTT's C ≡ Cryptol leg is now also proven (see the
+  2026-08-11 section below); its FIPS-203 correctness leg is not yet done.
 
 ## ML-KEM-512 forward NTT FIPS-203 residue correctness (go-wide slice 3, 2026-07-23)
 
@@ -475,10 +475,40 @@ vacuous). The no-sorry grep in verify.yml covers `spec/isabelle/kem`.
   whole chain (`montgomery_reduce_correct_kem`, `butterfly_law_kem`, `ntt_residue`) is stated
   uniformly over `sint_seq`. `si16` is only an internal alternate predicate on the model of equal
   value; no correctness theorem or routing step depends on it.
-- **Scope (stated plainly): forward only.** No ML-KEM inverse NTT, and no ML-KEM overflow-bound
-  theorem (not needed: the int16 butterfly cannot overflow int32, per the slice-2 no-UB note). The
-  published claim is "the method generalizes across two NIST standards on the forward transform +
-  reduce," not "complete NTT for ML-KEM." Inverse NTT is future work.
+- **Scope (stated plainly): forward FIPS-203 correctness only.** No ML-KEM overflow-bound theorem
+  (not needed: the int16 butterfly cannot overflow int32, per the slice-2 no-UB note). The published
+  claim is "the method generalizes across two NIST standards on the forward transform + reduce," not
+  "complete NTT for ML-KEM." As of 2026-08-11 the inverse NTT's C ≡ Cryptol leg is proven (below);
+  its FIPS-203 correctness leg is still future work, so "complete NTT for ML-KEM" is still not a
+  claim this project can make.
+
+## ML-KEM-512 inverse NTT, C ≡ Cryptol leg (go-wide slice 4, started 2026-08-11)
+
+Target: `target/pqclean-mlkem/ntt.c`, function `PQCLEAN_MLKEM512_CLEAN_invntt`. Model:
+`model/cryptol/MLKEM_NTT.cry` (`invntt`/`invnttLevel`, 7 Gentleman-Sande levels). Proof:
+`proof/saw/mlkem_ntt.saw` (extended) via `make mlkem-ntt`, exit 0 on 2026-08-11 (SAW 1.5.1).
+
+- **C ≡ Cryptol, `PQCLEAN_MLKEM512_CLEAN_invntt(a[256])`: VERIFIED under two's-complement
+  wrapping.** Proven on the `-fwrapv` bitcode (all inputs, no bound precondition), with both
+  `montgomery_reduce` and `barrett_reduce` passed as uninterpreted overrides. Non-vacuity checked
+  inline (a result[0]+1 mutant is rejected) -- NOT by `scripts/mutation_test.sh`, which only
+  mutates ML-DSA's `montgomery_reduce` and gives ML-KEM no coverage; the forward-NTT entry above
+  claiming general `mutation-test` coverage for ML-KEM is inaccurate and should be corrected or
+  given its own inline mutant to match.
+- **Index derivation cross-checked, not just typechecked.** The closed-form zeta index
+  (`zetas[top - b]`, `base = 1 << (6-ell)`, `top = 2*base-1`) was verified against a literal
+  transliteration of the C's `k`-counter loop in Python (127/127 block-zeta assignments match)
+  before being trusted, and the whole model was round-trip-checked in Cryptol
+  (`invntt(ntt(x)) == MONT*x mod q`, `:check roundtrip`, 2000/2000) on barrett-reduced input.
+- **Overflow / no-UB setting: simpler than the forward leg.** Unlike ML-DSA's inverse (unreduced
+  low leg, doubles per level, needed an 8-level Isabelle induction to bound), this C re-reduces the
+  low leg through `barrett_reduce` every level, so there is no per-level magnitude growth to
+  compose. Expected to argue the same way the forward leg does (int16 legs cannot overflow int32),
+  not yet done.
+- **Not yet claimed:** FIPS-203 inverse-transform correctness in Isabelle (the CRT-recombination
+  mirror of brick (c) `ntt_residue`, via a Gentleman-Sande mirror of `Kyber_Route.thy`); the
+  overflow/no-UB argument stated explicitly for the inverse; gating in `make verify` /
+  `mlkem-isabelle` (currently only the forward leg is Isabelle-gated).
 
 ## Tool/version pins
 Pinned and installed by `scripts/setup.sh` into `.tools/` (gitignored). Platform of record:

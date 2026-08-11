@@ -295,12 +295,30 @@ the 20 to "where this exact pipeline has an edge" collapses it to a handful:
   deferred cosmetic bridge" is genuinely cosmetic, not a seam: the whole chain
   (montgomery_reduce_correct_kem, butterfly_law_kem, ntt_residue) is stated over sint_seq, the signed
   reading of the exact bits SAW checks; si16 is only an internal model alt-predicate of equal value.
-  Scope, stated plainly: this is FORWARD NTT + reduce ONLY for ML-KEM. There is no ML-KEM inverse
-  NTT (contrast ML-DSA, which has forward + inverse). Overflow-freedom needs no coefficient-bound
-  induction here: the int16 butterfly cannot overflow int32, so the C is UB-free with no coefficient
-  bound (see ASSUMPTIONS, ML-KEM forward NTT slice 2). The honest paper claim is "the method
-  generalizes across two NIST standards, shown end-to-end on the forward transform + reduce for
-  both," NOT "complete NTT for both." ML-KEM inverse NTT is future work.
+  Scope, stated plainly at the time: this was FORWARD NTT + reduce ONLY for ML-KEM (contrast
+  ML-DSA, which has forward + inverse); see the 2026-08-11 entry below for the inverse leg since
+  started. Overflow-freedom needs no coefficient-bound induction here: the int16 butterfly cannot
+  overflow int32, so the C is UB-free with no coefficient bound (see ASSUMPTIONS, ML-KEM forward
+  NTT slice 2).
+
+  ML-KEM inverse NTT, C ≡ Cryptol leg DONE (2026-08-11): `invnttLevel`/`invntt` added to
+  `model/cryptol/MLKEM_NTT.cry` (7 Gentleman-Sande levels, zeta indices derived closed-form as
+  `zetas[top - b]` with `base = 1 << (6-ell)`, `top = 2*base-1`, cross-checked against a literal
+  transliteration of the C's `k`-counter loop in Python before trusting the closed form; final
+  `f = 1441` scale). Simpler than ML-DSA's inverse: the C re-reduces the low leg every level
+  (`barrett_reduce(t + r[j+len])`) instead of leaving it to double, so there is no per-level
+  growth to bound. Round-trip `invntt(ntt(x)) == MONT*x mod q` checked in Cryptol (`:check
+  roundtrip`, 2000/2000 on barrett-reduced input; an earlier unconstrained-input version of the
+  property threw a false counterexample by feeding `fqmul` outside `montgomery_reduce`'s
+  documented precondition, a test-domain bug not a model bug, caught by cross-checking against the
+  Python transliteration). `proof/saw/mlkem_ntt.saw` extended: `PQCLEAN_MLKEM512_CLEAN_invntt` ==
+  Cryptol `invntt` on the -fwrapv bitcode, montgomery_reduce + barrett_reduce as uninterpreted
+  overrides (`unint_z3`), plus an inline result[0]+1 non-vacuity mutant (the forward proof's claim
+  of `mutation-test` coverage is FALSE for ML-KEM -- that script only mutates ML-DSA's
+  montgomery_reduce; flagged, not yet fixed). `make mlkem-ntt` exits 0. NEXT: the Isabelle leg
+  (FIPS-203 inverse correctness -- CRT-recombine the degree-2 residues back via the Gentleman-Sande
+  mirror of `Kyber_Route.thy`/`Kyber_Residue.thy`, the real remaining work) and overflow-freedom
+  (expected short, no induction needed, barrett_reduce caps magnitude every level).
 - **Tier B (greenfield, deliberate new domain):** **bitcoin-core/secp256k1 field reduction** (the
   5×52 / 10×26 limb reduce — same shape as our Montgomery/Barrett work). Best *external* story
   (wallet/Bitcoin money, name recognition) and clean methodological transfer. Caveat: novelty is
