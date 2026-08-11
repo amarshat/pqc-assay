@@ -505,10 +505,23 @@ Target: `target/pqclean-mlkem/ntt.c`, function `PQCLEAN_MLKEM512_CLEAN_invntt`. 
   low leg through `barrett_reduce` every level, so there is no per-level magnitude growth to
   compose. Expected to argue the same way the forward leg does (int16 legs cannot overflow int32),
   not yet done.
+- **`barrett_reduce_correct_kem` PROVEN (2026-08-11)** (`kem/Kyber_Barrett.thy`, in the `Kem_Base`
+  session, no sorry/oops): for every int16 input (no precondition, unconditional like the SAW
+  proof), the lifted ML-KEM `barrett_reduce` returns the centered representative mod q:
+  `(r - a) mod 3329 = 0` and `-1664 <= r <= 1664`. Structurally different from montgomery's bridge
+  (this is a round-to-nearest Barrett reduction, not the conditional-subtract Barrett already
+  proven for RustCrypto's wider domain in `spec/isabelle/tier2/barrett/` -- that lemma is not
+  reused). The bound itself (`barrett_r_bound_kem`) is checked by `eval` enumerating the full
+  65536-value int16 domain rather than an algebraic interval derivation, since the domain is small
+  enough for that to be cheap and more robust than hand bounds. Non-vacuity checked by hand: a
+  deliberately wrong bound (1663 instead of 1664) was confirmed to make the build FAIL before
+  reverting. Needed because invntt's low leg re-reduces through `barrett_reduce` every level.
 - **Not yet claimed:** FIPS-203 inverse-transform correctness in Isabelle (the CRT-recombination
-  mirror of brick (c) `ntt_residue`, via a Gentleman-Sande mirror of `Kyber_Route.thy`); the
-  overflow/no-UB argument stated explicitly for the inverse; gating in `make verify` /
-  `mlkem-isabelle` (currently only the forward leg is Isabelle-gated).
+  mirror of brick (c) `ntt_residue`, via a Gentleman-Sande mirror of `Kyber_Route.thy`) -- this is
+  the bulk of the remaining work, comparable in scope to bricks (b)+(c) of the forward leg (which
+  took roughly a week of iterative proof engineering, 2026-07-18 to 2026-07-23); the overflow/no-UB
+  argument stated explicitly for the inverse; gating in `make verify` / `mlkem-isabelle` (currently
+  only the forward leg is Isabelle-gated).
 
 ## Tool/version pins
 Pinned and installed by `scripts/setup.sh` into `.tools/` (gitignored). Platform of record:

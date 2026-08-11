@@ -315,10 +315,27 @@ the 20 to "where this exact pipeline has an edge" collapses it to a handful:
   Cryptol `invntt` on the -fwrapv bitcode, montgomery_reduce + barrett_reduce as uninterpreted
   overrides (`unint_z3`), plus an inline result[0]+1 non-vacuity mutant (the forward proof's claim
   of `mutation-test` coverage is FALSE for ML-KEM -- that script only mutates ML-DSA's
-  montgomery_reduce; flagged, not yet fixed). `make mlkem-ntt` exits 0. NEXT: the Isabelle leg
-  (FIPS-203 inverse correctness -- CRT-recombine the degree-2 residues back via the Gentleman-Sande
-  mirror of `Kyber_Route.thy`/`Kyber_Residue.thy`, the real remaining work) and overflow-freedom
-  (expected short, no induction needed, barrett_reduce caps magnitude every level).
+  montgomery_reduce; flagged, not yet fixed). `make mlkem-ntt` exits 0.
+
+  Isabelle lift regenerated (2026-08-11, mechanical, cryptol-to-isabelle) to include
+  `invf`/`invnttLevel`/`invntt`/`roundtrip`; `Kem_Base` and `Kem_Work` both re-verified green on
+  top of it unchanged.
+
+  `barrett_reduce_correct_kem` PROVEN in Isabelle (2026-08-11, `spec/isabelle/kem/Kyber_Barrett.thy`,
+  new file in the `Kem_Base` session): for every int16 input, the lifted `barrett_reduce` is a
+  correct round-to-nearest Barrett reduction (centered representative mod q, `-1664 <= r <= 1664`).
+  The bound is checked by `eval` over the full 65536-value domain rather than an algebraic interval
+  derivation -- cheaper and more robust than hand bounds at this size. Non-vacuity spot-checked by
+  hand (a wrong bound was confirmed to fail the build, then reverted). This clears the arithmetic
+  prerequisite invntt's low leg needs (it re-reduces through barrett_reduce every level, unlike
+  montgomery_reduce which the forward proof already covered).
+
+  NEXT, and the real remaining work: the CRT-recombination brick -- Isabelle FIPS-203 inverse
+  correctness, mirroring brick (b)+(c) of the forward leg (`Kyber_Route.thy`/`Kyber_Residue.thy`)
+  but for the Gentleman-Sande direction. That took about a week of iterative proof engineering the
+  first time (2026-07-18 to 2026-07-23); expect comparable effort here, not a quick follow-on. Also
+  open: the overflow/no-UB argument stated explicitly for the inverse (expected short, no induction
+  needed, barrett_reduce caps magnitude every level) and gating the inverse in `make verify`.
 - **Tier B (greenfield, deliberate new domain):** **bitcoin-core/secp256k1 field reduction** (the
   5×52 / 10×26 limb reduce — same shape as our Montgomery/Barrett work). Best *external* story
   (wallet/Bitcoin money, name recognition) and clean methodological transfer. Caveat: novelty is

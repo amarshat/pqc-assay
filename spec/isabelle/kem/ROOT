@@ -14,6 +14,7 @@ session Kem_Base = "Number_Theoretic_Transform" +
   theories
     "MLKEM_NTT"
     "Kyber_Mont"
+    "Kyber_Barrett"
     "Kyber_NTT_Route"
 
 (* Thin child on the Kem_Base heap: the routing brick (b) proof-in-progress lives
