@@ -56,11 +56,23 @@ let ntt_spec = do {
 };
 // The SBV unint_z3 backend discharges this goal; the what4 w4_unint_z3 backend does not terminate
 // within 10 min on it (measured 2026-07-16), the reverse of the reduce-layer experience. Kept as a
-// solver-choice datum. Non-vacuity for the NTT is covered by the mutation-test harness (make
-// mutation-test), matching mldsa_ntt.saw, not by an inline output mutant here.
+// solver-choice datum.
 ntt_ov <- llvm_verify mw "PQCLEAN_MLKEM512_CLEAN_ntt" [mr_ov_w] true ntt_spec
                       (unint_z3 ["montgomery_reduce"]);
 print "VERIFIED: PQCLEAN_MLKEM512_CLEAN_ntt == Cryptol ntt (two's-complement wrapping; montgomery_reduce override)";
+
+// Non-vacuity: a wrong (result[0]+1) ntt spec must be REJECTED. NOT left to
+// scripts/mutation_test.sh -- that script only mutates ML-DSA's montgomery_reduce, so it gives
+// ML-KEM no coverage at all (a previous version of this comment claimed otherwise; that was
+// inaccurate). Checked inline instead, the same way the inverse proof below does it.
+let ntt_mut_spec = do {
+    (a, pa) <- ptr_to_fresh "a" (llvm_array 256 (llvm_int 16));
+    llvm_execute_func [pa];
+    llvm_points_to pa (llvm_term {{ update (ntt a) 0 ((ntt a) @ 0 + 1) }});
+};
+fails (llvm_verify mw "PQCLEAN_MLKEM512_CLEAN_ntt" [mr_ov_w] true ntt_mut_spec
+                   (unint_z3 ["montgomery_reduce"]));
+print "NON-VACUOUS: the result[0]+1 ntt spec is rejected with a counterexample";
 
 // --- inverse NTT: C invntt(a[256]) == Cryptol invntt, under two's-complement wrapping -------
 // invntt's low leg goes through barrett_reduce every level (unlike ML-DSA's inverse, which

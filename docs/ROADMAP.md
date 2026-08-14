@@ -314,8 +314,9 @@ the 20 to "where this exact pipeline has an edge" collapses it to a handful:
   Python transliteration). `proof/saw/mlkem_ntt.saw` extended: `PQCLEAN_MLKEM512_CLEAN_invntt` ==
   Cryptol `invntt` on the -fwrapv bitcode, montgomery_reduce + barrett_reduce as uninterpreted
   overrides (`unint_z3`), plus an inline result[0]+1 non-vacuity mutant (the forward proof's claim
-  of `mutation-test` coverage is FALSE for ML-KEM -- that script only mutates ML-DSA's
-  montgomery_reduce; flagged, not yet fixed). `make mlkem-ntt` exits 0.
+  of `mutation-test` coverage was FALSE for ML-KEM -- that script only mutates ML-DSA's
+  montgomery_reduce; the forward proof now has its own inline result[0]+1 mutant too, fixed
+  2026-08-14, so both directions have real coverage). `make mlkem-ntt` exits 0.
 
   Isabelle lift regenerated (2026-08-11, mechanical, cryptol-to-isabelle) to include
   `invf`/`invnttLevel`/`invntt`/`roundtrip`; `Kem_Base` and `Kem_Work` both re-verified green on

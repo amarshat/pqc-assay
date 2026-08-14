@@ -425,7 +425,10 @@ Target: `target/pqclean-mlkem/ntt.c` (same pin `202a8f9`). Model: `model/cryptol
   Proven on the `-fwrapv` bitcode (all inputs, no bound precondition), with `montgomery_reduce`
   passed as an uninterpreted override so the 896 butterfly calls collapse to a structural array
   equality. Cross-checked before the proof by a differential test against the compiled C on two
-  vectors (spread values and full int16 extremes): 256/256 identical.
+  vectors (spread values and full int16 extremes): 256/256 identical. Non-vacuity: an inline
+  result[0]+1 mutant is rejected with a counterexample (2026-08-14; previously this relied on a
+  comment claiming `scripts/mutation_test.sh` coverage, which was inaccurate -- that script only
+  mutates ML-DSA's montgomery_reduce and gave ML-KEM no coverage at all; fixed).
 - **Solver datum (paper-relevant):** the equality discharges under SBV `unint_z3` in ~3.5 s, but the
   what4 `w4_unint_z3` backend does NOT terminate on it within 9 min (measured). This is the reverse
   of the reduce layer, where z3 discharged the equivalences and cvc5 stalled. Backend choice, not
@@ -492,9 +495,9 @@ Target: `target/pqclean-mlkem/ntt.c`, function `PQCLEAN_MLKEM512_CLEAN_invntt`. 
   wrapping.** Proven on the `-fwrapv` bitcode (all inputs, no bound precondition), with both
   `montgomery_reduce` and `barrett_reduce` passed as uninterpreted overrides. Non-vacuity checked
   inline (a result[0]+1 mutant is rejected) -- NOT by `scripts/mutation_test.sh`, which only
-  mutates ML-DSA's `montgomery_reduce` and gives ML-KEM no coverage; the forward-NTT entry above
-  claiming general `mutation-test` coverage for ML-KEM is inaccurate and should be corrected or
-  given its own inline mutant to match.
+  mutates ML-DSA's `montgomery_reduce` and gives ML-KEM no coverage. The forward-NTT proof
+  (previous entry) has since been given the same inline mutant (2026-08-14), so this is no longer
+  a gap between the two.
 - **Index derivation cross-checked, not just typechecked.** The closed-form zeta index
   (`zetas[top - b]`, `base = 1 << (6-ell)`, `top = 2*base-1`) was verified against a literal
   transliteration of the C's `k`-counter loop in Python (127/127 block-zeta assignments match)
