@@ -21,7 +21,7 @@ GSM Association Official Document **SGP.29, "EID Definition and Assignment Proce
 
 ## What is proved
 
-`make eid-anchor`, about 45 seconds:
+`make eid-anchor`, about 60 seconds on an Apple M2 Max:
 
 - `gsma_eid_valid` in `ref/eid.c` computes exactly `eidValid` in `model/EID.cry`, for every 32-byte
   input, memory-safe, with no assumed specifications (SAW).

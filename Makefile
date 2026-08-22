@@ -239,7 +239,7 @@ claim-lint:
 	@./scripts/claim-lint.sh
 
 ## one at a time and rerun the matching SAW proof, measuring how many mutants the proofs kill. Slower
-## (~1 min, rebuilds + reruns SAW per mutant); a report, not a gate, so it is not in the saw.yml push
+## (about five minutes: it rebuilds and reruns SAW per mutant); a report, not a gate, so it is not in the saw.yml push
 ## check. Runs on a copy; tracked files are untouched.
 qseal-mutants:
 	@echo ">> mutation-adequacy: operator mutants of the C references vs the SAW proofs (kill ratio)"

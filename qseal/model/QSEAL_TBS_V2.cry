@@ -124,6 +124,9 @@ serialize2_omitting_commitment t = serialize2 (t' t)
 property commitment_is_signed t1 t2 =
   (t1.pair_commitment != t2.pair_commitment) ==> (serialize2 t1 != serialize2 t2)
 
+// DEFINITIONAL: `serialize2_omitting_commitment` is defined to zero that slot, so of course two records
+// differing only there collide under it. It names the failure the V2 revision exists to prevent, which
+// is why it is kept, but it is not evidence.
 property omitting_commitment_breaks_binding t1 t2 =
   ((t1.pair_commitment != t2.pair_commitment)
    /\ (t1.version == t2.version) /\ (t1.suite_id == t2.suite_id)

@@ -1,6 +1,6 @@
 (* MUTANT of property5.pv: the builder is still reachable only from the internal callback, but signs a
    subject supplied by the handset. Query 1 still holds, so it is invisible there; queries 2 and 3 catch
-   it. That asymmetry is why those queries exist.
+   it.
 
    Q-SEAL section 16 property 5: PROFILE_ACTION_OBSERVED (assertion type 0x04) must not be obtainable
    through a host-exposed APDU path. Spec 8.4: that assertion type is produced only from a trusted
@@ -41,9 +41,14 @@ type key.
 free sk: key [private].              (* applet signing key *)
 fun sign(bitstring, key): bitstring.
 
-(* Two transcript shapes, so the assertion type is part of the signed bytes rather than a label. *)
-fun tbsHost(bitstring, bitstring, bitstring, bitstring, bitstring, bitstring): bitstring.
-fun tbsObserved(bitstring, bitstring, bitstring, bitstring): bitstring.
+(* ONE transcript constructor, with the assertion type as its first field. This matters more than it
+   looks. An earlier version of this model used two disjoint constructors, tbsHost/6 and tbsObserved/4,
+   with the type absent from the second. The host path could then never build the term the queries range
+   over, whatever it did, so the queries held with the spec 8.4 guard deleted: the model proved that a
+   term nobody constructs cannot be constructed. QSEAL_TBS.cry puts assertion_type inside one record
+   with sixteen other fields, and this follows it. verify_reachability.sh now runs a guard-ablation
+   variant precisely so that class of error fails the gate instead of passing it. *)
+fun tbs(bitstring, bitstring, bitstring, bitstring, bitstring): bitstring.
 
 const OBSERVED: bitstring.           (* assertion type PROFILE_ACTION_OBSERVED (0x04) *)
 
@@ -64,7 +69,7 @@ let hostCreate =
   if t <> OBSERVED then
   (
     event SignedOther(t);
-    out(host, sign(tbsHost(t, v, n, s, d, p), sk))
+    out(host, sign(tbs(t, v, s, d, p), sk))
   ).
 
 (* Profile-event source inside the eUICC. The attacker drives the handset, so it names which profile to
@@ -89,7 +94,7 @@ let observedAssert =
   in(host, subject2: bitstring);
   (* BUG: the signed transcript carries the handset's subject, not the callback's. *)
   event SignedObserved(id, subject, digest, policy);
-  out(host, sign(tbsObserved(id, subject2, digest, policy), sk)).
+  out(host, sign(tbs(OBSERVED, id, subject2, digest, policy), sk)).
 
 (* 1. Every observed-action assertion the applet signs follows an internal event carrying the same data.
       Non-injective: see the header. *)
@@ -102,14 +107,14 @@ query id: bitstring, subject: bitstring, digest: bitstring, policy: bitstring;
       data. This is the query that fails if the builder signs handset-supplied fields, which query 1
       does not catch (property5_mutant_databind.pv). *)
 query id: bitstring, subject: bitstring, digest: bitstring, policy: bitstring;
-  attacker(sign(tbsObserved(id, subject, digest, policy), sk)) ==>
+  attacker(sign(tbs(OBSERVED, id, subject, digest, policy), sk)) ==>
   event(InternalFired(id, subject, digest, policy)).
 
 (* 3. The handset cannot get the card to attest content of the handset's choosing. Queries 1 and 2 are
       about the path; this is about the payload, and it is the one an earlier version of this model
       failed while still satisfying 1 and 2. *)
 query id: bitstring;
-  attacker(sign(tbsObserved(id, evilSubject, evilDigest, evilPolicy), sk)).
+  attacker(sign(tbs(OBSERVED, id, evilSubject, evilDigest, evilPolicy), sk)).
 
 (* 4. The applet signing key never reaches the attacker. *)
 query attacker(sk).

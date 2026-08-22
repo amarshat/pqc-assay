@@ -32,6 +32,7 @@ OUT="$(cryptol -b /dev/stdin <<'EOF' 2>&1
 :prove signed_is_validated
 :sat valid
 :sat bug_signs_malformed
+:sat valid_reachable
 :sat bug_signs_observed
 EOF
 )"
@@ -41,8 +42,8 @@ QED="$(printf '%s\n' "$OUT" | grep -c 'Q.E.D.' || true)"
 SAT="$(printf '%s\n' "$OUT" | grep -c 'Satisfiable' || true)"
 UNSAT="$(printf '%s\n' "$OUT" | grep -c 'Unsatisfiable' || true)"
 CEX="$(printf '%s\n' "$OUT" | grep -c 'Counterexample' || true)"
-if [ "$QED" -ne 2 ] || [ "$SAT" -ne 3 ] || [ "$UNSAT" -ne 0 ] || [ "$CEX" -ne 0 ]; then
-  echo "FAIL: model check expected 2 Q.E.D. + 3 Satisfiable (a valid request, the no-suite-check bug, the allow-observed bug) + 0 Unsatisfiable/Counterexample; got QED=$QED SAT=$SAT UNSAT=$UNSAT CEX=$CEX"
+if [ "$QED" -ne 2 ] || [ "$SAT" -ne 4 ] || [ "$UNSAT" -ne 0 ] || [ "$CEX" -ne 0 ]; then
+  echo "FAIL: model check expected 2 Q.E.D. + 4 Satisfiable (a reachable valid request, a reachable accept, the no-suite-check bug, the allow-observed bug) + 0 Unsatisfiable/Counterexample; got QED=$QED SAT=$SAT UNSAT=$UNSAT CEX=$CEX"
   exit 1
 fi
 echo "OK: model validation properties (2/2 Q.E.D.), a valid request exists (SAT), and the no-suite-check + allow-observed gates are over-permissive (SAT)"

@@ -40,25 +40,24 @@ $(awk '
 EOF
 done
 
-note "== 2. every ProVerif model has a reachability witness =="
+note "== 2. the ProVerif gate derives its own witness and ablates its guard =="
+# Checking that a file named *_reachable.pv exists is not enough: it can be a stale copy of the model
+# that certifies itself. Require the gate to GENERATE its variants from the model, and to run a
+# guard-ablation variant, so a guard that is not load-bearing fails the gate.
+if grep -q 'gen_variants.py' qseal/verify_reachability.sh; then
+  note "  witness and ablation are generated from the model, not checked in"
+else
+  bad "qseal/verify_reachability.sh does not generate its variants; a checked-in witness can drift from the model (OF-3)"
+fi
+grep -q 'ablation' qseal/verify_reachability.sh || bad "qseal/verify_reachability.sh has no guard-ablation run, so a guard that does nothing would pass"
+grep -q 'VACUITY' qseal/verify_reachability.sh || bad "qseal/verify_reachability.sh has no vacuity gate"
 for f in qseal/proof/proverif/*.pv; do
-  case "$(basename "$f")" in *_reachable.pv|*_mutant*.pv) continue;; esac
-  base="${f%.pv}"
-  if [ -f "${base}_reachable.pv" ]; then
-    printf '  %-28s witness present\n' "$(basename "$f")"
-  else
-    bad "$f has no $(basename "${base}")_reachable.pv witness; a query whose antecedent cannot fire holds vacuously (OF-3)"
-  fi
-done
-for f in qseal/proof/proverif/*.pv; do
-  # a private channel that is never written makes every process guarded on it dead
   for ch in $(grep -oE 'free [a-zA-Z_][a-zA-Z0-9_]*: channel \[private\]' "$f" | awk '{print $2}' | tr -d ':'); do
     if grep -q "in($ch," "$f" && ! grep -q "out($ch," "$f"; then
       bad "$f: private channel '$ch' is read but never written, so the reading process is dead code (OF-3)"
     fi
   done
 done
-grep -q 'VACUITY' qseal/verify_reachability.sh || bad "qseal/verify_reachability.sh has no vacuity gate"
 
 note "== 3. every assumed spec is justified in docs/ASSUMPTIONS.md =="
 assumed=0
@@ -85,8 +84,11 @@ done
 note "== 4. every mutation figure in the docs agrees =="
 # The mutation count was stated four different ways across the tree once. Collect every "N of M ...
 # mutants" claim and fail if they disagree, so a re-measurement cannot update one file and leave three.
-figs="$(git ls-files '*.md' | xargs grep -ohE '[0-9]+ of [0-9]+ (such |systematic )?[a-z/-]*mutants' 2>/dev/null \
-        | grep -oE '[0-9]+ of [0-9]+' | sort -u)"
+# Both spellings: "55 of 58 ... mutants" and "a 55/58 mutation-adequacy pass". The first version of
+# this check only knew the first spelling and sat green next to a stale 42/44 for a week.
+figs="$( { git ls-files '*.md' | xargs grep -ohE '[0-9]+ of [0-9]+ (such |systematic )?[a-z/-]*mutants' 2>/dev/null | grep -oE '[0-9]+ of [0-9]+' | tr ' ' '/' | sed 's|/of/|/|'
+          git ls-files '*.md' | xargs grep -ohE '[0-9]+/[0-9]+ mutation-adequacy' 2>/dev/null | grep -oE '[0-9]+/[0-9]+'
+        } | sort -u)"
 nfig="$(printf '%s\n' "$figs" | grep -c . || true)"
 if [ "$nfig" -gt 1 ]; then
   bad "mutation figures disagree across the docs: $(printf '%s' "$figs" | tr '\n' ' ')"

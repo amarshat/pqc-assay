@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Mutation-adequacy harness for the Q-SEAL C references.
 
+Exits non-zero if the result regresses against BASELINE below. It used to return 0 unconditionally,
+described as "a report, not a gate", which meant a run that killed nothing would have looked identical
+to a run that killed everything.
+
 The per-property SAW proofs each carry one hand-injected mutant, which shows the proof is sensitive to
 that one clause. This measures adequacy instead of sensitivity: it applies a defined operator set to the
 C reference systematically (one mutation per occurrence), reruns the matching SAW proof against the
@@ -25,6 +29,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+
+# Measured 2026-08-22 on an Apple M2 Max, SAW 1.5.1 with the bundled z3 4.8.14. Update deliberately,
+# with the run that justifies it, never to make a red run green.
+BASELINE = {"mutants": 58, "killed": 55, "survivors": 3}
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 QSEAL = os.path.join(REPO, "qseal")
@@ -227,8 +235,24 @@ def main():
         print("inspect by hand; a loop-bound `< -> <=` guarded downstream is the usual equivalent case):")
         for x in survivors:
             print(f"  {x}")
-    # This is a report, not a gate: equivalent mutants legitimately survive, so exit 0 and leave the
-    # survivor classification to a human.
+    # Gate against the recorded baseline. Equivalent mutants legitimately survive, so the classification
+    # of a survivor stays a human job, but the counts must not slip quietly: fewer mutants, fewer kills
+    # or more survivors than the baseline is a regression and fails.
+    regressed = []
+    if valid < BASELINE["mutants"]:
+        regressed.append(f"valid mutants fell to {valid}, baseline {BASELINE['mutants']}")
+    if kk < BASELINE["killed"]:
+        regressed.append(f"kills fell to {kk}, baseline {BASELINE['killed']}")
+    if ss > BASELINE["survivors"]:
+        regressed.append(f"survivors rose to {ss}, baseline {BASELINE['survivors']}")
+    if regressed:
+        print("\nFAIL: mutation adequacy regressed against the baseline in qseal/mutation/mutate.py")
+        for r in regressed:
+            print(f"  {r}")
+        return 1
+    if valid > BASELINE["mutants"] or kk > BASELINE["killed"]:
+        print(f"\nNOTE: better than baseline ({kk}/{valid} against {BASELINE['killed']}/"
+              f"{BASELINE['mutants']}). Update BASELINE in this file, quoting this run.")
     return 0
 
 

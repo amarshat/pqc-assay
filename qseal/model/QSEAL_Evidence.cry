@@ -65,6 +65,8 @@ property dropped_fragment_rejected fs i j =
     ((i : [2]) != j) /\ ((fs @ i).seq == (fs @ j).seq) ==> ~ (reassemble fs).ok
 
 // Fail closed on a mis-sized transfer: any fragment reporting the wrong total is rejected.
+// DEFINITIONAL: `wellformed`'s first conjunct is "every fragment reports total == NF" and `reassemble`
+// returns `ok = wellformed`, so this unfolds. Regression check, not independent content.
 property wrong_total_rejected fs =
     (~ (and [ f.total == `NF | f <- fs ])) ==> ~ (reassemble fs).ok
 

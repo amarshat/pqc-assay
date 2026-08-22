@@ -83,7 +83,13 @@ def main():
                 continue
 
             saw = run(f'{env}saw eid.saw', work / "proof")
-            saw_pass = "VERIFIED:" in saw.stdout
+            # Judge the equality obligation on its own, from saw's own report, not from the exit code of
+            # the whole file: a paired mutation can make an injected mutant behaviourally identical to
+            # the honest function, so the `fails (...)` guard beside it fails and saw exits non-zero for
+            # a reason that has nothing to do with the question here. An earlier version read only
+            # stdout and reported that case as if the obligation had passed.
+            saw_obligation = "VERIFIED: gsma_eid_valid ==" in saw.stdout
+            guards_ok = saw.returncode == 0
 
             vectors = run(
                 f'{env}cryptol -b /dev/stdin <<\'EOF\'\n'
@@ -94,17 +100,25 @@ def main():
             n_qed = vectors.stdout.count("Q.E.D.")
             vec_pass = n_qed == 6
 
-            results.append((mut["name"],
-                            "PASSES (blind to it)" if saw_pass else "fails",
+            if saw_obligation and guards_ok:
+                saw_verdict = "PASSES (blind to it)"
+            elif saw_obligation:
+                saw_verdict = "PASSES; a mutant guard collapses"
+            else:
+                saw_verdict = "FAILS (catches it)"
+            results.append((mut["name"], saw_verdict,
                             f"CATCHES it ({6 - n_qed}/6 vectors fail)" if not vec_pass else "blind to it"))
 
     print("\nPaired specification+implementation mutations, GSMA SGP.29 anchor")
     print("=" * 78)
-    print(f"{'mutation':<46} {'C == spec proof':<22} vectors")
-    print("-" * 78)
+    print(f"{'mutation':<40} {'C == spec obligation':<30} vectors")
+    print("-" * 96)
     for name, saw, vec in results:
-        print(f"{name:<46} {saw:<22} {vec}")
-    print("-" * 78)
+        print(f"{name:<40} {saw:<30} {vec}")
+    print("-" * 96)
+    print("A paired mutation moves the model and the code together, so the equality obligation cannot")
+    print("see it. Where a row says a mutant guard collapses, that is an injected mutant becoming")
+    print("identical to the honest function, which is a side effect of the mutation, not detection of it.")
     blind = sum(1 for _, saw, _ in results if saw.startswith("PASSES"))
     caught = sum(1 for _, _, vec in results if vec.startswith("CATCHES"))
     print(f"{blind}/{len(results)} invisible to the equality proof; {caught}/{len(results)} caught by "

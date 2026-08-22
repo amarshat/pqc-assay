@@ -94,4 +94,7 @@ property roundtrip_parse_serialize t = parse (serialize t) == t
 property roundtrip_serialize_parse b = well_formed b ==> (serialize (parse b) == b)
 
 // (3) Injectivity: distinct transcripts never collide on the wire. No transcript-level malleability.
+// DERIVED in one step from (1): if `parse . serialize` is the identity then `serialize` is injective.
+// Counted here because it is the statement the property is about, but it is not independent of (1), the
+// same way commitment_is_signed in QSEAL_TBS_V2.cry is not independent of serialize2_injective.
 property serialize_injective t1 t2 = (serialize t1 == serialize t2) ==> (t1 == t2)

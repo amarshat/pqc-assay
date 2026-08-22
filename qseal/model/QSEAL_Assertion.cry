@@ -82,6 +82,9 @@ property binds_challenge r a =
 
 // Property 2b: the applet-identity fields come from the applet, not the request. A malicious host
 // cannot make the transcript claim a different issuer, attestation key, or protocol version.
+// DEFINITIONAL, same shape as binds_challenge above: `build` assigns these three fields from the
+// applet record, so given the proved round trip this unfolds to `x == x`. Kept as a
+// specification-mutation regression check; the content is in the SAW obligation.
 property applet_controls_identity r a =
       (t.issuer_id == a.issuer_id)
    /\ (t.ak_id == a.ak_id)

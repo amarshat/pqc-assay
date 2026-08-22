@@ -75,10 +75,16 @@ valid_nosuite r a =
     o = r.assertion_origin @ 0
 
 // A witness that the bug is real: the buggy gate accepts a request the spec rejects. `:sat` must be
-// Satisfiable, which catches the mutant and shows the good properties are non-vacuous (valid is
-// reachable, since valid_nosuite is a relaxation of valid).
+// Satisfiable. Note what it does NOT show: every satisfying point of this formula has `valid` FALSE by
+// construction, so it says nothing about whether `valid` is reachable. That needs its own obligation,
+// which is `valid_reachable` below. The comment here used to claim otherwise.
 bug_signs_malformed : Request -> AppletId -> Bit
 bug_signs_malformed r a = valid_nosuite r a && (~ valid r a)
+
+// Non-vacuity for the accept side: some request is actually valid, so the properties above are not
+// statements about an empty set.
+valid_reachable : Request -> AppletId -> Bit
+valid_reachable r a = valid r a
 
 // A second buggy validator that keeps the suite check but drops the observed-type rejection, so it would
 // let the host sign a PROFILE_ACTION_OBSERVED (0x04) assertion (spec 8.4 forbids this; property 5).

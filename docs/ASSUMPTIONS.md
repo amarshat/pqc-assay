@@ -77,7 +77,7 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   int32" was WRONG: 256*Q = 2145386752 < 2^31 = 2147483648, headroom ~2.1M. The true int32-safe ceiling is
   `B_0 <= 2^23-1 = 8388607`, above `Q-1 = 8380416` by ~8191, so `|coeff| < Q` sits inside it with slack; a
   full doubling to a `2Q` window WOULD overflow: `512*(Q-1) = 4290772992 > 2^31`.)
-  ★ GAP NOW CLOSED (functional, inverse) — 2026-08-02: `invntt_signed_correct`
+  ★ GAP NOW CLOSED (functional, inverse) ,  2026-08-02: `invntt_signed_correct`
   (`spec/isabelle/tier2/invsignwork/Inv_Signed_Bridge.thy`, session `Tier2_InvSigned`, no sorry/oops/smt,
   in-session verified, gated in `make verify` via `tier2-invsigned`) lifts the FUNCTIONAL inverse bridge
   from `[0,Q)` to the signed centered `|coeff| < Q` window (`ntt_bounded 8380416 w`): `ntt_bounded 8380416
@@ -108,10 +108,10 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
 - **Parameter-set independence.** `montgomery_reduce` is byte-identical across ML-DSA-44/65/87 (same
   `Q`, `QINV`, `reduce.c`); the proof holds for all three. The "-44" pin is cosmetic for this function.
 - **C undefined-behavior / overflow setting.** Two bitcodes are built (`scripts/build_bitcode.sh`):
-  - *default (`nsw`)* — used for the **reduce.c** proofs, which therefore DO assert absence of
+  - *default (`nsw`)* ,  used for the **reduce.c** proofs, which therefore DO assert absence of
     signed-overflow UB in their documented input ranges (`montgomery_reduce` under `mont_in_range`,
     `reduce32` under `a <= 2^31-2^22-1`).
-  - *`-fwrapv`* — used for the **forward and inverse NTT** functional proofs. The NTT does unreduced
+  - *`-fwrapv`* ,  used for the **forward and inverse NTT** functional proofs. The NTT does unreduced
     int32 add/sub (`a[j] ± t`) that overflow for unbounded inputs, so we prove functional equivalence
     under two's-complement wrapping (what the code computes; matches the mod-2^n model), for all
     inputs with no bound. **Forward: the nsw side is now ALSO proven directly** (2026-07-10,
@@ -141,12 +141,12 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   inline-asm/intrinsic leaves, but it IS part of the trust base:
   - `<u32 as cmov::Cmov>::cmovnz` (`cmov-0.5.4 backends::aarch64::{impl#1}`): assumed
     `*self = (condition != 0) ? *value : *self`. Justified by reading the asm (`tst {cond},0xff;
-    csel {self},{value},{self},NE`) — `csel ...,NE` selects `value` when the `tst` cleared Z, i.e.
+    csel {self},{value},{self},NE`) ,  `csel ...,NE` selects `value` when the `tst` cleared Z, i.e.
     when `condition != 0`. This is exactly the crate's documented `cmovnz` ("move if non-zero")
     contract. It is the only asm primitive on the `reduce` path.
   - `<u32 as cmov::CmovEq>::cmoveq` (`cmov-0.5.4 backends::aarch64::{impl#4}`, reached via ctutils
     `ct_eq` in `decompose`): assumed `*output = (*self == *rhs) ? input : *output`. Justified by
-    reading the asm (cseleq32: `eor t,{lhs},{rhs}; cmp t,0; csel {out},{input},{out},EQ` —
+    reading the asm (cseleq32: `eor t,{lhs},{rhs}; cmp t,0; csel {out},{input},{out},EQ` , 
     `csel ...,EQ` selects `input` exactly when `lhs ^ rhs == 0`; the surrounding Rust truncates the
     u16 temp back to the u8 `*output`, and all values flowing in are u8-range). Used by the hint-layer
     proofs (2026-06-12). The `cmovne`/u16/u64 variants are NOT overridden (not on any verified path).
@@ -156,7 +156,7 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   `mod_plus_minus::<SpecQ>`) and M = 2*gamma2 = 190464 (Decompose) monomorphizations in addition to
   keygen's M = 2^d = 8192 (Power2Round). All three are proven `reduce(x) == x mod M` for **all**
   `u32 x`, no precondition: 2^d because the power-of-two Barrett shift is exact, q and 2*gamma2
-  because both exceed 2^16 so the standard `x < M^2` Barrett condition covers the whole u32 domain —
+  because both exceed 2^16 so the standard `x < M^2` Barrett condition covers the whole u32 domain , 
   and for those two the conditional-subtract branch is LIVE (the genuinely bug-prone Barrett-precision
   case), checked exactly by Z3 over all u32. **Parameter-set scope:** 2*gamma2 = 190464 is the
   ML-DSA-44 value; ML-DSA-65/87 use 2*gamma2 = 523776, a distinct monomorphization not in this MIR
@@ -185,11 +185,11 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   - EARNED (z3): `proof/ntt/escape2_core.saw` proves the Barrett identity `barrettInt X == X % q`
     over all `X ∈ [0, 2^46)` as an **unbounded-Integer** goal (the form that dodges bit-blasting).
   - EARNED (z3): `proof/ntt/barrett_bridge_evidence.saw` proves the **exact bit-vector mirror** of
-    the impl arithmetic (`barrett_bridge.cry::barrettBV`) equals `x % q` for `x < 2^24` — i.e. the
+    the impl arithmetic (`barrett_bridge.cry::barrettBV`) equals `x % q` for `x < 2^24` ,  i.e. the
     model used to reason about the impl is correct at tractable width.
   - ADMITTED (the gap): the BV↔bounded-Integer lift at width ~66+ (product `< 2^69`).
     SAW has no native tactic for it; hand-built bridge lemmas themselves cliff at W=64, and the
-    direct `mir_verify` residual (`impl == barrettBV`) bit-blasts the wide multiply + `>>46` —
+    direct `mir_verify` residual (`impl == barrettBV`) bit-blasts the wide multiply + `>>46` , 
     z3 ran **3h15m without converging** (measured 2026-06-17). This is saw-script discussion #3306,
     confirmed by SAW maintainer RyanGlScott: SMT tools "fundamentally struggle with" Barrett.
   - REDUCED (2026-07-02, `proof/ntt/spike2_lift.saw`, saw exit 0): the admitted gap above is
@@ -200,7 +200,7 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
     Integer core is EARNED (cvc5; z3 stalls on the nested `mod 2^128`); the bridge then closes by
     specializing that core onto the goal (`goal_insert_and_specialize`) and modus ponens (z3). Each
     homomorphism is witnessed true in-file (z3 at small width; quickcheck-500 at full width for the
-    nonlinear multiply/urem/smallReduce, which cliff for eager SMT — hence admitted). Companion
+    nonlinear multiply/urem/smallReduce, which cliff for eager SMT ,  hence admitted). Companion
     `proof/ntt/spike1_endgame.saw` (saw exit 0) confirms the residual's lifted target is exactly the
     escape2_core identity. This is a demonstration of the reduced trust base; it is NOT yet wired
     into `field_ops_bridged.saw`, which still carries the whole-function admit above. De-admitting
@@ -266,15 +266,15 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   The full forward/inverse NTT is the 8-fold composition of the verified layers. Mechanized
   (saw exit 0): each of the 16 layers (impl == FIPS Alg 41/42 body), and the *composed spec* is
   faithful to the independent `% q` transcription plus round-trip-consistent (`inv(fwd(w)) == 256·w
-  mod q`, the 256^-1 tail scaling being outside the layers) — `proof/ntt/ntt_full_check.saw`.
+  mod q`, the 256^-1 tail scaling being outside the layers) ,  `proof/ntt/ntt_full_check.saw`.
   NOT mechanized: that the pinned `ntt()` invokes those 8 layers *in that exact order*. The
   implementation's `Polynomial::ntt` / `NttPolynomial::ntt_inverse` are `pub(crate)` (correct
   encapsulation, not a defect) and the full transform is inlined, so there is no callable entry to
-  SAW-verify without modifying the vendored, pinned target — which we deliberately do NOT do (the
+  SAW-verify without modifying the vendored, pinned target ,  which we deliberately do NOT do (the
   pin is the value: we verify the crate as published). The call order is therefore taken
   **by inspection** of the pinned source (`ml-dsa-0.1.1/src/ntt.rs:80-87` forward / `142-149`
   inverse). This is the SAME category of trust as the existing "the harness's sign/verify entry
-  points force the monomorphizations" reachability assumption above — cheap to eyeball, pin-breaking
+  points force the monomorphizations" reachability assumption above ,  cheap to eyeball, pin-breaking
   to mechanize. It is NOT a correctness gap in the layers; it is a reachability/wiring fact about
   which verified pieces run in which order.
 - **Pinned, vendored target.** `ml-dsa 0.1.1` + `module-lattice 0.2.3` (provenance in
@@ -297,7 +297,7 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   - **Non-vacuity checked.** A control run with a deliberately wrong model (`result + 1`) made SAW
     fail with counterexample `a = 0`, confirming the precondition is satisfiable and the equality
     postcondition is really being asserted. (An earlier control swapping `>>$`→`>>` correctly still
-    passed — for this function the shift-by-32-then-truncate makes arithmetic/logical shift
+    passed ,  for this function the shift-by-32-then-truncate makes arithmetic/logical shift
     equivalent, so it is not a behavioral change.)
 - **C ≡ Cryptol for reduce32 / caddq / freeze: VERIFIED** (`make saw`, exit 0). `reduce32` under
   `a <= 2^31-2^22-1` (bounds the `a+(1<<22)` add against int32 overflow); `caddq` unconditional;
@@ -313,7 +313,7 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   for inputs with every coefficient in `+/-(2^31 - 2^27)`, the lifted model NTT keeps every
   coefficient in `+/-2080309256 < 2^31 - 1` through all 8 levels. The per-butterfly lemmas
   (`sint_add/sub_inrange`, `butterfly_node_*_bound`) establish that **every int32 add/sub stays in
-  `[-2^31, 2^31)` — no overflow** — and that every `montgomery_reduce` input stays in its half-open
+  `[-2^31, 2^31)` ,  no overflow** ,  and that every `montgomery_reduce` input stays in its half-open
   precondition (so the OF-1 endpoint is never hit). Proof = induction over 8 levels (`nttLevel_bounded`:
   one level grows `|coeff|` by `<= Q`, the montgomery output bound `|t| < Q` from
   `montgomery_reduce_correct`), with a *total* coefficient invariant that sidesteps modular index
@@ -341,19 +341,19 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
     `afp-2026-06-05`; heavy).
   - **Chaining:** with the SAW leg (C ≡ Cryptol model) this gives end-to-end: the deployed C
     `montgomery_reduce` computes a correct Montgomery residue mod Q. Note the two legs use slightly
-    different input predicates — SAW proves C ≡ model over the INCLUSIVE range `-2^31*Q ≤ a ≤ Q*2^31`
+    different input predicates ,  SAW proves C ≡ model over the INCLUSIVE range `-2^31*Q ≤ a ≤ Q*2^31`
     (`mont_in_range`), while the Isabelle correctness spec uses the HALF-OPEN `-2^31*Q ≤ a < 2^31*Q`
     (`mont_input_ok`, where the strict `-Q<r<Q` actually holds; OF-1). The composed end-to-end
     correctness claim therefore holds on the half-open intersection (which is the honest, maximal
     domain for the strict-bound spec).
 - **model ≡ spec for reduce32 / caddq / freeze (Isabelle leg): VERIFIED (2026-06-08).**
   `isabelle build -D spec/isabelle Assay` exits 0, no `sorry`/`oops`. The lifted Cryptol models satisfy:
-  - `caddq_correct`: `is_caddq` (residue-preserving; maps `[-Q,Q)` into `[0,Q)`) — unconditional.
+  - `caddq_correct`: `is_caddq` (residue-preserving; maps `[-Q,Q)` into `[0,Q)`) ,  unconditional.
   - `reduce32_correct`: `is_reduce32` (residue-preserving; output in the TRUE window
     `[-6283009, 6283008]`, see OF-2) over the SAW domain `a <= 2^31-2^22-1`. The output-bound proof
     is a floor-division interval argument with a case split at the extreme quotient `t = -256`.
   - `freeze_correct`: `is_freeze` (residue-preserving; output in `[0,Q)`) over the same domain,
-    proven compositionally — reduce32's window `[-6283009, 6283008]` lies in `[-Q, Q)`, satisfying
+    proven compositionally ,  reduce32's window `[-6283009, 6283008]` lies in `[-Q, Q)`, satisfying
     caddq's precondition. Chained with the SAW leg this gives C ≡ spec for the full `reduce.c` layer.
 - **NOT proven:** an Isabelle model≡FIPS-spec for the NTT *transform* (we have C≡model + model-level
   overflow-freedom, not the negacyclic-transform correctness); the full SAW mechanization of the
@@ -371,17 +371,17 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
   every field element (`x < q`, the crate's `Elem` domain), ML-DSA-44 monomorphizations:
   `decompose` == Algorithm 36 Decompose, `high_bits` == Algorithm 37 HighBits, `make_hint` ==
   Algorithm 39 MakeHint (all `z, r < q`), `use_hint` == Algorithm 40 UseHint. The Cryptol spec
-  (`fips204_hint44.cry`) is transcribed from FIPS 204 over signed 64-bit words — exact integer
-  semantics since every quantity in these algorithms has magnitude < 2^24, far below wrap — NOT from
+  (`fips204_hint44.cry`) is transcribed from FIPS 204 over signed 64-bit words ,  exact integer
+  semantics since every quantity in these algorithms has magnitude < 2^24, far below wrap ,  NOT from
   the implementation, so this is spec-conformance, not impl-vs-impl. **Non-vacuity checked:** four
   mutations (r0+1, r1+1, negated make_hint, use_hint+1) each fail with a counterexample.
   Trust base: the three assumed CT-layer specs (black_box, cmovnz, cmoveq) + mir-json soundness.
-  NOT covered: `bit_pack`/`bit_unpack` (the literal GHSA-5x2r-hc65-25f9 site — the strictly-increasing
+  NOT covered: `bit_pack`/`bit_unpack` (the literal GHSA-5x2r-hc65-25f9 site ,  the strictly-increasing
   index validation) and the polynomial/vector-level wrappers; scalar layer only.
 - **RustCrypto ml-dsa scalar algebra (Power2Round / infinity norm / mod+- q): VERIFIED (2026-06-12).**
   `saw implementations/rustcrypto-ml-dsa/proof/scalar/scalar.saw` exits 0 (3 proofs), each for every
   field element (`x < q`): `power2round` == FIPS 204 Algorithm 35, `infinity_norm` == `|. mod+- q|`
-  (Section 2.3 — this gates the security-critical z/ct0 norm checks), and `mod_plus_minus::<SpecQ>`
+  (Section 2.3 ,  this gates the security-critical z/ct0 norm checks), and `mod_plus_minus::<SpecQ>`
   == `r mod+- q` in the crate's mod-q representation. All three claims are parameter-set independent
   (q and d = 13 are fixed across ML-DSA-44/65/87). Spec `fips204_scalar44.cry`, same signed-[64]
   exact-integer transcription discipline. **Non-vacuity:** four mutations (r1+1, r0+1, norm+1,
@@ -535,7 +535,7 @@ Pinned and installed by `scripts/setup.sh` into `.tools/` (gitignored). Platform
 - cryptol-to-isabelle: bundled standalone in the SAW 1.5.1 tarball (first release to ship it).
 - Isabelle: **Isabelle2025-2** (Jan 2026), asset `Isabelle2025-2_macos.tar.gz` (universal bundle,
   upstream lists macOS 26 / Apple Silicon support).
-- clang: **Apple clang 17.0.0 (clang-1700.0.13.5)**, system `/usr/bin/clang` (NOT vendored — see below).
+- clang: **Apple clang 17.0.0 (clang-1700.0.13.5)**, system `/usr/bin/clang` (NOT vendored ,  see below).
   **Delta, 2026-08-22:** the Q-SEAL proofs were re-run on a second machine (Apple M2 Max, macOS 13.6)
   whose system compiler is Apple clang 14.0.3 (clang-1403.0.22.14.1). Every obligation discharges under
   both, which is mild evidence the results are not artefacts of one compiler's bitcode, but the pinned
@@ -599,6 +599,17 @@ all load-bearing:
   several assertions is not excluded. The pre-OF-3 model did prove the injective form, but only because
   both events were emitted by one process, which was an artefact of the modelling rather than a fact
   about the design.
+- **The transcript is ONE constructor, and that choice is load-bearing.** `property5.pv` builds every
+  signed object with `tbs(type, ...)`, mirroring `QSEAL_TBS.cry` where `assertion_type` is one field of
+  a single record. An earlier version used two disjoint constructors with the type absent from the
+  observed one; the host path then could not build the term the queries range over no matter what it
+  did, so the queries held with the spec 8.4 guard deleted. `verify_reachability.sh` now runs a
+  generated guard-ablation variant that must report queries 2 and 3 false, so that class of error fails
+  the gate. Found in review, not by the gate.
+- **The witness and ablation variants are GENERATED from the model** by
+  `qseal/proof/proverif/gen_variants.py` at verify time. They used to be checked-in copies, and a copy
+  certifies the copy: deleting the honest emitter from the model alone left the witness still reporting
+  the event reachable, with the gate green. That is OF-3 with one file of separation.
 - **The fourth query was added 2026-08-22 after review.** The first rebuild of this model read the
   attested subject, digest and policy from the host channel, so the handset could obtain a signed
   observed-action assertion carrying content of its own choosing while the first two queries still
@@ -648,13 +659,27 @@ figures come from. At `-O2` two of them do not reproduce, and both reasons are w
 - `hybrid.saw` fails, because clang inlines the placeholder verifier bodies in `qseal/ref/hybrid.c` and
   the `llvm_unsafe_assume_spec` overrides no longer have a call to attach to. This is an artefact of the
   placeholders, not of the property; a deployment links real verifiers and the overrides would apply.
-  The placeholders are now marked `__attribute__((noinline))`, which did NOT fix it: the obligation
-  still fails at `-O2` (measured 2026-08-22, `Subgoal failed: qseal_hybrid_accept`). Whatever the
-  optimiser does to that call site, keeping the callee out of line is not enough, and the cause has not
-  been run down. `-O0` is the supported configuration and the only one the figures come from.
+  The cause is interprocedural constant propagation, and it is worse than an override problem.
+  `clang -S -emit-llvm -O2` on `qseal/ref/hybrid.c` emits `ret i32 0` for `qseal_hybrid_accept`, for the
+  downgrade mutant and for the split-transcript mutant alike: the placeholder verifiers are `readnone`
+  and return a constant, so at `-O2` all three are the same constant function. `noinline` blocks
+  inlining but not return-value propagation, so it does not help. **This is a scope limit on property 3,
+  not a build quirk:** the property holds of the C as written, and the C as written is a constant
+  function once the optimiser can see the placeholders. A deployment linking real verifiers would not
+  collapse this way, and that deployment is not what was verified. `-O0` is the supported configuration and the only one the figures come from.
 - `evidence.saw` crashes the symbolic simulator: "You have encountered a bug in Crucible's
   implementation ... Attempting to evaluate poison value". That is an upstream defect worth reporting to
   Galois. It has NOT been filed; disclosure goes through the human per CONTRIBUTING.md.
+
+## Gating of the measured figures
+
+- `make qseal-mutants` gates against a baseline recorded in `qseal/mutation/mutate.py` (58 mutants, 55
+  killed, 3 survivors, measured 2026-08-22 on an Apple M2 Max with the bundled z3). It used to return 0
+  unconditionally, so a run that killed nothing looked like a run that killed everything. Classifying a
+  survivor is still a human job; the counts are not.
+- `make eid-spec-mutation` reports which checks see a paired specification-and-code mutation. Its
+  verdict now comes from `saw`'s exit code and its own obligation line rather than from a print
+  statement, after a review found it reporting "PASSES" for a run where `saw` had exited non-zero.
 
 ## CVE anchor fidelity (cve-anchor/fidelity/)
 
@@ -675,6 +700,10 @@ figures come from. At `-O2` two of them do not reproduce, and both reasons are w
   mutation list is hand-written, so it inherits the same authorship problem it is designed to expose,
   one level up.
 
+- **The SAW obligation targets the fold, not the standard's wording.** `eid.saw` proves
+  `gsma_eid_valid == eidValid`, and `eidValid` uses `checkDigitsValidFold`. `checkDigitsValid`, the
+  128-bit transcription of "the 32 digits as a decimal integer", is connected to it only by the bridge
+  lemma plus the induction below. No machine step connects the C to the clause GSMA wrote.
 - **The composition is argued, not mechanized.** The one-digit bridge lemma (reducing early equals
   reducing at the end when the accumulator is below 97) is proved, and the accumulator invariant is
   proved, but the step from those to "the 32-digit fold equals the standard's single remainder over the
@@ -758,12 +787,12 @@ hardest. Each is a real gap, not a formality.
     practice. The reference is mathematically correct; only the stated strict bound at the inclusive
     endpoint is wrong (the true guarantee over the inclusive domain is `-Q <= r <= Q`).
   - Origin & disclosure routing: the identical `montgomery_reduce` comment is in
-    **`pq-crystals/dilithium/ref/reduce.c`** (verified 2026-06-07) — PQClean only re-namespaces it.
+    **`pq-crystals/dilithium/ref/reduce.c`** (verified 2026-06-07) ,  PQClean only re-namespaces it.
     So the finding originates upstream and also affects PQ Code Package `mldsa-native` and liboqs.
     PQClean is being archived (July 2026), so the right disclosure home is **pq-crystals/dilithium**,
     not PQClean. **Do NOT auto-file upstream** (CLAUDE.md); surfaced to the maintainer (human) on
     2026-06-07 to decide deliberately.
-  - Impact on Assay: the SAW leg (C ≡ Cryptol model) is unaffected — it asserts no bound. The
+  - Impact on Assay: the SAW leg (C ≡ Cryptol model) is unaffected ,  it asserts no bound. The
     Isabelle correctness spec is stated over the **half-open** domain `-2^31*Q <= a < 2^31*Q`, where
     the strict `-Q < r < Q` is actually true; see `spec/isabelle/MLDSA_NTT_Spec.thy` (`mont_input_ok`).
 - **OF-2 (2026-06-08): PQClean `reduce32` doc-comment output bound is off by one on the low end
@@ -776,12 +805,12 @@ hardest. Each is a real gap, not a formality.
   `a=-2143289344`; max is `6283008` at `a=2143289343`. The congruence `r ≡ a (mod Q)` still holds.
   - Root cause: the documented bound `[-6283008, 6283008]` is correct only under the **symmetric**
     precondition `|a| <= 2^31-2^22-1` (which excludes `a=-2143289344`, since
-    `2143289344 > 2143289343`). The doc's one-sided precondition is too weak for its postcondition —
+    `2143289344 > 2143289343`). The doc's one-sided precondition is too weak for its postcondition , 
     either the precondition should be symmetric or the postcondition low end should be `-6283009`.
   - Severity: **documentation/contract only, not a security or functional bug** (same class as OF-1).
     The reduced value is always a correct residue; only the stated tightness is off, and ML-DSA call
     sites feed `reduce32` magnitudes far below this endpoint.
-  - Origin & disclosure routing: same as OF-1 — identical comment in `pq-crystals/dilithium/ref`;
+  - Origin & disclosure routing: same as OF-1 ,  identical comment in `pq-crystals/dilithium/ref`;
     route to **pq-crystals/dilithium**, not PQClean (archiving). **Do NOT auto-file** (CLAUDE.md);
     surfaced to the human 2026-06-08.
   - Impact on Assay: the SAW leg asserts no output bound, so it is unaffected. The Isabelle

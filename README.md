@@ -71,7 +71,7 @@ round-trip-or-fail-closed, 7 field-value validation before signing) are SAW proo
 matches a Cryptol model of the spec rule, each with an injected-mutant non-vacuity check (and a
 mutation-adequacy pass that kills 55 of 58 systematic relational/logical mutants of the C, the three
 survivors being equivalent mutants; `make qseal-mutants`). The seventh (5, `PROFILE_ACTION_OBSERVED`
-cannot be reached through a host-exposed APDU path) is a reachability property checked in ProVerif. See
+cannot be reached through a host-exposed APDU path) is a safety property checked in ProVerif. See
 [`qseal/README.md`](qseal/README.md) for the exact scope and non-claims of each. `make qseal-tbs
 qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-reachability`.
 

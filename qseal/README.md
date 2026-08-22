@@ -220,7 +220,7 @@ result at four fragments**, and generalising it needs a different proof structur
 ProVerif (Dolev-Yao) rather than the SAW/Cryptol pipeline. The model in `proof/proverif/property5.pv`
 has a signing key, two transcript shapes so the assertion type is inside the signed bytes, a host
 command handler that refuses type `0x04` (spec 8.4), a profile-event source, and a separate assertion
-builder reachable only over a private callback channel. Three queries, all discharged:
+builder reachable only over a private callback channel. Four queries, all discharged:
 
 1. every observed-action assertion the applet signs follows an internal event carrying the same data;
 2. every observed-typed signature the **attacker** can hold followed such an event;
@@ -306,9 +306,9 @@ All exit non-zero on failure. `verify_tbs.sh` needs `cryptol`; the SAW ones need
 
 ## Section 16 coverage
 
-All seven verification targets are now machine-checked: 1-4, 6, 7 as SAW proofs that a C reference equals
+Six and a half of the seven section 16 targets are machine-checked (property 7 covers field values, not lengths): 1-4, 6, 7 as SAW proofs that a C reference equals
 a Cryptol model of the spec rule (each with an injected-mutant non-vacuity check and a 42/44
-mutation-adequacy pass, see above), and 5 as a ProVerif reachability result. Properties 1-4/6/7 are
+mutation-adequacy pass, see above), and 5 as a ProVerif safety result. Properties 1-4/6/7 are
 code-level (a C reference is verified); property 5 is a symbolic protocol model with no C link, and the
 scope note under each property states what it does and does not establish. A shipped Rust
 (de)serializer cannot be verified directly here (a crucible-mir limitation on slice access), which is why

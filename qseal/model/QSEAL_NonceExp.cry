@@ -78,6 +78,7 @@ property expiry_restores_room s now =
   (and [ e <= now | e <- s.exps ]) ==> hasRoom s now
 
 // (4) An expired transcript is never accepted, whatever the store holds.
+// DEFINITIONAL: `accept` has `now < req_exp` as a literal conjunct, so this unfolds. Regression check.
 property expired_never_accepted s ok k req_exp now =
   (now >= req_exp) ==> (~ (accept s ok k req_exp now))
 

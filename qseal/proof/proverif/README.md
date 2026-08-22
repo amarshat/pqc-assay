@@ -18,13 +18,13 @@ reachable only over the private callback channel. The two events of the correspo
 **different** processes, so the correspondence is decided by the channel structure rather than by two
 adjacent statements.
 
-## The four files
+## The files
 
 | file | what it is | expected |
 |------|-----------|----------|
 | `property5.pv` | the model, four queries | Q1 true, Q2 true, Q3 true, key secret |
-| `property5_reachable.pv` | same model, reachability query only | event reachable (`not event(...)` is **false**) |
-| `property5_mutant.pv` | host path drops the spec 8.4 guard | Q1 false, Q2 false, Q3 false |
+| `property5_reachable.pv` | **generated** from the model, reachability query only | event reachable (`not event(...)` is **false**) |
+| `property5_ablation.pv` | **generated**: the spec 8.4 guard deleted, nothing else | Q2 false, Q3 false |
 | `property5_mutant_databind.pv` | builder signs a handset-supplied subject | Q1 **true**, Q2 false |
 | `property5_mutant_hostdata.pv` | event source reads attested fields from the host | Q1 **true**, Q2 **true**, Q3 false |
 
@@ -39,7 +39,11 @@ follow a genuine internal event, and the handset picked the contents of that eve
 the actual state of this model after its first rebuild and was found in review, not by the gate, which
 is why it is now a file rather than a note.
 
-`verify_reachability.sh` runs all four and gates on every cell of that table.
+`verify_reachability.sh` generates the first two from `property5.pv` with `gen_variants.py` and gates on
+every cell. Generation is not tidiness: when the witness was a checked-in copy, deleting the honest
+emitter from the model alone left the copy certifying reachability the model no longer had, and the gate
+stayed green. The ablation run exists for the mirror-image failure, a guard that turns out to do
+nothing.
 
 ## What this model does not establish
 
