@@ -266,7 +266,15 @@ can never equal `s->count`, which is at most 7 when the append runs; at `evidenc
 index can never match a `seq`, since completeness already forced a permutation; at `nonce_exp.c:26` the
 extra index can never equal `first_free`, which is at most 7 whenever `has_room` made the write happen.
 None writes out of bounds, so no proof or test that constrains only the input/output relation could
-kill them. A specification that also constrained the loop bound would. There are no adequacy gaps in this operator
+kill them. A specification that also constrained the loop bound would.
+
+The distribution is uneven and worth reading with that in mind: 3 mutants for `tbs_v1.c`, 3 for
+`tbs_v2.c`, 1 for `assertion.c`, 1 for `hybrid.c`, 12 for `nonce.c`, 14 for `nonce_exp.c`, 13 for
+`validate.c`, 11 for `evidence.c`. The operator set is relational and logical, so a file gets mutants in
+proportion to how many comparisons and boolean connectives it contains. `assertion.c` is a sequence of
+fixed-size copies and `hybrid.c` is two calls and an `&&`, so a high kill ratio over the whole set says
+almost nothing about those two. Their non-vacuity evidence is the hand-injected mutant paired to each
+obligation, not this pass. There are no adequacy gaps in this operator
 set. Details in [`mutation/README.md`](mutation/README.md); run with `make qseal-mutants`.
 
 ## Reproduce
