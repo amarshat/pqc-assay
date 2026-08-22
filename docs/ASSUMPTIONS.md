@@ -536,6 +536,11 @@ Pinned and installed by `scripts/setup.sh` into `.tools/` (gitignored). Platform
 - Isabelle: **Isabelle2025-2** (Jan 2026), asset `Isabelle2025-2_macos.tar.gz` (universal bundle,
   upstream lists macOS 26 / Apple Silicon support).
 - clang: **Apple clang 17.0.0 (clang-1700.0.13.5)**, system `/usr/bin/clang` (NOT vendored — see below).
+  **Delta, 2026-08-22:** the Q-SEAL proofs were re-run on a second machine (Apple M2 Max, macOS 13.6)
+  whose system compiler is Apple clang 14.0.3 (clang-1403.0.22.14.1). Every obligation discharges under
+  both, which is mild evidence the results are not artefacts of one compiler's bitcode, but the pinned
+  version is the 17.0.0 one and a timing or bitcode comparison across the two is not meaningful.
+  `scripts/setup.sh` warns on the mismatch rather than failing.
 - ProVerif: **2.05**, tarball pinned by sha256 `4871f53c32ab...ceabc4`, built from source (CLI only) by
   `scripts/setup.sh` when an OCaml toolchain is
   present; used solely for the Q-SEAL reachability property (section 16 property 5). Optional leg
@@ -583,6 +588,30 @@ signing key. Assumptions and non-results, all load-bearing:
   rule, and the attacker's inability to forge is by construction, not by reduction.
 - **No APDU layer.** Fragmentation, chaining and the applet's command dispatch beyond the assertion type
   are not modelled.
+
+## Q-SEAL property 4 (single-use store) scope, restated 2026-08-22
+
+Two versions are now verified. `qseal/ref/nonce.c` is the v0.1 append-only store: safe, fail-closed,
+and wedged permanently once a host submits CAP distinct validated requests, since the key is
+host-supplied. `qseal/ref/nonce_exp.c` adds expiry eviction, which is the retention mechanism the spec
+names in section 10, and its theorem is windowed: a request cannot be replayed while the transcript it
+came from is still valid. Availability returns once the recorded requests expire
+(`expiry_restores_room`). Both are proved equal to their models by SAW.
+
+What neither version establishes, stated plainly because the proofs are easy to over-read:
+
+- **Nonce freshness is not established.** Nothing in either model ties the request's nonce to a
+  challenge a verifier actually issued. The store answers "have I consumed this key before", not "did I
+  issue this nonce". If that burden sits with the verifier's own challenge state, it sits outside every
+  property verified here.
+- **Persistence across a power cycle is assumed away.** Both stores are in RAM. The host is untrusted
+  and the card is in the adversary's hands, so a power cycle is an adversary-triggerable event, not an
+  unmodelled convenience: after one, a request consumed before the cycle is accepted again even inside
+  its validity window. The expiring store does not fix this; only persistent storage or a monotonic
+  counter would, and neither is modelled.
+- **Sequential and atomic only.** Check-then-consume is one step in both models. The TOCTOU window
+  between verifying and consuming under concurrency is not expressible, so two simultaneous submissions
+  of the same key both seeing "fresh" is out of scope.
 
 ## Open findings (handle per CONTRIBUTING.md → Responsible disclosure)
 - **OF-3 (2026-08-22, found in an audit of the submitted artifact): the Q-SEAL property-5 ProVerif

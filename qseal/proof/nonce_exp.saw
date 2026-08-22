@@ -1,0 +1,38 @@
+// SAW: the expiring single-use store (qseal/ref/nonce_exp.c) computes exactly the Cryptol model
+// QSEAL_NonceExp.cry (accept / step). The model proves the windowed single-use theorem plus the
+// availability property the append-only v0.1 store does not have. The evict-live variant is then shown
+// to FAIL this spec. Exits 0 only when the goal discharges and the mutant is rejected.
+enable_experimental;
+
+m <- llvm_load_module "../build/nonce_exp.bc";
+import "../model/QSEAL_NonceExp.cry";
+
+let accept_spec = do {
+    keys    <- llvm_fresh_var "keys" (llvm_array 8 (llvm_array 64 (llvm_int 8)));
+    exps    <- llvm_fresh_var "exps" (llvm_array 8 (llvm_int 32));
+    ok      <- llvm_fresh_var "ok" (llvm_int 32);
+    k       <- llvm_fresh_var "k" (llvm_array 64 (llvm_int 8));
+    req_exp <- llvm_fresh_var "req_exp" (llvm_int 32);
+    now     <- llvm_fresh_var "now" (llvm_int 32);
+
+    ps <- llvm_alloc (llvm_alias "struct.qseal_nonce_exp_store_t");
+    llvm_points_to ps (llvm_struct_value [llvm_term keys, llvm_term exps]);
+
+    pk <- llvm_alloc_readonly (llvm_array 64 (llvm_int 8));
+    llvm_points_to pk (llvm_term k);
+
+    llvm_execute_func [ps, llvm_term ok, pk, llvm_term req_exp, llvm_term now];
+
+    let s = {{ { keys = keys, exps = exps } : Store }};
+    let okb = {{ ok != 0 }};
+    llvm_points_to ps (llvm_struct_value [
+        llvm_term {{ (step s okb k req_exp now).keys }},
+        llvm_term {{ (step s okb k req_exp now).exps }} ]);
+    llvm_return (llvm_term {{ if accept s okb k req_exp now then (1 : [32]) else 0 }});
+};
+
+accept_ov <- llvm_verify m "qseal_nonce_exp_accept" [] true accept_spec z3;
+print "VERIFIED: qseal_nonce_exp_accept == Cryptol (accept, step) -- expiry eviction, windowed single use";
+
+fails (llvm_verify m "qseal_nonce_exp_accept_evictlive" [] true accept_spec z3);
+print "MUTATION CAUGHT: the evict-live variant (throws out a slot still inside its validity window) is REJECTED";

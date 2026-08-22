@@ -55,3 +55,11 @@ print "VERIFIED: qseal_hybrid_accept == vE(pk_c,tbs,sig_c) AND vM(pk_pq,tbs,sig_
 fails (llvm_verify m "qseal_hybrid_accept_downgrade" [vE_ov, vM_ov] true accept_spec
                    (w4_unint_z3 ["vE", "vM"]));
 print "MUTATION CAUGHT: the downgrade variant (accept on either signature) is REJECTED by the both-required spec";
+
+// A conjunction is not enough: this mutant also requires both signatures, but over different bytes.
+// The tactic matters here. Under plain z3 the placeholder bodies of vE and vM (both constantly False)
+// unfold, every acceptance term collapses to False and ANY implementation satisfies the spec. Only
+// w4_unint_z3, keeping vE and vM uninterpreted, makes this a statement about the acceptance structure.
+fails (llvm_verify m "qseal_hybrid_accept_othertbs" [vE_ov, vM_ov] true accept_spec
+                   (w4_unint_z3 ["vE", "vM"]));
+print "MUTATION CAUGHT: the split-transcript variant (both signatures, but not over the same bytes) is REJECTED";

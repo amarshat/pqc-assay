@@ -36,6 +36,7 @@ TARGETS = {
     "assertion.c": "verify_assertion.sh",
     "hybrid.c": "verify_hybrid.sh",
     "nonce.c": "verify_nonce.sh",
+    "nonce_exp.c": "verify_nonce.sh",
     "validate.c": "verify_validate.sh",
     "evidence.c": "verify_evidence.sh",
 }

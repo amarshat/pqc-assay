@@ -7,8 +7,14 @@
 
 #include <stdint.h>
 
+/* Overridable at compile time so the same reference can be proved at more than one fragment arity:
+ * the readable 4x32 instance and a deployed-scale one (see qseal/proof/gen_evidence_instance.py). */
+#ifndef QSEAL_FRAG_SIZE
 #define QSEAL_FRAG_SIZE 32
+#endif
+#ifndef QSEAL_NUM_FRAGS
 #define QSEAL_NUM_FRAGS 4
+#endif
 #define QSEAL_EVID_LEN  (QSEAL_FRAG_SIZE * QSEAL_NUM_FRAGS)   /* 128 */
 
 /* One response fragment: its index, the total fragment count, and its payload. Field order and types

@@ -79,7 +79,13 @@ downgrade to classical-only, i.e. quantum-vulnerable. With the two signature ver
 equals `vE(pk_c, tbs, sig_c) AND vM(pk_pq, tbs, sig_pq)` over the *same* transcript, so acceptance
 requires both signatures over identical bytes for *any* real verifiers. Then a downgrade variant
 (`qseal_hybrid_accept_downgrade`, accept-on-either) is shown to *fail* that spec, so the proof catches
-the downgrade. Scope: verifiers are abstract, so this is a statement about the acceptance *structure*
+the downgrade. A second mutant answers the fair objection that this is only `return ok_c && ok_pq`
+restated: `qseal_hybrid_accept_othertbs` is also a conjunction requiring both signatures, but hands the
+post-quantum verifier a different transcript, and it fails the spec too. The content beyond the C is
+that both verifier calls are pinned to the *same* transcript term. That result depends on the tactic:
+under plain `z3` the placeholder verifier bodies (constantly `False`) unfold and every acceptance term
+collapses, so the obligation would hold for anything. `w4_unint_z3 ["vE","vM"]` is what makes it a
+statement about structure. Scope: verifiers are abstract, so this is a statement about the acceptance *structure*
 (both required, same bytes), not about ECDSA/ML-DSA correctness.
 
 **A consumed request_id is not accepted twice, in the sequential case (property 4 of section 16).**
@@ -101,12 +107,28 @@ with no uninterpreted functions or assumed overrides. An injected mutant `qseal_
 the proof depends on the consume step, not a bug found in the wild. The demo (`demo/`) carries an
 illustrative in-memory store and rejects a replayed valid attestation.
 
+A second store fixes the availability half. `ref/nonce_exp.c` with `model/QSEAL_NonceExp.cry` records
+each consumed key with the expiry of the transcript it came from and reuses slots whose expiry has
+passed, which is the retention mechanism the spec names in section 10. Five model properties are proved
+(`verify_nonce.sh`): windowed single use, that consuming marks the key live for the rest of its window,
+that expiry restores room, that an expired transcript is never accepted, and that acceptance is
+reachable. SAW proves `qseal_nonce_exp_accept` equals the model, and an evict-live variant that throws
+out a slot still inside its window is rejected. The theorem is weaker on purpose: a key can be accepted
+again after its own transcript expires, which is sound only because an expired transcript must be
+rejected anyway, and that check is in the model as `now < req_exp`.
+
 Scope, and what this does NOT prove:
-- **Safety only.** The theorem is "no double-accept." Liveness is not modeled: `accept` requires
-  `~full`, and there is no eviction, so the verified store accepts the first `CAP` (=8, fixed) distinct
-  ids and then rejects everything. That is fail-closed but also a denial-of-service footgun; the spec's
-  real retention mechanism is expiry (section 10), which is out of scope here. "Independent of CAP"
-  applies to safety only.
+- **The v0.1 store trades availability for safety.** Its theorem is "no double-accept". There is no
+  eviction, so it accepts the first `CAP` (=8, fixed) distinct keys and then rejects everything. Since
+  the key is host-supplied that is a denial of service anyone can trigger, and the safety proof says
+  nothing about it. The expiring store above is the answer; the original is kept because the paper's
+  results refer to it.
+- **Nonce freshness is not established** by either store. Nothing ties the request's nonce to a
+  challenge a verifier actually issued: the store answers "have I consumed this key", not "did I issue
+  this nonce".
+- **A power cycle resets both stores.** They are in RAM, the host is untrusted and the card is in the
+  adversary's hands, so this is an adversary-triggerable replay window, not an unmodelled convenience.
+  Persistent storage or a monotonic counter would be needed, and neither is modelled.
 - **Sequential/atomic only.** `step` does seen-check-then-consume in one step. The real replay risk is
   the TOCTOU window between verifying and consuming under concurrency; two simultaneous submissions of
   the same id both seeing `fresh` is not expressible in this model. Atomic check-and-consume is assumed.

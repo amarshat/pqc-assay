@@ -21,4 +21,9 @@ int qseal_hybrid_accept_downgrade(const uint8_t tbs[QSEAL_TBS_LEN],
                         const uint8_t *pk_c,  const uint8_t *sig_c,
                         const uint8_t *pk_pq, const uint8_t *sig_pq);
 
+/* Deliberate mutant: a conjunction like the reference, but the two verifiers see different transcripts. */
+int qseal_hybrid_accept_othertbs(const uint8_t tbs[QSEAL_TBS_LEN],
+                        const uint8_t *pk_c,  const uint8_t *sig_c,
+                        const uint8_t *pk_pq, const uint8_t *sig_pq);
+
 #endif

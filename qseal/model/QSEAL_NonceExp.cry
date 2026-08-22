@@ -1,0 +1,89 @@
+// Q-SEAL single-use challenge store WITH EXPIRY EVICTION (section 16 property 4, second version).
+//
+// QSEAL_Nonce.cry models the v0.1 store: append-only, fail-closed when full. That is safe (no
+// double-accept) and available to nobody: the key is host-supplied, so CAP distinct requests wedge
+// attestation permanently. The safety proof said nothing about it, which is the point.
+//
+// This version evicts on expiry, which is the retention mechanism the spec already names (section 10).
+// A slot is LIVE while its recorded expiry is in the future; a slot that is free or expired is
+// reusable. The anti-replay theorem becomes a WINDOWED one: a consumed request cannot be accepted again
+// while the transcript it came from is still valid. After its expiry the entry may be evicted and the
+// same key accepted, which is sound only because the verifier must also reject an expired transcript,
+// and that check is what accept models with `now < req_exp`.
+//
+// Verified with cryptol :prove (z3). C reference qseal/ref/nonce_exp.c, proved equal by
+// qseal/proof/nonce_exp.saw.
+
+module QSEAL_NonceExp where
+
+type CAP  = 8
+type KLEN = 64                  // verifier_id (16) || request_id (16) || nonce (32)
+type Key  = [KLEN][8]
+type Time = [32]
+
+type Store = { keys : [CAP]Key, exps : [CAP]Time }
+
+idxs : [CAP][8]
+idxs = [0 .. 7]
+
+// A slot is live iff the request it recorded has not expired yet.
+liveSlots : Store -> Time -> [CAP]Bit
+liveSlots s now = [ e > now | e <- s.exps ]
+
+// Already consumed, and still within the window that matters.
+seenLive : Store -> Key -> Time -> Bit
+seenLive s k now = or [ (kk == k) && l | kk <- s.keys | l <- liveSlots s now ]
+
+// A slot is reusable iff it is not live: never used (exp 0) or expired.
+reusable : Store -> Time -> [CAP]Bit
+reusable s now = [ ~ l | l <- liveSlots s now ]
+
+hasRoom : Store -> Time -> Bit
+hasRoom s now = or (reusable s now)
+
+// Lowest reusable index, or CAP when there is none.
+firstFree : Store -> Time -> [8]
+firstFree s now = foldl pick (`CAP : [8]) (zip idxs (reusable s now))
+  where pick acc ir = if ir.1 && (acc == `CAP) then ir.0 else acc
+
+// Accept iff validated, the transcript has not expired, the key is not live in the store, and a slot
+// can be had. Note what is NOT here: nothing establishes that the nonce was ever issued by a verifier.
+accept : Store -> Bit -> Key -> Time -> Time -> Bit
+accept s ok k req_exp now = ok && (now < req_exp) && (~ (seenLive s k now)) && hasRoom s now
+
+consume : Store -> Key -> Time -> Time -> Store
+consume s k req_exp now =
+  { keys = update s.keys (firstFree s now) k
+  , exps = update s.exps (firstFree s now) req_exp }
+
+step : Store -> Bit -> Key -> Time -> Time -> Store
+step s ok k req_exp now = if accept s ok k req_exp now then consume s k req_exp now else s
+
+// (1) Windowed single use: a request accepted at `now` is not accepted again at any later time still
+//     inside its validity window. This is the honest replacement for the unconditional no_replay of the
+//     append-only store.
+property no_replay_in_window s ok k req_exp now later =
+  (accept s ok k req_exp now && (later >= now) && (later < req_exp)) ==>
+  (~ (accept (step s ok k req_exp now) ok k req_exp later))
+
+// (2) The mechanism behind (1): consuming makes the key live for the rest of its window.
+property consume_marks_live s ok k req_exp now later =
+  (accept s ok k req_exp now && (later >= now) && (later < req_exp)) ==>
+  seenLive (step s ok k req_exp now) k later
+
+// (3) Availability, the property the v0.1 store does not have: once every recorded request has expired,
+//     the store takes new work again. A host that floods CAP requests wedges attestation only until
+//     those requests' own expiries pass.
+property expiry_restores_room s now =
+  (and [ e <= now | e <- s.exps ]) ==> hasRoom s now
+
+// (4) An expired transcript is never accepted, whatever the store holds.
+property expired_never_accepted s ok k req_exp now =
+  (now >= req_exp) ==> (~ (accept s ok k req_exp now))
+
+// (5) Non-vacuity: acceptance is reachable on an empty store.
+empty : Store
+empty = { keys = zero, exps = zero }
+
+property accept_reachable k =
+  accept empty True k 100 0

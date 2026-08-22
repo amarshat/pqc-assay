@@ -29,6 +29,10 @@ QED="$(printf '%s\n' "$OUT" | grep -c 'Q.E.D.' || true)"
 CEX="$(printf '%s\n' "$OUT" | grep -c 'Counterexample' || true)"
 [ "$QED" -eq 2 ] && [ "$CEX" -eq 0 ] || { echo "FAIL: binding properties (QED=$QED CEX=$CEX)"; exit 1; }
 
+# Timings from these scripts are only meaningful with the machine and toolchain named, so print them.
+echo "== $(basename "$0") on $(uname -srm), $(sysctl -n machdep.cpu.brand_string 2>/dev/null || (grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- | sed 's/^ //') || echo 'unknown CPU')"
+echo "== toolchain: $(if command -v saw >/dev/null 2>&1; then saw --version | head -1 | sed 's/^/saw /'; else echo 'saw n/a'; fi); $(if command -v cryptol >/dev/null 2>&1; then cryptol --version | head -1; else echo 'cryptol n/a'; fi); $(if command -v proverif >/dev/null 2>&1; then proverif -help 2>&1 | head -1 | cut -d, -f1; else echo 'proverif n/a'; fi); $(${CLANG:-clang} --version | head -1)"
+
 # (2) C reference == model (build assertion.c + tbs_v1.c as one TU; no llvm-link in the toolchain)
 mkdir -p "$HERE/build"
 cat "$HERE/ref/tbs_v1.c" "$HERE/ref/assertion.c" > "$HERE/build/_assertion_combined.c"
