@@ -124,3 +124,5 @@ jobs:
             echo "::error::Mutated field-core spec verified — the proof is vacuous."; exit 1
           fi
           echo "Mutated field-core spec correctly rejected."
+      - name: CVE anchor fidelity (verified predicate vs the real ml-dsa decoder)
+        run: make cve-anchor-fidelity

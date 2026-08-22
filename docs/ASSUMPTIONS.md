@@ -640,6 +640,18 @@ What neither version establishes, stated plainly because the proofs are easy to 
   between verifying and consuming under concurrency is not expressible, so two simultaneous submissions
   of the same key both seeing "fresh" is out of scope.
 
+## CVE anchor fidelity (cve-anchor/fidelity/)
+
+- The comparison against the shipped decoder is a **test, not a proof**: 7840 boundary-heavy vectors out
+  of an 84-byte space. Zero mismatches on those vectors is evidence about the transcription, not a
+  theorem about it.
+- The oracle builds a real ML-DSA-44 signature and replaces its 84-byte hint region, so a rejection is
+  attributed to the hint bytes. Everything outside that region is a genuine signature from the crate.
+- Vector generation is seeded (`random.Random(20260822)`), so the figures are reproducible; a different
+  seed gives different counts.
+- It needs `cargo` and pulls ml-dsa 0.1.1 from crates.io, so it is not part of the SAW push check; it
+  runs in the Rust workflow.
+
 ## GSMA SGP.29 EID anchor (esim-eid/) assumptions
 
 - **The composition is argued, not mechanized.** The one-digit bridge lemma (reducing early equals

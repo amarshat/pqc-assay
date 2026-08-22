@@ -57,3 +57,7 @@ cap/demo/target/
 # local agent/config material: never ship it with the artifact
 .claude/
 __pycache__/
+
+# generated build artifacts for the CVE anchor and the EID anchor
+cve-anchor/build/
+esim-eid/build/

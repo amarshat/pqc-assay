@@ -8,3 +8,9 @@ ml-dsa = { version = "0.1.1", default-features = false, features = ["alloc"] }
 
 [lib]
 path = "src/lib.rs"
+
+# Fidelity oracle for the CVE anchor: decides accept/reject with the real decoder so the Cryptol
+# predicate can be differentially tested against shipped code rather than against a transcription.
+[[bin]]
+name = "hint_oracle"
+path = "../../../cve-anchor/fidelity/hint_oracle.rs"

@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: claim-lint eid-anchor qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: claim-lint cve-anchor-fidelity eid-anchor qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -218,6 +218,12 @@ cve-anchor:
 ## C reference proved equal to them and three mutants rejected. About 45 s.
 eid-anchor:
 	@./esim-eid/verify.sh
+
+## cve-anchor-fidelity: compare the verified FIPS 204 hint predicate against the REAL RustCrypto decoder
+## on boundary-heavy vectors. Needs cargo. Answers the fair objection that the SAW proof shows the C
+## matches our predicate while saying nothing about whether the predicate matches the code it models.
+cve-anchor-fidelity:
+	@./cve-anchor/fidelity/run.sh
 
 ## claim-lint: the mechanical half of the pre-submission review checklist. Catches
 ## the defect classes that had to be found by hand once already: a SAW proof with no non-vacuity guard, a
