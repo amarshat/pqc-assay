@@ -1,6 +1,6 @@
 # Q-SEAL reachability (ProVerif)
 
-## STATUS (2026-08-22): the previous result was vacuous, and the fix is NOT YET RE-RUN
+## STATUS (2026-08-22): the previous result was vacuous; fixed and re-verified
 
 An audit of the submitted artifact found that the previous `property5.pv` proved nothing. `internalCb`
 was declared private and no process ever wrote to it, so `internalObserved`, the only emitter of
@@ -17,9 +17,16 @@ Changed here on 2026-08-22:
 - `verify_reachability.sh` gates on all three runs and fails loudly with `FAIL (VACUITY)` if the event
   is unreachable.
 
-**These three files have not been run since the change: ProVerif was not installed on the machine where
-the fix was written.** Until `./qseal/verify_reachability.sh` exits 0, property 5 has no result, and
-nothing in the repo or the paper may claim one.
+Verified with ProVerif 2.05 on 2026-08-22, `./qseal/verify_reachability.sh` exit 0:
+
+    RESULT inj-event(SignedObserved(...)) ==> inj-event(InternalFired(...)) is true.      # property5.pv
+    RESULT not event(SignedObserved(...)) is false.                                       # reachable
+    RESULT inj-event(SignedObserved(...)) ==> inj-event(InternalFired(...)) is false.     # mutant
+
+The middle line is the one that matters: ProVerif proves the negation of a reachability query, so
+"is false" means a trace emitting the event exists. Running the witness against the pre-fix model (no
+`profileTransition`) gives "is true", i.e. unreachable, and the script fails with `FAIL (VACUITY)`. The
+gate discriminates.
 
 Even once it runs, the model is thin: `InternalFired` and `SignedObserved` are consecutive statements in
 the only process emitting either, so the correspondence is close to syntactic. Rebuilding it with applet

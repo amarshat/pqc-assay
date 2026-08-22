@@ -174,12 +174,20 @@ channel, and proves the correspondence `event(Signed(OBSERVED)) ==> event(Intern
 of a `PROFILE_ACTION_OBSERVED` (type `0x04`) assertion is preceded by the trusted internal callback. The
 host-callable path signs only `if t <> OBSERVED` (spec 8.4). `property5_mutant.pv` drops that guard, and
 ProVerif reports the same query *false*, finding a trace where the attacker obtains an OBSERVED assertion
-through the host path. `verify_reachability.sh` runs both and exits 0 only if the good model proves the
-query and the mutant refutes it.
+through the host path. `verify_reachability.sh` runs
+`property5_reachable.pv` as well, which asks whether the observed-action signing event is reachable at
+all, and exits 0 only if the event is reachable, the good model proves the query, and the mutant refutes
+it. That third run exists because an earlier version of this model was vacuous: nothing wrote to the
+private callback channel, so the process emitting the event never ran and the correspondence held for
+any model body (`docs/ASSUMPTIONS.md` OF-3). A refuted mutant does not show the honest model is alive;
+the witness does.
 
 Scope: this is a symbolic model of the command surface, with no C == model link (unlike the SAW
-properties). "Host-exposed" is a public channel and the trusted callback a private one; the model
-abstracts the applet to the assertion-type dispatch. The guard it proves necessary (the host path must
+properties), and it is thin. `InternalFired` and `SignedObserved` are consecutive statements in the only
+process that emits either, so the correspondence is close to syntactic; there is no applet state, no
+transcript and no signature in the model. Read it as a check on the command-dispatch guard, not as a
+protocol proof; rebuilding it with state is planned. "Host-exposed" is a public channel and the trusted
+callback a private one, and the model abstracts the applet to the assertion-type dispatch. The guard it proves necessary (the host path must
 refuse type `0x04`) is now also enforced in the verified C: property 7's `qseal_validate_request` rejects
 `0x04`, with a mutant that allows it caught in `proof/validate.saw`. So the reachability argument and the
 code-level check meet at that guard (there is no shared model tying them together). Details in
@@ -187,11 +195,15 @@ code-level check meet at that guard (there is no shared model tying them togethe
 
 ## Mutation adequacy
 
-Each proof above carries one hand-injected mutant, which shows the proof is sensitive to that one
-clause. To measure adequacy rather than sensitivity, `mutation/mutate.py` applies a relational/logical
+Each proof above carries at least one hand-injected mutant, which shows the proof is sensitive to that
+one clause: an aliased serializer and an off-by-one parser for TBS-V1, a commitment-zeroing serializer
+for TBS-V2, an unbound-nonce builder for the assertion, and the downgrade, no-consume, no-complete,
+no-suite-check and allow-observed variants for the rest. Every function named in a `fails (llvm_verify
+...)` guard is automatically excluded from the adequacy run below, so a hand-injected mutant cannot
+enter the denominator. To measure adequacy rather than sensitivity, `mutation/mutate.py` applies a relational/logical
 operator set (the class CVE-2026-24850 lived in: `<`/`<=`, `==`/`!=`, `&&`/`||`, and so on) to each C
-reference systematically, one mutation per occurrence, and reruns the matching SAW proof. Across the six
-references, the proofs kill **42 of 44** such mutants. The two survivors are the same shape, a loop bound
+reference systematically, one mutation per occurrence, and reruns the matching SAW proof. Across the
+seven references, the proofs kill **42 of 44** such mutants (measured 2026-08-22). The two survivors are the same shape, a loop bound
 `i < CAP` weakened to `i <= CAP`, and are semantically equivalent mutants: a downstream guard makes the
 extra iteration a no-op, so no proof or test could kill them. There are no adequacy gaps in this operator
 set. Details in [`mutation/README.md`](mutation/README.md); run with `make qseal-mutants`.

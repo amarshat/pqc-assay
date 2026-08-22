@@ -52,8 +52,26 @@ for a, b in SWAPS:
     SWAP_MAP.setdefault(a, b)
 
 # Functions that exist only as injected-bug demos for the SAW `fails` guards. They are NOT the verified
-# artifact, so mutating them is meaningless for adequacy; skip them.
+# artifact, so mutating them is meaningless for adequacy; skip them. The list below is the legacy set;
+# anything named in a `fails (llvm_verify m "...")` line is added automatically, so a new hand-injected
+# mutant cannot silently enter the adequacy denominator.
 EXCLUDE_FUNC = ["_noconsume", "_downgrade", "_nosuitecheck", "_nocomplete", "_allowobserved"]
+
+
+def _mutant_names_from_proofs():
+    """Every function a SAW script asserts must FAIL is a deliberate mutant, not part of the artifact."""
+    names = set()
+    proof_dir = os.path.join(QSEAL, "proof")
+    pat = re.compile(r'fails\s*\(\s*llvm_verify\s+\w+\s+"([^"]+)"')
+    for fn in sorted(os.listdir(proof_dir)):
+        if not fn.endswith(".saw"):
+            continue
+        with open(os.path.join(proof_dir, fn)) as fh:
+            names.update(pat.findall(fh.read()))
+    return sorted(names)
+
+
+EXCLUDE_FUNC = sorted(set(EXCLUDE_FUNC) | set(_mutant_names_from_proofs()))
 FUNC_RE = re.compile(r"^\s*(?:static\s+)?(?:int|void|unsigned|size_t)\s+(\w+)\s*\(")
 
 

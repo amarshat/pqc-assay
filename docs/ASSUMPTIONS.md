@@ -536,7 +536,8 @@ Pinned and installed by `scripts/setup.sh` into `.tools/` (gitignored). Platform
 - Isabelle: **Isabelle2025-2** (Jan 2026), asset `Isabelle2025-2_macos.tar.gz` (universal bundle,
   upstream lists macOS 26 / Apple Silicon support).
 - clang: **Apple clang 17.0.0 (clang-1700.0.13.5)**, system `/usr/bin/clang` (NOT vendored — see below).
-- ProVerif: **2.05**, built from source (CLI only) by `scripts/setup.sh` when an OCaml toolchain is
+- ProVerif: **2.05**, tarball pinned by sha256 `4871f53c32ab...ceabc4`, built from source (CLI only) by
+  `scripts/setup.sh` when an OCaml toolchain is
   present; used solely for the Q-SEAL reachability property (section 16 property 5). Optional leg
   (`SKIP_PROVERIF=1`), not in the per-push SAW CI. Needs opam + OCaml 4.14.1 (see
   `qseal/proof/proverif/README.md`); the opam package's GTK2 GUI dependency is skipped by building the
@@ -591,10 +592,16 @@ Pinned and installed by `scripts/setup.sh` into `.tools/` (gitignored). Platform
     mutant it rejects" was false for properties 1 and 2 (`tbs_v1.saw` and `assertion.saw` had no `fails`
     guard). Mutants added and verified: aliased serializer, off-by-one parser, unbound-nonce builder,
     plus a no-commitment serializer for TBS-V2.
-  - Still open at the level of the claim, not the code: the corrected property-5 model still satisfies
-    its correspondence by syntactic adjacency of the two events in one process, so it establishes very
-    little. Rebuilding it with applet state, a transcript and a host process is tracked as F1-1 in
-    `paper/notes/QSEAL-REVIEW-PLAN.md`.
+  - **Fixed and verified 2026-08-22.** `property5.pv` and `property5_mutant.pv` gained a
+    `profileTransition` process that writes to the callback channel, `property5_reachable.pv` is a new
+    reachability witness, and `qseal/verify_reachability.sh` exits 0 on all three runs with ProVerif
+    2.05: the correspondence is true, `not event(SignedObserved(...))` is **false** (so the event is
+    reachable and the positive result is not vacuous), and the mutant is refuted. The gate was itself
+    checked against the pre-fix model, which reports the event unreachable and trips `FAIL (VACUITY)`.
+  - Still open at the level of the claim, not the code: the corrected model still satisfies its
+    correspondence by syntactic adjacency of the two events in one process, so it establishes very
+    little. Rebuilding it with applet state, a transcript and a host process is tracked in the rewrite
+    plan held outside this repo.
 - **DISCLOSED 2026-06-09:** OF-1 and OF-2 were filed together (deliberate, human-routed) as a single
   upstream issue: **pq-crystals/dilithium#114** ("ref/reduce.c: doc-comment output bounds for
   montgomery_reduce and reduce32 are off by one at endpoints"). Both are documentation/contract fixes,

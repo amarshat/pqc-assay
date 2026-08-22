@@ -39,6 +39,7 @@ BITWUZLA_URL="https://github.com/bitwuzla/bitwuzla/releases/download/${BITWUZLA_
 # Needs an OCaml toolchain; skip with SKIP_PROVERIF=1 (the SAW/Cryptol/Isabelle legs do not need it).
 PROVERIF_VERSION="2.05"
 PROVERIF_URL="https://bblanche.gitlabpages.inria.fr/proverif/proverif${PROVERIF_VERSION}.tar.gz"
+PROVERIF_SHA256="4871f53c32ab4a04669a060c4886ba5d9080496963fb980a9a62d2c429ceabc4"
 
 # clang: we deliberately use the system Apple clang (recorded in ASSUMPTIONS.md), NOT a vendored one.
 EXPECTED_CLANG="Apple clang version 17.0.0 (clang-1700.0.13.5)"
@@ -108,11 +109,23 @@ if [[ -z "${SKIP_PROVERIF:-}" ]]; then
   if [[ ! -x "$BIN_DIR/proverif" ]]; then
     if command -v ocamlfind >/dev/null 2>&1; then
       fetch "$PROVERIF_URL" "$DL_DIR/proverif${PROVERIF_VERSION}.tar.gz"
+      got="$(shasum -a 256 "$DL_DIR/proverif${PROVERIF_VERSION}.tar.gz" | awk '{print $1}')"
+      if [[ "$got" != "$PROVERIF_SHA256" ]]; then
+        echo "!! proverif tarball sha256 mismatch: got $got, expected $PROVERIF_SHA256" >&2
+        exit 1
+      fi
       echo ">> building proverif ${PROVERIF_VERSION} from source (CLI only, no GTK)"
       rm -rf "$PROVERIF_HOME" && mkdir -p "$PROVERIF_HOME"
       tar -xzf "$DL_DIR/proverif${PROVERIF_VERSION}.tar.gz" -C "$PROVERIF_HOME" --strip-components=1
-      ( cd "$PROVERIF_HOME" && ./build )
+      # ./build exits 2 when the lablgtk GUI leg fails, which is expected here: we do not install GTK2
+      # and do not use proverif_interact. The CLI binary is still produced, so judge on the binary.
+      ( cd "$PROVERIF_HOME" && ./build ) || echo ">> proverif ./build returned non-zero (expected: GUI leg)"
+      if [[ ! -x "$PROVERIF_HOME/proverif" ]]; then
+        echo "!! proverif CLI was not produced by ./build" >&2
+        exit 1
+      fi
       link "$PROVERIF_HOME/proverif" "proverif"
+      "$PROVERIF_HOME/proverif" -help | head -1
     else
       echo ">> SKIP: proverif needs an OCaml toolchain (ocamlfind not found). Install opam + ocaml"
       echo "         4.14.1 then re-run, or set SKIP_PROVERIF=1. See qseal/proof/proverif/README.md."
