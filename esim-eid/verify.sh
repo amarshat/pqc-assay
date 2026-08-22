@@ -33,17 +33,21 @@ OUT="$(cryptol -b /dev/stdin <<'CRY' 2>&1
 :prove kav_e118
 :prove kav_nondigit
 :prove e118_checksum_is_valid
+:prove kav_nondigit_isolating
+:prove kav_nondigit_sum_ok
+:prove kav_remzero
+:prove kav_remzero_digits_ok
 CRY
 )"
 echo "$OUT"
 QED="$(printf '%s\n' "$OUT" | grep -c 'Q.E.D.' || true)"
 SAT="$(printf '%s\n' "$OUT" | grep -c 'Satisfiable' || true)"
 CEX="$(printf '%s\n' "$OUT" | grep -c 'Counterexample' || true)"
-if [ "$QED" -ne 7 ] || [ "$SAT" -ne 1 ] || [ "$CEX" -ne 0 ]; then
-  echo "FAIL: expected 7 Q.E.D. + 1 Satisfiable (the fixed-width counterexample); got QED=$QED SAT=$SAT CEX=$CEX"
+if [ "$QED" -ne 11 ] || [ "$SAT" -ne 1 ] || [ "$CEX" -ne 0 ]; then
+  echo "FAIL: expected 11 Q.E.D. + 1 Satisfiable (the fixed-width counterexample); got QED=$QED SAT=$SAT CEX=$CEX"
   exit 1
 fi
-echo "OK: bridge lemmas, accumulator invariant, fixed-width counterexample, and 5 clause-directed vectors"
+echo "OK: bridge lemmas, accumulator invariant, fixed-width counterexample, and 9 clause-directed vectors, two of them clause-isolating"
 
 # 2. C reference == the transcription of the standard.
 mkdir -p "$HERE/build"

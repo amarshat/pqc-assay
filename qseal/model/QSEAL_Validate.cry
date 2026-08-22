@@ -47,10 +47,16 @@ create_checked r a =
 
 // The headline: any malformed version / suite / assertion_type / origin / hash algorithm fails before
 // signing. If the request is not valid, the applet emits no transcript.
+// DEFINITIONAL. `create_checked` is defined as `if valid r a then ... else {ok = False, ...}`, so this
+// unfolds to `~p ==> ~p`. It is not independent content and should not be counted as one of the
+// protocol properties. It is kept because it is a specification-mutation regression check: an edit to
+// the else branch of create_checked breaks it. What carries weight here is the SAW obligation that the
+// C reference computes create_checked, which is not definitional.
 property malformed_never_signs r a = (~ valid r a) ==> (~ (create_checked r a).ok)
 
-// The other direction, with content: a transcript is emitted only for a validated request, and it is
-// exactly the create() output (so property 2's binding still applies to it).
+// DEFINITIONAL for the same reason: it unfolds to `valid ==> valid /\ (x == x)`. Kept as a
+// specification-mutation regression check, not as evidence about the design. An earlier comment here
+// called it "the other direction, with content", which was wrong.
 property signed_is_validated r a =
   (create_checked r a).ok ==> (valid r a /\ ((create_checked r a).tbs == create r a))
 

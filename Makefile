@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: claim-lint cve-anchor-fidelity eid-anchor qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: claim-lint cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -224,6 +224,12 @@ eid-anchor:
 ## matches our predicate while saying nothing about whether the predicate matches the code it models.
 cve-anchor-fidelity:
 	@./cve-anchor/fidelity/run.sh
+
+## eid-spec-mutation: mutate the SGP.29 model and the C reference TOGETHER, the failure mode where a rule
+## is misread in both places. The equality proof cannot see those; only vectors tied to the standard's
+## text can. Reports which checks notice. About 3 minutes.
+eid-spec-mutation:
+	@python3 ./esim-eid/spec_mutation.py
 
 ## claim-lint: the mechanical half of the pre-submission review checklist. Catches
 ## the defect classes that had to be found by hand once already: a SAW proof with no non-vacuity guard, a

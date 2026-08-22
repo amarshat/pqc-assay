@@ -249,6 +249,17 @@ separately enforced in the verified C by property 7's `qseal_validate_request`, 
 `0x04` caught in `proof/validate.saw`; the two meet at that guard with no shared model tying them
 together. Details in [`proof/proverif/README.md`](proof/proverif/README.md).
 
+## What is definitional and what is not
+
+Not every `:prove` in these models is independent content, and the counts should say so. Three are
+definitional unfoldings of their own definitions: `malformed_never_signs` and `signed_is_validated` in
+`QSEAL_Validate.cry` reduce to `~p ==> ~p` and `valid ==> valid`, and `binds_challenge` in
+`QSEAL_Assertion.cry` reduces to `x == x` given the proved round trip. One more, `commitment_is_signed`
+in `QSEAL_TBS_V2.cry`, is `serialize2_injective` restricted to one field, so it follows in a step. All
+four are labelled as such in the models and kept as specification-mutation regression checks: they break
+if someone edits the definition they unfold against. They are not evidence about the design, and the
+weight in each case sits in the SAW obligation next to them, where a mis-wired field is a real defect.
+
 ## Mutation adequacy
 
 Each proof above carries at least one hand-injected mutant, which shows the proof is sensitive to that

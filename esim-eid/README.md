@@ -60,3 +60,32 @@ over the 32-digit value", does not complete. Measured on an Apple M2 Max with SA
 So the composition from the bridge lemma to all 32 digits is an argument, not a mechanized proof. It is
 the same wall the ML-DSA work in this repository hit on wide-domain Barrett reduction, reached here from
 a completely different direction: a telecoms identifier scheme with no cryptography in it at all.
+
+## The experiment that matters: mutating the specification and the code together
+
+Code mutation, the usual kind, edits the implementation and leaves the specification alone. An equality
+proof then necessarily fails, so a high kill rate measures nothing about whether the specification is
+right. The failure that actually happens in the field is the other one: somebody misreads the standard
+and writes the same mistake into the model and the code, the proof still passes because the two sides
+still agree, and nothing internal notices.
+
+`make eid-spec-mutation` applies three paired mutations, each dropping or weakening one SGP.29 clause in
+the Cryptol model and in the C reference at once:
+
+| paired mutation | C == spec proof | clause-directed vectors |
+|---|---|---|
+| drop AE.R02, the reserved `89` prefix | passes, blind to it | catches it |
+| drop the decimal-digit range check | passes, blind to it | catches it |
+| accept remainder 0 as well as 1 | passes, blind to it | catches it |
+
+Three of three are invisible to the proof, and three of three are caught by vectors tied to the
+standard's text. That is the argument for clause-directed vectors stated as a measurement rather than as
+an opinion, and it is why they belong on the properties an author wrote and not only where an external
+standard already pins the answer.
+
+It also caught a defect in this directory's own vectors. The first version had four, and two of them did
+not isolate their clause: the non-digit vector also had a failing checksum, so dropping the digit rule
+left it rejected for the other reason, and no vector had remainder 0, so widening the check to accept 0
+changed nothing. Both are fixed by `vNonDigitValidSum` (a byte of 100, checksum still verifying, since
+adding 97 to a digit leaves the remainder unchanged) and `vRemainderZero`. A negative witness is only
+worth having when every other clause passes on it, and that is easy to get wrong by hand.

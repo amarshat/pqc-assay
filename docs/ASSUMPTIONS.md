@@ -654,6 +654,11 @@ What neither version establishes, stated plainly because the proofs are easy to 
 
 ## GSMA SGP.29 EID anchor (esim-eid/) assumptions
 
+- **The spec-mutation experiment covers three clauses, not the standard.** `make eid-spec-mutation`
+  measures three paired mutations. It says nothing about clauses nobody thought to mutate, and the
+  mutation list is hand-written, so it inherits the same authorship problem it is designed to expose,
+  one level up.
+
 - **The composition is argued, not mechanized.** The one-digit bridge lemma (reducing early equals
   reducing at the end when the accumulator is below 97) is proved, and the accumulator invariant is
   proved, but the step from those to "the 32-digit fold equals the standard's single remainder over the

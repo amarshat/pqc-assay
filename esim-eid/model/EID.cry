@@ -116,6 +116,24 @@ vNonDigit : [NDIG][8]                   // a byte outside 0..9, which no decimal
 vNonDigit = [ 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8,
               9, 9, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 10, 5, 9, 5 ]
 
+// Two vectors that ISOLATE their clause: every other clause passes on them, so only the one under test
+// can reject them. The first version of this file had a non-digit vector whose checksum also failed,
+// which meant dropping the digit-range rule left it rejected anyway and the vector proved nothing. The
+// spec-mutation experiment (../spec_mutation.py) found that, not a reviewer.
+
+vNonDigitValidSum : [NDIG][8]           // byte 100 at position 5: outside 0..9, checksum still verifies
+vNonDigitValidSum = [ 1, 1, 2, 2, 3, 100, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8,
+                      9, 9, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 9, 5 ]
+
+vRemainderZero : [NDIG][8]              // all digits valid, prefix fine, remainder 0 instead of 1
+vRemainderZero = [ 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8,
+                   9, 9, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 9, 4 ]
+
+property kav_nondigit_isolating = eidValid vNonDigitValidSum == False
+property kav_nondigit_sum_ok    = checkDigitsValidFold vNonDigitValidSum == True
+property kav_remzero            = eidValid vRemainderZero == False
+property kav_remzero_digits_ok  = digitsOnly vRemainderZero == True
+
 property kav_good      = eidValid vGood == True
 property kav_badcheck  = eidValid vBadCheck == False
 property kav_e118      = eidValid vE118 == False

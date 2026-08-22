@@ -118,6 +118,9 @@ serialize2_omitting_commitment t = serialize2 (t' t)
                , object_digest = x.object_digest
                , associated_claim_digest = x.associated_claim_digest }
 
+// DERIVED, one step from serialize2_injective which is proved above: it is that property restricted to
+// transcripts differing in a single field. Kept because it names the field the V2 revision exists for,
+// but it is not independent evidence.
 property commitment_is_signed t1 t2 =
   (t1.pair_commitment != t2.pair_commitment) ==> (serialize2 t1 != serialize2 t2)
 

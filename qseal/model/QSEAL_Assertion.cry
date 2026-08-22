@@ -64,6 +64,10 @@ create r a = serialize (build r a)
 // Property 2a: the signed transcript binds the validated challenge. What the verifier parses back for
 // verifier_id / nonce / request_id / suite_id / policy_id / assertion_type / expiry / object digest is
 // exactly what was in the request. The applet cannot emit a transcript that differs on these.
+// DEFINITIONAL at the model level: `build` assigns these fields from the request, so given the proved
+// round trip this unfolds to `x == x`. The content is one level down, in the SAW obligation that the C
+// reference computes `create`, where a mis-wired field would be a real defect and is caught by the
+// unbound-nonce mutant.
 property binds_challenge r a =
       (t.verifier_id == r.verifier_id)
    /\ (t.nonce == r.nonce)
