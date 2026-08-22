@@ -51,3 +51,26 @@ mkdir -p "$HERE/build"
 "$CLANG" -c -emit-llvm -O0 -g -I "$HERE/ref" "$HERE/ref/evidence.c" -o "$HERE/build/evidence.bc"
 cd "$HERE/proof"
 saw evidence.saw
+
+# Optional: prove the same reference at a larger fragment arity. The checked-in instance is 4 fragments
+# of 32 bytes, which is readable but far smaller than a deployed READ_EVIDENCE response (an ML-DSA-44
+# signature alone is 2420 bytes). Set EVIDENCE_SCALE to "<frag-size>x<num-frags>" to generate and prove
+# another instance from the same C, e.g. EVIDENCE_SCALE=255x4. Cost grows fast in the fragment count,
+# since the permutation and placement scans are quadratic in it; see qseal/README.md for measured sizes.
+if [ -n "${EVIDENCE_SCALE:-}" ]; then
+  FS="${EVIDENCE_SCALE%x*}"; NF="${EVIDENCE_SCALE#*x}"
+  echo ">> evidence at ${NF} fragments x ${FS} bytes = $((NF * FS)) bytes"
+  python3 "$HERE/proof/gen_evidence_instance.py" "$FS" "$NF" "$HERE/build"
+  "$CLANG" -c -emit-llvm -O0 -g -DQSEAL_FRAG_SIZE="$FS" -DQSEAL_NUM_FRAGS="$NF" -I "$HERE/ref" \
+           "$HERE/ref/evidence.c" -o "$HERE/build/evidence_${FS}x${NF}.bc"
+  cd "$HERE/build"
+  SOUT="$(saw "evidence_${FS}x${NF}.saw")"
+  echo "$SOUT"
+  SOK="$(printf '%s\n' "$SOUT" | grep -c '^VERIFIED:' || true)"
+  SMUT="$(printf '%s\n' "$SOUT" | grep -c '^MUTATION CAUGHT:' || true)"
+  if [ "$SOK" -ne 1 ] || [ "$SMUT" -ne 1 ]; then
+    echo "FAIL: scaled evidence instance expected 1 VERIFIED + 1 MUTATION CAUGHT; got VERIFIED=$SOK MUTATION=$SMUT"
+    exit 1
+  fi
+  echo "OK: evidence reassembly verified at ${NF}x${FS}"
+fi

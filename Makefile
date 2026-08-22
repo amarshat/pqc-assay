@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: claim-lint all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: claim-lint qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -187,6 +187,12 @@ qseal-validate:
 ## original evidence bytes or fails closed. cryptol proves the round trip + fail-closed on a dropped or
 ## mis-sized fragment; SAW proves the C reassembler equals the model; a no-completeness reassembler is
 ## caught.
+## qseal-evidence-scale: the same evidence reference at a larger fragment arity than the readable 4x32
+## instance. EVIDENCE_SCALE=<frag-size>x<num-frags>, default 255x4 (1020 bytes). Cost is quadratic in
+## the fragment count, so this is a separate target rather than part of the push check.
+qseal-evidence-scale:
+	@EVIDENCE_SCALE=$${EVIDENCE_SCALE:-255x4} ./qseal/verify_evidence.sh
+
 qseal-evidence:
 	@echo ">> cryptol + SAW: evidence-fragment reassembly round-trips or fails closed; no-completeness bug caught"
 	./qseal/verify_evidence.sh
