@@ -4,9 +4,11 @@
 
 /* Placeholder verifier bodies so the bitcode links; the SAW proof overrides these with uninterpreted
  * specs, so these values are never used. Real deployments link ECDSA P-256 / ML-DSA-44 here. */
+__attribute__((noinline))
 int qseal_verify_ecdsa(const uint8_t *pk, const uint8_t tbs[QSEAL_TBS_LEN], const uint8_t *sig) {
     (void)pk; (void)tbs; (void)sig; return 0;
 }
+__attribute__((noinline))
 int qseal_verify_mldsa(const uint8_t *pk, const uint8_t tbs[QSEAL_TBS_LEN], const uint8_t *sig) {
     (void)pk; (void)tbs; (void)sig; return 0;
 }

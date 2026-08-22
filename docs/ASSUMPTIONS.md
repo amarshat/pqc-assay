@@ -640,6 +640,22 @@ What neither version establishes, stated plainly because the proofs are easy to 
   between verifying and consuming under concurrency is not expressible, so two simultaneous submissions
   of the same key both seeing "fresh" is out of scope.
 
+## Reproduction envelope: -O0 only
+
+The proofs are run against bitcode built at `-O0`, which is what every runner script does and what the
+figures come from. At `-O2` two of them do not reproduce, and both reasons are worth knowing:
+
+- `hybrid.saw` fails, because clang inlines the placeholder verifier bodies in `qseal/ref/hybrid.c` and
+  the `llvm_unsafe_assume_spec` overrides no longer have a call to attach to. This is an artefact of the
+  placeholders, not of the property; a deployment links real verifiers and the overrides would apply.
+  The placeholders are now marked `__attribute__((noinline))`, which did NOT fix it: the obligation
+  still fails at `-O2` (measured 2026-08-22, `Subgoal failed: qseal_hybrid_accept`). Whatever the
+  optimiser does to that call site, keeping the callee out of line is not enough, and the cause has not
+  been run down. `-O0` is the supported configuration and the only one the figures come from.
+- `evidence.saw` crashes the symbolic simulator: "You have encountered a bug in Crucible's
+  implementation ... Attempting to evaluate poison value". That is an upstream defect worth reporting to
+  Galois. It has NOT been filed; disclosure goes through the human per CONTRIBUTING.md.
+
 ## CVE anchor fidelity (cve-anchor/fidelity/)
 
 - The comparison against the shipped decoder is a **test, not a proof**: 7840 boundary-heavy vectors out
@@ -673,6 +689,30 @@ What neither version establishes, stated plainly because the proofs are easy to 
   wire must enforce the length itself.
 - **Only three clauses are mechanized.** SGP.29 also governs assignment, ERHI structure and eligibility
   criteria; none of that is a property of a single identifier and none is modelled here.
+
+## Q-SEAL: layers the results rest on and do not cover
+
+The scope section of the write-up names these as out of scope. They were not written down here, which
+meant the document that is supposed to hold every assumption was missing the ones the results lean on
+hardest. Each is a real gap, not a formality.
+
+- **Credential binding.** Nothing verified here ties `ak_id`, or the TBS-V2 `pair_commitment`, to a
+  certificate chain or to an attestation key a verifier trusts. Both are opaque bytes in the transcript.
+  A verifier that accepts a well-formed transcript without checking whose key signed it gets no help
+  from any property in this repository.
+- **Suite negotiation and downgrade at the protocol level.** Property 3 shows the acceptance decision is
+  a conjunction over one transcript. It says nothing about how a verifier and an applet agree on HYB-1
+  in the first place, so a downgrade achieved during negotiation is out of scope even though the
+  in-transcript downgrade is covered.
+- **Outer-envelope encoding, including low-S malleability.** The transcript is fixed-offset and
+  injective. The ECDSA signature carried beside it is not covered at all: a non-canonical `S` value is a
+  malleability the transcript's injectivity does not touch.
+- **The ML-DSA context string.** The V2 revision assigns one. No property constrains it, and the FIPS
+  204 context mechanism is not modelled.
+- **Hash collision resistance.** The `pair_commitment` argument assumes SHA-256 is collision resistant.
+  That is an assumption, not a result, and the format-level proof would hold for a broken hash.
+- **APDU and TLV decoding.** Wire decoding, chaining and fragmentation of commands are out of scope; the
+  evidence property covers reassembly of already-decoded fragments only.
 
 ## Open findings (handle per CONTRIBUTING.md → Responsible disclosure)
 - **OF-3 (2026-08-22, found in an audit of the submitted artifact): the Q-SEAL property-5 ProVerif
