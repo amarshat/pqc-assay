@@ -17,5 +17,15 @@ mkdir -p "$HERE/build"
 "$CLANG" -c -emit-llvm -O0 -g -I "$HERE/ref" "$HERE/ref/tbs_v2.c" -o "$HERE/build/tbs_v2.bc"
 
 cd "$HERE/proof"
-saw tbs_v1.saw
-saw tbs_v2.saw
+
+# Count the outcomes rather than trusting the exit status: four obligations must discharge and all
+# three injected mutants must be rejected.
+OUT="$(saw tbs_v1.saw; saw tbs_v2.saw)"
+echo "$OUT"
+OK="$(printf '%s\n' "$OUT" | grep -c '^VERIFIED:' || true)"
+MUT="$(printf '%s\n' "$OUT" | grep -c '^MUTATION CAUGHT:' || true)"
+if [ "$OK" -ne 4 ] || [ "$MUT" -ne 3 ]; then
+  echo "FAIL: expected 4 VERIFIED + 3 MUTATION CAUGHT; got VERIFIED=$OK MUTATION=$MUT"
+  exit 1
+fi
+echo "OK: 4 obligations discharged, 3 injected mutants rejected"

@@ -575,6 +575,26 @@ Pinned and installed by `scripts/setup.sh` into `.tools/` (gitignored). Platform
   `qseal_validate_request` and is not yet done.
 
 ## Open findings (handle per CONTRIBUTING.md → Responsible disclosure)
+- **OF-3 (2026-08-22, found in an audit of the submitted artifact): the Q-SEAL property-5 ProVerif
+  result was vacuous.** In `qseal/proof/proverif/property5.pv` the channel `internalCb` is declared private and
+  no process ever performs `out(internalCb, ...)`. `internalObserved` is the only process that emits
+  `SignedObserved`, it is guarded on an input from that channel, so it never runs, the antecedent of the
+  injective correspondence is unreachable, and ProVerif reports the query true regardless of the rest of
+  the model. The mutant file was falsified only because it adds a *reachable* emitter in `hostCreate`,
+  so the mutation check never tested the honest model.
+  - Scope of the damage: property 5 only. The six SAW properties are unaffected; the whole artifact was
+    rebuilt from scratch, including the 41-mutant pass (39 killed, 2 survivors), and they reproduce.
+  - Lesson, now enforced: **a falsified mutant does not establish that the honest model is
+    non-vacuous.** Every ProVerif query in this repo must be paired with a reachability witness showing
+    the events in its antecedent can actually occur. `qseal/verify_reachability.sh` gates on this.
+  - Also found in the same audit and fixed 2026-08-22: the claim "each proof carries an injected
+    mutant it rejects" was false for properties 1 and 2 (`tbs_v1.saw` and `assertion.saw` had no `fails`
+    guard). Mutants added and verified: aliased serializer, off-by-one parser, unbound-nonce builder,
+    plus a no-commitment serializer for TBS-V2.
+  - Still open at the level of the claim, not the code: the corrected property-5 model still satisfies
+    its correspondence by syntactic adjacency of the two events in one process, so it establishes very
+    little. Rebuilding it with applet state, a transcript and a host process is tracked as F1-1 in
+    `paper/notes/QSEAL-REVIEW-PLAN.md`.
 - **DISCLOSED 2026-06-09:** OF-1 and OF-2 were filed together (deliberate, human-routed) as a single
   upstream issue: **pq-crystals/dilithium#114** ("ref/reduce.c: doc-comment output bounds for
   montgomery_reduce and reduce32 are off by one at endpoints"). Both are documentation/contract fixes,

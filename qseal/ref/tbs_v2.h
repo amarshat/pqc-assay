@@ -43,4 +43,8 @@ void qseal_tbs_v2_serialize(const qseal_tbs_v2_t *t, uint8_t out[QSEAL_TBS_V2_LE
  * (and leaves *t unmodified on reject). */
 int qseal_tbs_v2_parse(const uint8_t in[QSEAL_TBS_V2_LEN], qseal_tbs_v2_t *t);
 
+/* Deliberate mutant used only for the mutation demonstration in qseal/proof/tbs_v2.saw: zeroes the
+ * pair_commitment slot, so the transcript does not commit to the hybrid key pair. */
+void qseal_tbs_v2_serialize_nocommit(const qseal_tbs_v2_t *t, uint8_t out[QSEAL_TBS_V2_LEN]);
+
 #endif

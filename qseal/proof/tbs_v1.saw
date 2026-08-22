@@ -77,3 +77,11 @@ let parse_spec = do {
 
 parse_ov <- llvm_verify m "qseal_tbs_parse" [] true parse_spec z3;
 print "VERIFIED: qseal_tbs_parse == Cryptol parse on well-formed input (returns 1, fills struct)";
+
+// Non-vacuity. Neither mutant may satisfy the spec its correct twin satisfies; `fails` succeeds exactly
+// when the verification does not go through.
+fails (llvm_verify m "qseal_tbs_serialize_aliased" [] true serialize_spec z3);
+print "MUTATION CAUGHT: the aliased serializer (issuer_id written into the verifier_id slot, so two transcripts differing only in verifier_id collide) is REJECTED";
+
+fails (llvm_verify m "qseal_tbs_parse_shifted" [] true parse_spec z3);
+print "MUTATION CAUGHT: the off-by-one parser (nonce read one byte early) is REJECTED";

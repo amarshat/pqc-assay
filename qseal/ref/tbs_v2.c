@@ -57,3 +57,30 @@ int qseal_tbs_v2_parse(const uint8_t in[QSEAL_TBS_V2_LEN], qseal_tbs_v2_t *t) {
     cpy(t->associated_claim_digest, in + o, 32); o += 32;
     return 1;
 }
+
+/* MUTANT, used only for the non-vacuity check in qseal/proof/tbs_v2.saw. Nothing calls it. It zeroes
+ * the pair_commitment slot instead of writing it, so the signed bytes no longer commit to the hybrid
+ * key pair: the defect the model-level collision witness (omitting_commitment_breaks_binding) targets,
+ * here at the C level. */
+void qseal_tbs_v2_serialize_nocommit(const qseal_tbs_v2_t *t, uint8_t out[QSEAL_TBS_V2_LEN]) {
+    unsigned o = 0;
+    cpy(out + o, QSEAL_MAGIC,                 5); o += 5;
+    cpy(out + o, t->version,                  1); o += 1;
+    cpy(out + o, t->suite_id,                 2); o += 2;
+    cpy(out + o, t->assertion_type,           1); o += 1;
+    cpy(out + o, t->assertion_origin,         1); o += 1;
+    cpy(out + o, t->issuer_id,               16); o += 16;
+    cpy(out + o, t->verifier_id,             16); o += 16;
+    cpy(out + o, t->ak_id,                   16); o += 16;
+    for (unsigned i = 0; i < 32; i++) out[o + i] = 0; o += 32;   /* BUG: commitment not written */
+    cpy(out + o, t->request_id,              16); o += 16;
+    cpy(out + o, t->nonce,                   32); o += 32;
+    cpy(out + o, t->policy_id,                4); o += 4;
+    cpy(out + o, t->issued_at,                8); o += 8;
+    cpy(out + o, t->expires_at,               8); o += 8;
+    cpy(out + o, t->subject_ref,             32); o += 32;
+    cpy(out + o, t->object_hash_algorithm,    1); o += 1;
+    cpy(out + o, t->object_length,            8); o += 8;
+    cpy(out + o, t->object_digest,           32); o += 32;
+    cpy(out + o, t->associated_claim_digest, 32); o += 32;
+}

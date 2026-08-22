@@ -33,6 +33,17 @@ let hostCreate =
     out(host, sign((t, req), sk))
   ).
 
+(* The eUICC's profile state machine. A real profile state transition inside the card hands the event to
+   the applet over the private callback channel. The attacker may influence WHICH profile operation
+   happens (it supplies the subject, digest and policy over the host channel) but cannot write to
+   internalCb itself. Without this process nothing ever outputs on internalCb, `internalObserved` never
+   runs, and the correspondence below holds vacuously. That defect was found in an audit of the
+   submitted artifact on 2026-08-22; see docs/ASSUMPTIONS.md OF-3. *)
+let profileTransition =
+  in(host, (subject: bitstring, digest: bitstring, policy: bitstring));
+  new id: bitstring;
+  out(internalCb, (id, subject, digest, policy)).
+
 let internalObserved =
   in(internalCb, (id: bitstring, subject: bitstring, digest: bitstring, policy: bitstring));
   event InternalFired(id, subject, digest, policy);
@@ -44,4 +55,4 @@ query id: bitstring, subject: bitstring, digest: bitstring, policy: bitstring;
   inj-event(InternalFired(id, subject, digest, policy)).
 
 process
-  ( (!hostCreate) | (!internalObserved) )
+  ( (!hostCreate) | (!internalObserved) | (!profileTransition) )

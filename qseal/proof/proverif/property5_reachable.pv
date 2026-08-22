@@ -1,4 +1,4 @@
-(* Q-SEAL section 16 property 5: PROFILE_ACTION_OBSERVED (assertion type 0x04) cannot be reached
+(* Reachability witness for property 5 (see property5.pv). Q-SEAL section 16 property 5: PROFILE_ACTION_OBSERVED (assertion type 0x04) cannot be reached
    through a host-exposed APDU path. Spec 8.4: that assertion type is produced ONLY from a trusted
    internal eUICC event callback after a profile state transition, and "MUST NOT be callable directly by
    a handset application."
@@ -65,11 +65,13 @@ let internalObserved =
   event SignedObserved(id, subject, digest, policy);
   out(host, sign((OBSERVED, id, subject, digest, policy), sk)).
 
-(* Injective correspondence: every observed-action signing, with its event data, is preceded by a
-   distinct internal callback carrying the same data. *)
+(* Reachability witness. This file exists so the positive result in property5.pv cannot be vacuous: it
+   asks whether SignedObserved is reachable at all. ProVerif answers by trying to prove the event is
+   never emitted, so the expected output is "RESULT not event(SignedObserved(...)) is false.", meaning a
+   trace exists that emits it. If this file ever reports true, the honest model has gone dead again and
+   the correspondence in property5.pv means nothing. *)
 query id: bitstring, subject: bitstring, digest: bitstring, policy: bitstring;
-  inj-event(SignedObserved(id, subject, digest, policy)) ==>
-  inj-event(InternalFired(id, subject, digest, policy)).
+  event(SignedObserved(id, subject, digest, policy)).
 
 process
   ( (!hostCreate) | (!internalObserved) | (!profileTransition) )

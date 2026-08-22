@@ -59,3 +59,8 @@ let create_spec = do {
 
 create_ov <- llvm_verify m "qseal_create_assertion" [] true create_spec z3;
 print "VERIFIED: qseal_create_assertion == Cryptol create (transcript binds the validated request; applet controls its identity fields)";
+
+// Non-vacuity: the transcript must bind the request's nonce, so a builder that puts subject_ref in the
+// nonce slot must not satisfy the same spec. `fails` succeeds exactly when the verification fails.
+fails (llvm_verify m "qseal_create_assertion_unbound_nonce" [] true create_spec z3);
+print "MUTATION CAUGHT: the unbound-nonce builder (subject_ref in the nonce slot) is REJECTED by the challenge-binding spec";

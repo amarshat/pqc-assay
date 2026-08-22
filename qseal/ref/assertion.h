@@ -37,4 +37,9 @@ typedef struct {
 void qseal_create_assertion(const qseal_request_t *r, const qseal_applet_id_t *a,
                             uint8_t out[QSEAL_TBS_LEN]);
 
+/* Deliberate mutant used only for the mutation demonstration in qseal/proof/assertion.saw: builds the
+ * transcript with subject_ref in the nonce slot, so it does not bind the validated request's nonce. */
+void qseal_create_assertion_unbound_nonce(const qseal_request_t *r, const qseal_applet_id_t *a,
+                                          uint8_t out[QSEAL_TBS_LEN]);
+
 #endif

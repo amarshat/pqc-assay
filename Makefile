@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: claim-lint all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -207,6 +207,13 @@ cve-anchor:
 	./cve-anchor/verify.sh
 
 ## Mutation-adequacy report for the Q-SEAL C references: apply relational/logical operator mutations
+## claim-lint: the mechanical half of the pre-submission review checklist. Catches
+## the defect classes that had to be found by hand once already: a SAW proof with no non-vacuity guard, a
+## ProVerif model whose events cannot fire, an assumed spec nobody justified, a comment citing a path
+## that does not exist. Fast, no toolchain needed, so it belongs in every push check.
+claim-lint:
+	@./scripts/claim-lint.sh
+
 ## one at a time and rerun the matching SAW proof, measuring how many mutants the proofs kill. Slower
 ## (~1 min, rebuilds + reruns SAW per mutant); a report, not a gate, so it is not in the saw.yml push
 ## check. Runs on a copy; tracked files are untouched.

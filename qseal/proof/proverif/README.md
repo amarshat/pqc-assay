@@ -1,5 +1,31 @@
 # Q-SEAL reachability (ProVerif)
 
+## STATUS (2026-08-22): the previous result was vacuous, and the fix is NOT YET RE-RUN
+
+An audit of the submitted artifact found that the previous `property5.pv` proved nothing. `internalCb`
+was declared private and no process ever wrote to it, so `internalObserved`, the only emitter of
+`SignedObserved`, could never run and the injective correspondence held for any model body. The mutant
+file was falsified only because it adds a reachable emitter on the host path, so the mutation check did
+not catch this. Recorded as OF-3 in `docs/ASSUMPTIONS.md`.
+
+Changed here on 2026-08-22:
+
+- `property5.pv` and `property5_mutant.pv` gain a `profileTransition` process that writes to
+  `internalCb`, so the observed path is live.
+- `property5_reachable.pv` is new: the same model with a reachability query on `SignedObserved`, so a
+  dead honest path fails the run instead of passing it.
+- `verify_reachability.sh` gates on all three runs and fails loudly with `FAIL (VACUITY)` if the event
+  is unreachable.
+
+**These three files have not been run since the change: ProVerif was not installed on the machine where
+the fix was written.** Until `./qseal/verify_reachability.sh` exits 0, property 5 has no result, and
+nothing in the repo or the paper may claim one.
+
+Even once it runs, the model is thin: `InternalFired` and `SignedObserved` are consecutive statements in
+the only process emitting either, so the correspondence is close to syntactic. Rebuilding it with applet
+state, a transcript and a host process is tracked outside this repo, with the rest of the rewrite plan.
+
+
 Section 16 property 5: `PROFILE_ACTION_OBSERVED` (assertion type `0x04`) cannot be reached through a
 host-exposed APDU path. Unlike properties 1-4/6/7, this is a reachability question over the command
 surface, not a fixed-format identity, so it is checked in ProVerif (symbolic / Dolev-Yao) rather than in

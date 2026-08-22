@@ -34,4 +34,12 @@ mkdir -p "$HERE/build"
 cat "$HERE/ref/tbs_v1.c" "$HERE/ref/assertion.c" > "$HERE/build/_assertion_combined.c"
 "$CLANG" -c -emit-llvm -O0 -g -I "$HERE/ref" "$HERE/build/_assertion_combined.c" -o "$HERE/build/assertion.bc"
 cd "$HERE/proof"
-saw assertion.saw
+SOUT="$(saw assertion.saw)"
+echo "$SOUT"
+SOK="$(printf '%s\n' "$SOUT" | grep -c '^VERIFIED:' || true)"
+SMUT="$(printf '%s\n' "$SOUT" | grep -c '^MUTATION CAUGHT:' || true)"
+if [ "$SOK" -ne 1 ] || [ "$SMUT" -ne 1 ]; then
+  echo "FAIL: expected 1 VERIFIED + 1 MUTATION CAUGHT; got VERIFIED=$SOK MUTATION=$SMUT"
+  exit 1
+fi
+echo "OK: create_assertion == model, and the unbound-nonce mutant is rejected"

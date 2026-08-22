@@ -33,3 +33,31 @@ void qseal_create_assertion(const qseal_request_t *r, const qseal_applet_id_t *a
 
     qseal_tbs_serialize(&t, out);
 }
+
+/* MUTANT, used only for the non-vacuity check in qseal/proof/assertion.saw. Nothing calls it. It fills
+ * the transcript's nonce slot from subject_ref, so the signed transcript does not bind the nonce of the
+ * validated request: exactly the property-2 failure (a transcript whose challenge fields differ from
+ * the request the applet validated). */
+void qseal_create_assertion_unbound_nonce(const qseal_request_t *r, const qseal_applet_id_t *a,
+                                          uint8_t out[QSEAL_TBS_LEN]) {
+    qseal_tbs_t t;
+    bcpy(t.version,   a->version,   1);
+    bcpy(t.issuer_id, a->issuer_id, 16);
+    bcpy(t.ak_id,     a->ak_id,     16);
+    bcpy(t.issued_at, a->issued_at, 8);
+    bcpy(t.suite_id,                r->suite_id,                2);
+    bcpy(t.assertion_type,          r->assertion_type,          1);
+    bcpy(t.assertion_origin,        r->assertion_origin,        1);
+    bcpy(t.verifier_id,             r->verifier_id,             16);
+    bcpy(t.request_id,              r->request_id,              16);
+    bcpy(t.nonce,                   r->subject_ref,             32);   /* BUG: not the request nonce */
+    bcpy(t.policy_id,               r->policy_id,               4);
+    bcpy(t.expires_at,              r->expires_at,              8);
+    bcpy(t.subject_ref,             r->subject_ref,             32);
+    bcpy(t.object_hash_algorithm,   r->object_hash_algorithm,   1);
+    bcpy(t.object_length,           r->object_length,           8);
+    bcpy(t.object_digest,           r->object_digest,           32);
+    bcpy(t.associated_claim_digest, r->associated_claim_digest, 32);
+
+    qseal_tbs_serialize(&t, out);
+}

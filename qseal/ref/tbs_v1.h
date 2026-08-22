@@ -40,4 +40,10 @@ void qseal_tbs_serialize(const qseal_tbs_t *t, uint8_t out[QSEAL_TBS_LEN]);
  * (and leaves *t unmodified on reject). */
 int qseal_tbs_parse(const uint8_t in[QSEAL_TBS_LEN], qseal_tbs_t *t);
 
+/* Deliberate mutants used only for the mutation demonstration in qseal/proof/tbs_v1.saw. The first
+ * writes issuer_id into the verifier_id slot, so the serializer is no longer injective; the second
+ * reads the nonce one byte early, so parse is no longer the serializer's inverse. */
+void qseal_tbs_serialize_aliased(const qseal_tbs_t *t, uint8_t out[QSEAL_TBS_LEN]);
+int  qseal_tbs_parse_shifted(const uint8_t in[QSEAL_TBS_LEN], qseal_tbs_t *t);
+
 #endif

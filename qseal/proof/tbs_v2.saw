@@ -80,3 +80,7 @@ let parse_spec = do {
 
 parse_ov <- llvm_verify m "qseal_tbs_v2_parse" [] true parse_spec z3;
 print "VERIFIED: qseal_tbs_v2_parse == Cryptol parse2 on well-formed input (returns 1, fills struct)";
+
+// Non-vacuity: a serializer that zeroes the pair_commitment slot must not satisfy the V2 spec.
+fails (llvm_verify m "qseal_tbs_v2_serialize_nocommit" [] true serialize_spec z3);
+print "MUTATION CAUGHT: the no-commitment serializer (pair_commitment slot zeroed) is REJECTED";

@@ -53,3 +53,7 @@ cap/target/
 # Local throwaway Isabelle scratch sessions (fast-iteration heaps), never committed.
 /scratchpad/
 cap/demo/target/
+
+# local agent/config material: never ship it with the artifact
+.claude/
+__pycache__/
