@@ -47,6 +47,12 @@ proves, on their LLVM bitcode (`proof/tbs_v1.saw`, `proof/tbs_v2.saw`):
   spec offset).
 - `qseal_tbs_parse` equals the Cryptol `parse` on well-formed input (returns 1, fills the struct);
   likewise `qseal_tbs_v2_parse` against `parse2`.
+- both parsers **fail closed**: on input that does not carry the magic prefix they return 0 and leave
+  the caller's struct exactly as they found it, with no partial decode of an unauthenticated buffer.
+  This is the direction the attacker controls, and the accept obligation above says nothing about it: a
+  parser that decoded first and checked the prefix afterwards would satisfy it. Mutants that drop the
+  prefix check (`qseal_tbs_parse_nomagic`, `qseal_tbs_v2_parse_nomagic`) are rejected by the reject
+  obligation.
 
 Composed with the model bijectivity above, the C pair round-trips. This is the first rung toward a
 verifiable Q-SEAL applet: real code checked against the transcript spec, not a test suite.
@@ -166,39 +172,42 @@ reassembly identity, not the APDU chaining/transport state machine, and not the 
 the reassembled `tbs`/signatures are the ones the applet signed is properties 2 and 3, not re-checked
 here.
 
-**PROFILE_ACTION_OBSERVED is not reachable through a host-exposed APDU path (property 5 of section 16).**
-This is a reachability question over the command surface, not a fixed-format identity, so it is checked
-in ProVerif (symbolic / Dolev-Yao) rather than the SAW/Cryptol pipeline. `proof/proverif/property5.pv`
-models the host APDU channel as attacker-controlled and the internal eUICC event callback as a private
-channel, and proves the correspondence `event(Signed(OBSERVED)) ==> event(InternalFired())`: any signing
-of a `PROFILE_ACTION_OBSERVED` (type `0x04`) assertion is preceded by the trusted internal callback. The
-host-callable path signs only `if t <> OBSERVED` (spec 8.4). `property5_mutant.pv` drops that guard, and
-ProVerif reports the same query *false*, finding a trace where the attacker obtains an OBSERVED assertion
-through the host path. `verify_reachability.sh` runs
-`property5_reachable.pv` as well, which asks whether the observed-action signing event is reachable at
-all, and exits 0 only if the event is reachable, the good model proves the query, and the mutant refutes
-it. That third run exists because an earlier version of this model was vacuous: nothing wrote to the
-private callback channel, so the process emitting the event never ran and the correspondence held for
-any model body (`docs/ASSUMPTIONS.md` OF-3). A refuted mutant does not show the honest model is alive;
-the witness does.
+**PROFILE_ACTION_OBSERVED is not obtainable through a host-exposed APDU path (property 5 of section
+16).** A safety property over the command surface, not a fixed-format identity, so it is checked in
+ProVerif (Dolev-Yao) rather than the SAW/Cryptol pipeline. The model in `proof/proverif/property5.pv`
+has a signing key, two transcript shapes so the assertion type is inside the signed bytes, a host
+command handler that refuses type `0x04` (spec 8.4), a profile-event source, and a separate assertion
+builder reachable only over a private callback channel. Three queries, all discharged:
 
-Scope: this is a symbolic model of the command surface, with no C == model link (unlike the SAW
-properties), and it is thin. `InternalFired` and `SignedObserved` are consecutive statements in the only
-process that emits either, so the correspondence is close to syntactic; there is no applet state, no
-transcript and no signature in the model. Read it as a check on the command-dispatch guard, not as a
-protocol proof; rebuilding it with state is planned. "Host-exposed" is a public channel and the trusted
-callback a private one, and the model abstracts the applet to the assertion-type dispatch. The guard it proves necessary (the host path must
-refuse type `0x04`) is now also enforced in the verified C: property 7's `qseal_validate_request` rejects
-`0x04`, with a mutant that allows it caught in `proof/validate.saw`. So the reachability argument and the
-code-level check meet at that guard (there is no shared model tying them together). Details in
-[`proof/proverif/README.md`](proof/proverif/README.md).
+1. every observed-action assertion the applet signs follows an internal event carrying the same data;
+2. every observed-typed signature the **attacker** can hold followed such an event;
+3. the applet signing key never reaches the attacker.
+
+Two mutants and a witness gate it. Dropping the host-path guard breaks queries 1 and 2. A builder that
+is correctly gated on the private channel but signs a handset-supplied subject leaves query 1 **true**
+and breaks query 2, which is why query 2 exists. `property5_reachable.pv` checks the observed-action
+event is reachable at all: without it every positive result above would hold vacuously, which is how an
+earlier version of this model came to prove nothing (`docs/ASSUMPTIONS.md` OF-3). `verify_reachability.sh`
+runs all four and gates on each outcome.
+
+Scope, and it is worth reading before quoting this result. There is no C == model link for property 5,
+unlike the SAW properties. The **injective** form of query 1 is not proved: once the two events are
+emitted by separate processes, ProVerif's abstraction permits one private-channel message to be consumed
+twice, so replay of one internal transition into several assertions is not ruled out. The earlier model
+did prove injectivity, but only because both events were statements in the same process. A version with
+real mutable profile state does not terminate (still generating rules after 10 minutes), so "a transition
+occurred" is an assumption of the model rather than something it checks. The guard the model needs is
+separately enforced in the verified C by property 7's `qseal_validate_request`, with a mutant that allows
+`0x04` caught in `proof/validate.saw`; the two meet at that guard with no shared model tying them
+together. Details in [`proof/proverif/README.md`](proof/proverif/README.md).
 
 ## Mutation adequacy
 
 Each proof above carries at least one hand-injected mutant, which shows the proof is sensitive to that
-one clause: an aliased serializer and an off-by-one parser for TBS-V1, a commitment-zeroing serializer
-for TBS-V2, an unbound-nonce builder for the assertion, and the downgrade, no-consume, no-complete,
-no-suite-check and allow-observed variants for the rest. Every function named in a `fails (llvm_verify
+one clause: an aliased serializer, an off-by-one parser and a not-fail-closed parser for TBS-V1, a
+commitment-zeroing serializer and a not-fail-closed parser for TBS-V2, an unbound-nonce builder for the
+assertion, and the downgrade, no-consume, no-complete, no-suite-check and allow-observed variants for
+the rest. Every function named in a `fails (llvm_verify
 ...)` guard is automatically excluded from the adequacy run below, so a hand-injected mutant cannot
 enter the denominator. To measure adequacy rather than sensitivity, `mutation/mutate.py` applies a relational/logical
 operator set (the class CVE-2026-24850 lived in: `<`/`<=`, `==`/`!=`, `&&`/`||`, and so on) to each C

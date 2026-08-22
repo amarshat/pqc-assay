@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
-# Q-SEAL section 16 property 5: PROFILE_ACTION_OBSERVED (assertion type 0x04) cannot be reached through a
-# host-exposed APDU path. Checked in ProVerif (symbolic model), because this is a reachability property
-# over the command surface, not a fixed-format identity.
-#   1. property5.pv (guarded host path): ProVerif proves the correspondence "an OBSERVED assertion is
-#      signed only after the trusted internal callback" is TRUE.
-#   2. property5_reachable.pv (same model, reachability query only): SignedObserved must be REACHABLE.
-#      Without this the positive result in (1) proves nothing, which is exactly how the previous version
-#      of this model came to be vacuous (docs/ASSUMPTIONS.md OF-3): nothing wrote to the private callback
-#      channel, so the event in the query antecedent could never occur.
-#   3. property5_mutant.pv (host guard dropped): ProVerif FALSIFIES the correspondence, i.e. it finds a
-#      trace where the host obtains an OBSERVED assertion with no internal callback.
-# Exits 0 only if all three hold.
+# Q-SEAL section 16 property 5: PROFILE_ACTION_OBSERVED (assertion type 0x04) must not be obtainable
+# through a host-exposed APDU path. A safety property over the command surface, so it is checked in
+# ProVerif (Dolev-Yao) rather than in the SAW/Cryptol pipeline. Four runs, all gated:
+#   1. property5.pv                   three queries, all TRUE:
+#                                       Q1 every observed assertion follows an internal event
+#                                       Q2 every observed signature the attacker holds follows one
+#                                       SK the signing key never leaks
+#   2. property5_reachable.pv         the observed-action event must be REACHABLE. Without this the
+#                                     positive results above prove nothing, which is how an earlier
+#                                     version of this model came to be vacuous (ASSUMPTIONS.md OF-3).
+#   3. property5_mutant.pv            host guard dropped: Q1 and Q2 must both be FALSE.
+#   4. property5_mutant_databind.pv   builder signs handset-supplied data: Q1 stays TRUE and Q2 must be
+#                                     FALSE. That asymmetry is why Q2 exists.
+# Exits 0 only if all four match.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -18,45 +20,43 @@ REPO="$(cd "$HERE/.." && pwd)"
 
 # Prefer a pinned proverif, then the repo toolchain dir, then an opam switch.
 if ! command -v proverif >/dev/null 2>&1; then
-  export PATH="$REPO/.tools/bin:$HOME/.opam/proverif/bin:$PATH"
+  export PATH="$REPO/.tools/bin:$HOME/.opam/pv/bin:$HOME/.opam/proverif/bin:$PATH"
 fi
-command -v proverif >/dev/null 2>&1 || { echo "FAIL: proverif not found (expected on PATH, in .tools/bin, or the opam 'proverif' switch)"; exit 2; }
+command -v proverif >/dev/null 2>&1 || { echo "FAIL: proverif not found (expected on PATH, in .tools/bin, or an opam switch). scripts/setup.sh builds it."; exit 2; }
 
 PV="$HERE/proof/proverif"
 
-echo ">> ProVerif: property5.pv (guarded host path) -- expect the correspondence TRUE"
-GOOD="$(proverif "$PV/property5.pv" 2>&1)"
-echo "$GOOD" | grep -E '^RESULT'
+q1='^RESULT event\(SignedObserved'         # correspondence over applet events
+q2='^RESULT attacker\(sign\(tbsObserved'   # correspondence over what the attacker holds
+sk='^RESULT not attacker\(sk'              # signing-key secrecy
+wit='^RESULT not event\(SignedObserved'    # reachability witness
 
-echo ">> ProVerif: property5_reachable.pv (non-vacuity) -- expect the observed-action event REACHABLE"
-REACH="$(proverif "$PV/property5_reachable.pv" 2>&1)"
-echo "$REACH" | grep -E '^RESULT'
+fail=0
+say_fail() { echo "FAIL: $*"; fail=1; }
+run()   { proverif "$PV/$1.pv" 2>&1; }
+count() { printf '%s\n' "$2" | grep -cE "$1" || true; }
 
-echo ">> ProVerif: property5_mutant.pv (host guard dropped) -- expect the correspondence FALSE"
-MUT="$(proverif "$PV/property5_mutant.pv" 2>&1)"
-echo "$MUT" | grep -E '^RESULT'
+echo ">> property5.pv: expect Q1 true, Q2 true, key secret"
+GOOD="$(run property5)"; printf '%s\n' "$GOOD" | grep -E '^RESULT' || true
+[ "$(count "$q1.*is true\." "$GOOD")" -eq 1 ] || say_fail "property5.pv Q1 (event correspondence) is not true"
+[ "$(count "$q2.*is true\." "$GOOD")" -eq 1 ] || say_fail "property5.pv Q2 (attacker-held signature) is not true"
+[ "$(count "$sk.*is true\." "$GOOD")" -eq 1 ] || say_fail "property5.pv signing key is not secret"
 
-good_true="$(printf '%s\n' "$GOOD"  | grep -cE '^RESULT .* is true\.'  || true)"
-good_false="$(printf '%s\n' "$GOOD" | grep -cE '^RESULT .* is false\.' || true)"
-mut_true="$(printf '%s\n' "$MUT"    | grep -cE '^RESULT .* is true\.'  || true)"
-mut_false="$(printf '%s\n' "$MUT"   | grep -cE '^RESULT .* is false\.' || true)"
+echo ">> property5_reachable.pv: expect the observed-action event REACHABLE"
+REACH="$(run property5_reachable)"; printf '%s\n' "$REACH" | grep -E '^RESULT' || true
+# ProVerif proves the negation of a reachability query, so "is false" here means a trace emitting the
+# event exists. A "true" means the honest path is dead and property5.pv proves nothing.
+[ "$(count "$wit.*is false\." "$REACH")" -ge 1 ] || say_fail "(VACUITY) the observed-action event is not reachable, so property5.pv proves nothing. See docs/ASSUMPTIONS.md OF-3."
 
-# ProVerif proves the NEGATION of a reachability query, so an event that can occur is reported as
-# "RESULT not event(...) is false." That false is the witness we want; a true here means the honest
-# path is dead and the correspondence above is vacuous.
-reach_live="$(printf '%s\n' "$REACH" | grep -cE '^RESULT not event\(SignedObserved.*is false\.' || true)"
-reach_dead="$(printf '%s\n' "$REACH" | grep -cE '^RESULT not event\(SignedObserved.*is true\.'  || true)"
+echo ">> property5_mutant.pv (host guard dropped): expect Q1 false, Q2 false"
+MUT="$(run property5_mutant)"; printf '%s\n' "$MUT" | grep -E '^RESULT' || true
+[ "$(count "$q1.*is false\." "$MUT")" -eq 1 ] || say_fail "the host-guard mutant is not caught by Q1"
+[ "$(count "$q2.*is false\." "$MUT")" -eq 1 ] || say_fail "the host-guard mutant is not caught by Q2"
 
-if [ "$reach_live" -lt 1 ] || [ "$reach_dead" -ne 0 ]; then
-  echo "FAIL (VACUITY): the observed-action event is not reachable in the model, so the correspondence in property5.pv holds trivially. See docs/ASSUMPTIONS.md OF-3."
-  exit 1
-fi
+echo ">> property5_mutant_databind.pv (builder signs handset data): expect Q1 true, Q2 false"
+MUTB="$(run property5_mutant_databind)"; printf '%s\n' "$MUTB" | grep -E '^RESULT' || true
+[ "$(count "$q1.*is true\." "$MUTB")" -eq 1 ]  || say_fail "the data-binding mutant unexpectedly breaks Q1"
+[ "$(count "$q2.*is false\." "$MUTB")" -eq 1 ] || say_fail "the data-binding mutant is not caught by Q2"
 
-# ProVerif may print an extra parenthetical "(even event ... is false.)" line when an injective query
-# fails, so require at-least-one false for the mutant rather than exactly one.
-if [ "$good_true" -ge 1 ] && [ "$good_false" -eq 0 ] && [ "$mut_false" -ge 1 ] && [ "$mut_true" -eq 0 ]; then
-  echo "OK: the observed-action event is reachable (non-vacuous), the injective correspondence holds, and the host-path mutant is refuted."
-  exit 0
-fi
-echo "FAIL: expected good=true/mutant=false; got good_true=$good_true good_false=$good_false mut_true=$mut_true mut_false=$mut_false"
-exit 1
+[ "$fail" -eq 0 ] || exit 1
+echo "OK: observed-action event reachable; both correspondences hold; the host-guard mutant breaks both, the data-binding mutant breaks the attacker-side one."

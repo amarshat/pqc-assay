@@ -1,77 +1,84 @@
-(* Reachability witness for property 5 (see property5.pv). Q-SEAL section 16 property 5: PROFILE_ACTION_OBSERVED (assertion type 0x04) cannot be reached
-   through a host-exposed APDU path. Spec 8.4: that assertion type is produced ONLY from a trusted
+(* Reachability witness for property 5 (see property5.pv). Q-SEAL section 16 property 5: PROFILE_ACTION_OBSERVED (assertion type 0x04) must not be obtainable
+   through a host-exposed APDU path. Spec 8.4: that assertion type is produced only from a trusted
    internal eUICC event callback after a profile state transition, and "MUST NOT be callable directly by
    a handset application."
 
-   This is a reachability property over the command surface, not a fixed-format identity, so it is
-   modelled and checked in ProVerif (symbolic / Dolev-Yao). The host APDU channel is attacker-controlled;
-   the internal callback is a private channel the attacker cannot use. The correspondence is INJECTIVE
-   and PARAMETERISED by the event data (id, subject, object digest, policy): each observed-action signing
-   is preceded by a distinct trusted internal callback carrying the same data, so the host can neither
-   originate an observed assertion nor replay one internal callback into several assertions.
+   This is a safety property over the command surface (the paper called it a reachability property; the
+   correct term is safety), so it is checked in ProVerif under a Dolev-Yao attacker rather than in the
+   SAW/Cryptol pipeline. The host APDU channel is attacker-controlled; the internal callback is a private
+   channel the attacker cannot write.
 
-   property5_mutant.pv drops the host-path guard and ProVerif falsifies the same query, and
-   property5_reachable.pv witnesses that SignedObserved is reachable here at all.
+   WHAT IS IN THE MODEL. A signing key, two transcript shapes so the assertion type is inside the signed
+   bytes, a host command handler, a profile-event source, and a separate assertion builder that is
+   reachable only over the private callback channel. The two events of the correspondence are emitted by
+   DIFFERENT processes, so the correspondence is decided by the channel structure and not by two adjacent
+   statements in one process, which is what an earlier version of this model did (docs/ASSUMPTIONS.md
+   OF-3).
 
-   WHAT THIS MODEL DOES AND DOES NOT ESTABLISH. It shows that in this model the host command path
-   cannot produce an observed-action assertion, and (with the witness file) that the observed path is
-   live. It does not show much more than that: InternalFired and SignedObserved are consecutive
-   statements in the only process that emits either, so the correspondence is close to syntactic. There
-   is no applet state, no transcript and no signature verification in here. Rebuilding it with those is
-   tracked as F1-1 in paper/notes/QSEAL-REVIEW-PLAN.md, and until that lands this file should be
-   described as what it is. *)
+   WHAT IS NOT IN THE MODEL. No mutable profile state: a state cell held on a private channel and
+   read-modify-written under replication does not terminate here (see proof/proverif/README.md), so a
+   transition is modelled as an event source with a fresh event id rather than as a real toggle. No
+   applet memory, no APDU fragmentation, no certificate layer.
+
+   WHAT IS NOT PROVED. The INJECTIVE form of query 1 cannot be proved once the two events sit in separate
+   processes, because ProVerif's abstraction lets one message on the private channel be consumed more
+   than once. The earlier model proved injectivity only because both events were emitted by the same
+   process. So this file claims the non-injective correspondence: replay of one internal transition into
+   several assertions is NOT ruled out here.
+
+   Companion files: property5_reachable.pv (the honest path is live), property5_mutant.pv (host guard
+   dropped), property5_mutant_databind.pv (builder signs handset-supplied data). *)
 
 free host: channel.                  (* host-exposed APDU path: attacker-controlled *)
 free internalCb: channel [private].  (* trusted internal event callback: not attacker-reachable *)
 
 type key.
+free sk: key [private].              (* applet signing key *)
 fun sign(bitstring, key): bitstring.
 
-free sk: key [private].              (* applet signing key *)
+(* Two transcript shapes, so the assertion type is part of the signed bytes rather than a label. *)
+fun tbsHost(bitstring, bitstring, bitstring, bitstring, bitstring, bitstring): bitstring.
+fun tbsObserved(bitstring, bitstring, bitstring, bitstring): bitstring.
 
 const OBSERVED: bitstring.           (* assertion type PROFILE_ACTION_OBSERVED (0x04) *)
 
-(* Event data: a callback/assertion carries an event id, subject, object digest, and policy. *)
 event SignedObserved(bitstring, bitstring, bitstring, bitstring).
 event InternalFired(bitstring, bitstring, bitstring, bitstring).
 event SignedOther(bitstring).
 
-(* Host-callable CREATE_ASSERTION: the handset supplies the assertion type and request. The applet must
-   NOT sign an OBSERVED assertion on this path (spec 8.4). *)
+(* Host-callable CREATE_ASSERTION: the handset supplies the assertion type and every field. The applet
+   must not sign an observed-action assertion on this path (spec 8.4). *)
 let hostCreate =
-  in(host, (t: bitstring, req: bitstring));
+  in(host, (t: bitstring, v: bitstring, n: bitstring, s: bitstring, d: bitstring, p: bitstring));
   if t <> OBSERVED then
   (
     event SignedOther(t);
-    out(host, sign((t, req), sk))
+    out(host, sign(tbsHost(t, v, n, s, d, p), sk))
   ).
 
-(* Trusted internal callback: fires only after a real profile state transition, then signs the OBSERVED
-   assertion for that specific event. Reached over a private channel, so the attacker cannot invoke it. *)
-(* The eUICC's profile state machine. A real profile state transition inside the card hands the event to
-   the applet over the private callback channel. The attacker may influence WHICH profile operation
-   happens (it supplies the subject, digest and policy over the host channel) but cannot write to
-   internalCb itself. Without this process nothing ever outputs on internalCb, `internalObserved` never
-   runs, and the correspondence below holds vacuously. That defect was found in an audit of the
-   submitted artifact on 2026-08-22; see docs/ASSUMPTIONS.md OF-3. *)
+(* Profile-event source inside the eUICC. The attacker drives the handset, so it chooses which profile
+   operation is requested and with what subject, digest and policy, but the event id and the callback
+   channel are internal. *)
 let profileTransition =
   in(host, (subject: bitstring, digest: bitstring, policy: bitstring));
   new id: bitstring;
+  event InternalFired(id, subject, digest, policy);
   out(internalCb, (id, subject, digest, policy)).
 
-let internalObserved =
+(* The observed-action assertion builder: a separate process, reachable only over the private callback
+   channel, which signs the observed transcript carrying exactly the callback's data. *)
+let observedAssert =
   in(internalCb, (id: bitstring, subject: bitstring, digest: bitstring, policy: bitstring));
-  event InternalFired(id, subject, digest, policy);
   event SignedObserved(id, subject, digest, policy);
-  out(host, sign((OBSERVED, id, subject, digest, policy), sk)).
+  out(host, sign(tbsObserved(id, subject, digest, policy), sk)).
 
-(* Reachability witness. This file exists so the positive result in property5.pv cannot be vacuous: it
-   asks whether SignedObserved is reachable at all. ProVerif answers by trying to prove the event is
-   never emitted, so the expected output is "RESULT not event(SignedObserved(...)) is false.", meaning a
-   trace exists that emits it. If this file ever reports true, the honest model has gone dead again and
-   the correspondence in property5.pv means nothing. *)
+(* Reachability witness. This file exists so the positive results in property5.pv cannot be vacuous: it
+   asks whether the observed-action signing event is reachable at all. ProVerif proves the negation of a
+   reachability query, so the expected output is "RESULT not event(SignedObserved(...)) is false.", i.e.
+   a trace emitting it exists. A "true" here means the honest path is dead and every correspondence in
+   property5.pv holds for the wrong reason. *)
 query id: bitstring, subject: bitstring, digest: bitstring, policy: bitstring;
   event(SignedObserved(id, subject, digest, policy)).
 
 process
-  ( (!hostCreate) | (!internalObserved) | (!profileTransition) )
+  ( (!hostCreate) | (!profileTransition) | (!observedAssert) )

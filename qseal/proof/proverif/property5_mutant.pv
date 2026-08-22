@@ -1,58 +1,103 @@
-(* Mutant of property5.pv: the host-callable CREATE_ASSERTION drops the guard, so on an OBSERVED request
-   it signs and emits SignedObserved with host-supplied event data and no internal callback. ProVerif
-   must FALSIFY the injective correspondence (an observed-action assertion with no matching
-   InternalFired), which is the host-exposed reachability the property forbids. The runner treats "query
-   is true" here as a failure. *)
+(* MUTANT of property5.pv: the host CREATE_ASSERTION path drops the spec 8.4 guard, so a handset can
+   obtain an observed-action assertion directly. ProVerif must report queries 1 AND 2 false. Key secrecy
+   is unaffected and stays true.
 
-free host: channel.
-free internalCb: channel [private].
+   Q-SEAL section 16 property 5: PROFILE_ACTION_OBSERVED (assertion type 0x04) must not be obtainable
+   through a host-exposed APDU path. Spec 8.4: that assertion type is produced only from a trusted
+   internal eUICC event callback after a profile state transition, and "MUST NOT be callable directly by
+   a handset application."
+
+   This is a safety property over the command surface (the paper called it a reachability property; the
+   correct term is safety), so it is checked in ProVerif under a Dolev-Yao attacker rather than in the
+   SAW/Cryptol pipeline. The host APDU channel is attacker-controlled; the internal callback is a private
+   channel the attacker cannot write.
+
+   WHAT IS IN THE MODEL. A signing key, two transcript shapes so the assertion type is inside the signed
+   bytes, a host command handler, a profile-event source, and a separate assertion builder that is
+   reachable only over the private callback channel. The two events of the correspondence are emitted by
+   DIFFERENT processes, so the correspondence is decided by the channel structure and not by two adjacent
+   statements in one process, which is what an earlier version of this model did (docs/ASSUMPTIONS.md
+   OF-3).
+
+   WHAT IS NOT IN THE MODEL. No mutable profile state: a state cell held on a private channel and
+   read-modify-written under replication does not terminate here (see proof/proverif/README.md), so a
+   transition is modelled as an event source with a fresh event id rather than as a real toggle. No
+   applet memory, no APDU fragmentation, no certificate layer.
+
+   WHAT IS NOT PROVED. The INJECTIVE form of query 1 cannot be proved once the two events sit in separate
+   processes, because ProVerif's abstraction lets one message on the private channel be consumed more
+   than once. The earlier model proved injectivity only because both events were emitted by the same
+   process. So this file claims the non-injective correspondence: replay of one internal transition into
+   several assertions is NOT ruled out here.
+
+   Companion files: property5_reachable.pv (the honest path is live), property5_mutant.pv (host guard
+   dropped), property5_mutant_databind.pv (builder signs handset-supplied data). *)
+
+free host: channel.                  (* host-exposed APDU path: attacker-controlled *)
+free internalCb: channel [private].  (* trusted internal event callback: not attacker-reachable *)
 
 type key.
+free sk: key [private].              (* applet signing key *)
 fun sign(bitstring, key): bitstring.
 
-free sk: key [private].
+(* Two transcript shapes, so the assertion type is part of the signed bytes rather than a label. *)
+fun tbsHost(bitstring, bitstring, bitstring, bitstring, bitstring, bitstring): bitstring.
+fun tbsObserved(bitstring, bitstring, bitstring, bitstring): bitstring.
 
-const OBSERVED: bitstring.
+const OBSERVED: bitstring.           (* assertion type PROFILE_ACTION_OBSERVED (0x04) *)
 
 event SignedObserved(bitstring, bitstring, bitstring, bitstring).
 event InternalFired(bitstring, bitstring, bitstring, bitstring).
 event SignedOther(bitstring).
 
-(* BUG: no `if t <> OBSERVED` guard. On an OBSERVED request the host obtains an observed-action assertion
-   directly, with event data it chose. *)
+(* Host-callable CREATE_ASSERTION: the handset supplies the assertion type and every field. The applet
+   must not sign an observed-action assertion on this path (spec 8.4). *)
 let hostCreate =
-  in(host, (t: bitstring, req: bitstring));
+  in(host, (t: bitstring, v: bitstring, n: bitstring, s: bitstring, d: bitstring, p: bitstring));
   if t = OBSERVED then
   (
-    event SignedObserved(req, req, req, req);
-    out(host, sign((OBSERVED, req), sk))
+    (* BUG: the host path signs an observed-action assertion with handset-chosen data. *)
+    event SignedObserved(v, s, d, p);
+    out(host, sign(tbsObserved(v, s, d, p), sk))
   )
   else
   (
     event SignedOther(t);
-    out(host, sign((t, req), sk))
+    out(host, sign(tbsHost(t, v, n, s, d, p), sk))
   ).
 
-(* The eUICC's profile state machine. A real profile state transition inside the card hands the event to
-   the applet over the private callback channel. The attacker may influence WHICH profile operation
-   happens (it supplies the subject, digest and policy over the host channel) but cannot write to
-   internalCb itself. Without this process nothing ever outputs on internalCb, `internalObserved` never
-   runs, and the correspondence below holds vacuously. That defect was found in an audit of the
-   submitted artifact on 2026-08-22; see docs/ASSUMPTIONS.md OF-3. *)
+(* Profile-event source inside the eUICC. The attacker drives the handset, so it chooses which profile
+   operation is requested and with what subject, digest and policy, but the event id and the callback
+   channel are internal. *)
 let profileTransition =
   in(host, (subject: bitstring, digest: bitstring, policy: bitstring));
   new id: bitstring;
+  event InternalFired(id, subject, digest, policy);
   out(internalCb, (id, subject, digest, policy)).
 
-let internalObserved =
+(* The observed-action assertion builder: a separate process, reachable only over the private callback
+   channel, which signs the observed transcript carrying exactly the callback's data. *)
+let observedAssert =
   in(internalCb, (id: bitstring, subject: bitstring, digest: bitstring, policy: bitstring));
-  event InternalFired(id, subject, digest, policy);
   event SignedObserved(id, subject, digest, policy);
-  out(host, sign((OBSERVED, id, subject, digest, policy), sk)).
+  out(host, sign(tbsObserved(id, subject, digest, policy), sk)).
 
+(* 1. Every observed-action assertion the applet signs follows an internal event carrying the same data.
+      Non-injective: see the header. *)
 query id: bitstring, subject: bitstring, digest: bitstring, policy: bitstring;
-  inj-event(SignedObserved(id, subject, digest, policy)) ==>
-  inj-event(InternalFired(id, subject, digest, policy)).
+  event(SignedObserved(id, subject, digest, policy)) ==>
+  event(InternalFired(id, subject, digest, policy)).
+
+(* 2. The same property stated over what the attacker can hold rather than over applet events: any
+      observed-typed signature the attacker obtains was preceded by an internal event with the same
+      data. This is the query that fails if the builder signs handset-supplied fields, which query 1
+      does not catch (property5_mutant_databind.pv). *)
+query id: bitstring, subject: bitstring, digest: bitstring, policy: bitstring;
+  attacker(sign(tbsObserved(id, subject, digest, policy), sk)) ==>
+  event(InternalFired(id, subject, digest, policy)).
+
+(* 3. The applet signing key never reaches the attacker. *)
+query attacker(sk).
 
 process
-  ( (!hostCreate) | (!internalObserved) | (!profileTransition) )
+  ( (!hostCreate) | (!profileTransition) | (!observedAssert) )

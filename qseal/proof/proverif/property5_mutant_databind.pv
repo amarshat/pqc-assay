@@ -1,4 +1,9 @@
-(* Q-SEAL section 16 property 5: PROFILE_ACTION_OBSERVED (assertion type 0x04) must not be obtainable
+(* MUTANT of property5.pv: the builder is still reachable only from the internal callback, but it signs
+   a subject supplied by the handset. The event correspondence (query 1) still holds, so this mutant is
+   invisible to it; query 2, stated over what the attacker can hold, must report false. That is the
+   reason query 2 exists.
+
+   Q-SEAL section 16 property 5: PROFILE_ACTION_OBSERVED (assertion type 0x04) must not be obtainable
    through a host-exposed APDU path. Spec 8.4: that assertion type is produced only from a trusted
    internal eUICC event callback after a profile state transition, and "MUST NOT be callable directly by
    a handset application."
@@ -69,8 +74,10 @@ let profileTransition =
    channel, which signs the observed transcript carrying exactly the callback's data. *)
 let observedAssert =
   in(internalCb, (id: bitstring, subject: bitstring, digest: bitstring, policy: bitstring));
+  in(host, subject2: bitstring);
+  (* BUG: the signed transcript carries the handset's subject, not the callback's. *)
   event SignedObserved(id, subject, digest, policy);
-  out(host, sign(tbsObserved(id, subject, digest, policy), sk)).
+  out(host, sign(tbsObserved(id, subject2, digest, policy), sk)).
 
 (* 1. Every observed-action assertion the applet signs follows an internal event carrying the same data.
       Non-injective: see the header. *)

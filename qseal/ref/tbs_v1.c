@@ -109,3 +109,28 @@ int qseal_tbs_parse_shifted(const uint8_t in[QSEAL_TBS_LEN], qseal_tbs_t *t) {
     cpy(t->associated_claim_digest, in + o,     32); o += 32;
     return 1;
 }
+
+/* MUTANT (not fail-closed): skips the magic check, so it accepts and decodes any 231 bytes. Must NOT
+ * satisfy the reject spec in qseal/proof/tbs_v1.saw, which requires return 0 and an untouched struct
+ * on input that does not carry the magic prefix. */
+int qseal_tbs_parse_nomagic(const uint8_t in[QSEAL_TBS_LEN], qseal_tbs_t *t) {
+    unsigned o = 5;
+    cpy(t->version,                 in + o,  1); o += 1;
+    cpy(t->suite_id,                in + o,  2); o += 2;
+    cpy(t->assertion_type,          in + o,  1); o += 1;
+    cpy(t->assertion_origin,        in + o,  1); o += 1;
+    cpy(t->issuer_id,               in + o, 16); o += 16;
+    cpy(t->verifier_id,             in + o, 16); o += 16;
+    cpy(t->ak_id,                   in + o, 16); o += 16;
+    cpy(t->request_id,              in + o, 16); o += 16;
+    cpy(t->nonce,                   in + o, 32); o += 32;
+    cpy(t->policy_id,               in + o,  4); o += 4;
+    cpy(t->issued_at,               in + o,  8); o += 8;
+    cpy(t->expires_at,              in + o,  8); o += 8;
+    cpy(t->subject_ref,             in + o, 32); o += 32;
+    cpy(t->object_hash_algorithm,   in + o,  1); o += 1;
+    cpy(t->object_length,           in + o,  8); o += 8;
+    cpy(t->object_digest,           in + o, 32); o += 32;
+    cpy(t->associated_claim_digest, in + o, 32); o += 32;
+    return 1;
+}

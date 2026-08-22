@@ -25,7 +25,7 @@ done
 
 note "== 2. every ProVerif model has a reachability witness =="
 for f in qseal/proof/proverif/*.pv; do
-  case "$(basename "$f")" in *_reachable.pv|*_mutant.pv) continue;; esac
+  case "$(basename "$f")" in *_reachable.pv|*_mutant*.pv) continue;; esac
   base="${f%.pv}"
   if [ -f "${base}_reachable.pv" ]; then
     printf '  %-28s witness present\n' "$(basename "$f")"
@@ -41,7 +41,7 @@ for f in qseal/proof/proverif/*.pv; do
     fi
   done
 done
-grep -q 'FAIL (VACUITY)' qseal/verify_reachability.sh || bad "qseal/verify_reachability.sh has no vacuity gate"
+grep -q 'VACUITY' qseal/verify_reachability.sh || bad "qseal/verify_reachability.sh has no vacuity gate"
 
 note "== 3. assumed specs, listed (each needs a justification in docs/ASSUMPTIONS.md) =="
 grep -rn 'unsafe_assume_spec' --include='*.saw' qseal proof implementations 2>/dev/null \

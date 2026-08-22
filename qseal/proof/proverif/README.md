@@ -1,94 +1,54 @@
 # Q-SEAL reachability (ProVerif)
 
-## STATUS (2026-08-22): the previous result was vacuous; fixed and re-verified
+Section 16 property 5: `PROFILE_ACTION_OBSERVED` (assertion type `0x04`) must not be obtainable through
+a host-exposed APDU path. This is a **safety** property over the command surface (earlier text called it
+a reachability property, which is the wrong term), so it is checked in ProVerif under a Dolev-Yao
+attacker rather than in the SAW/Cryptol pipeline.
+
+## History: this model was vacuous, and was rebuilt
 
 An audit of the submitted artifact found that the previous `property5.pv` proved nothing. `internalCb`
-was declared private and no process ever wrote to it, so `internalObserved`, the only emitter of
-`SignedObserved`, could never run and the injective correspondence held for any model body. The mutant
-file was falsified only because it adds a reachable emitter on the host path, so the mutation check did
-not catch this. Recorded as OF-3 in `docs/ASSUMPTIONS.md`.
+was private and no process ever wrote to it, so the only emitter of `SignedObserved` never ran and the
+query held for any model body. The mutant file was falsified only because it adds a reachable emitter on
+the host path, so the mutation check did not catch it. Recorded as OF-3 in `docs/ASSUMPTIONS.md`.
 
-Changed here on 2026-08-22:
+The rebuilt model (2026-08-22) has a signing key, two transcript shapes so the assertion type sits inside
+the signed bytes, a host command handler, a profile-event source, and a separate assertion builder
+reachable only over the private callback channel. The two events of the correspondence are emitted by
+**different** processes, so the correspondence is decided by the channel structure rather than by two
+adjacent statements.
 
-- `property5.pv` and `property5_mutant.pv` gain a `profileTransition` process that writes to
-  `internalCb`, so the observed path is live.
-- `property5_reachable.pv` is new: the same model with a reachability query on `SignedObserved`, so a
-  dead honest path fails the run instead of passing it.
-- `verify_reachability.sh` gates on all three runs and fails loudly with `FAIL (VACUITY)` if the event
-  is unreachable.
+## The four files
 
-Verified with ProVerif 2.05 on 2026-08-22, `./qseal/verify_reachability.sh` exit 0:
+| file | what it is | expected |
+|------|-----------|----------|
+| `property5.pv` | the model, three queries | Q1 true, Q2 true, key secret |
+| `property5_reachable.pv` | same model, reachability query only | event reachable (`not event(...)` is **false**) |
+| `property5_mutant.pv` | host path drops the spec 8.4 guard | Q1 false, Q2 false |
+| `property5_mutant_databind.pv` | builder signs a handset-supplied subject | Q1 **true**, Q2 false |
 
-    RESULT inj-event(SignedObserved(...)) ==> inj-event(InternalFired(...)) is true.      # property5.pv
-    RESULT not event(SignedObserved(...)) is false.                                       # reachable
-    RESULT inj-event(SignedObserved(...)) ==> inj-event(InternalFired(...)) is false.     # mutant
+Q1 is the correspondence over applet events: every observed-action assertion follows an internal event
+carrying the same data. Q2 states it over what the attacker can hold: any observed-typed signature it
+obtains was preceded by such an event. Q2 exists because of the fourth row. A builder that is correctly
+gated on the private channel but signs handset-supplied fields satisfies Q1 and violates Q2, so Q1 alone
+would report a clean result for a broken applet.
 
-The middle line is the one that matters: ProVerif proves the negation of a reachability query, so
-"is false" means a trace emitting the event exists. Running the witness against the pre-fix model (no
-`profileTransition`) gives "is true", i.e. unreachable, and the script fails with `FAIL (VACUITY)`. The
-gate discriminates.
+`verify_reachability.sh` runs all four and gates on every cell of that table.
 
-Even once it runs, the model is thin: `InternalFired` and `SignedObserved` are consecutive statements in
-the only process emitting either, so the correspondence is close to syntactic. Rebuilding it with applet
-state, a transcript and a host process is tracked outside this repo, with the rest of the rewrite plan.
+## What this model does not establish
 
+- **Injectivity.** The injective form of Q1 cannot be proved once the two events are emitted by separate
+  processes: ProVerif's abstraction allows one message on the private channel to be consumed more than
+  once. The previous model proved injectivity only because both events came from the same process, which
+  is not evidence about the design. Replay of one internal transition into several assertions is
+  therefore **not** ruled out here.
+- **Mutable profile state.** A version with a real state cell (the current profile state held on a
+  private channel, read-modify-written under replication, so an event fires only on an actual state
+  change) does not terminate: ProVerif was still generating rules after 10 minutes. The shipped model
+  uses a fresh event id per transition instead, which means "a transition occurred" is an assumption of
+  the model, not something it checks.
+- **Any link to the C.** Unlike properties 1-4/6/7 there is no C == model result here. The guard the
+  model needs (the host path must refuse type `0x04`) is separately enforced in the verified C by
+  property 7's `qseal_validate_request`, with a mutant that allows it caught in `proof/validate.saw`.
+  The two meet at that guard; nothing ties them together formally.
 
-Section 16 property 5: `PROFILE_ACTION_OBSERVED` (assertion type `0x04`) cannot be reached through a
-host-exposed APDU path. Unlike properties 1-4/6/7, this is a reachability question over the command
-surface, not a fixed-format identity, so it is checked in ProVerif (symbolic / Dolev-Yao) rather than in
-the SAW/Cryptol pipeline.
-
-## The model
-
-`property5.pv` models two entry points to the applet:
-
-- `hostCreate`, reading from a public channel `host` (attacker-controlled), the host-exposed APDU path.
-  It signs an assertion of the type the handset asks for, but only `if t <> OBSERVED` (spec 8.4: that
-  type must not be callable by a handset application).
-- `internalObserved`, reading from a private channel `internalCb` (the trusted internal eUICC event
-  callback, which the attacker cannot use). It signs the `OBSERVED` assertion.
-
-The query is an injective, parameterised correspondence
-
-    inj-event(SignedObserved(id, subject, digest, policy)) ==>
-    inj-event(InternalFired(id, subject, digest, policy))
-
-"every observed-action signing, carrying its event data, is preceded by a distinct trusted internal
-callback carrying the same data." Injectivity rules out replaying one internal callback into several
-assertions; the parameters rule out an unrelated callback standing in for a different observed action.
-ProVerif proves it **true** for `property5.pv`. `property5_mutant.pv` drops the `if t <> OBSERVED` guard,
-so on an OBSERVED request the host obtains the assertion with its own event data and no internal callback,
-and ProVerif reports the query **false**. `../../verify_reachability.sh` runs both and exits 0 only if the
-good model proves the query and the mutant refutes it.
-
-## Scope, and what this does NOT prove
-
-This is a symbolic model of the command surface, not a proof about the C code (there is no C == model
-link here, unlike the SAW properties). "Host-exposed" is modelled as a public channel and the trusted
-callback as a private one; the real secure-element access boundary (spec section 12) is assumed to map
-onto that channel privacy. The model abstracts the applet to the assertion-type dispatch; it does not
-model the full CREATE_ASSERTION field validation, READ_EVIDENCE, sessions, or APDU framing. The guard it
-proves necessary (the host path must refuse type `0x04`) is exactly the authorization check the property
-7 field gate does not make, so this is where that gap is closed at the model level.
-
-## Reproduce
-
-    ./qseal/verify_reachability.sh      # or: make qseal-reachability
-
-Needs `proverif` on PATH (or in `.tools/bin`). ProVerif is not in the SAW toolchain tarball and is not
-in the per-push CI (it is a separate OCaml-based tool); it is pinned in `scripts/setup.sh` as an
-optional leg.
-
-## Installing ProVerif
-
-`scripts/setup.sh` builds ProVerif 2.05 from source (CLI only) if an OCaml toolchain is present. The
-opam package pulls a GTK2 GUI dependency that is not needed, so the source build is simpler:
-
-    brew install opam pkg-config
-    opam init --bare --yes
-    opam switch create proverif 4.14.1 --yes
-    eval "$(opam env --switch proverif)"
-    # then re-run scripts/setup.sh, or build by hand:
-    curl -LO https://bblanche.gitlabpages.inria.fr/proverif/proverif2.05.tar.gz
-    tar xzf proverif2.05.tar.gz && cd proverif2.05 && ./build
-    cp proverif <repo>/.tools/bin/

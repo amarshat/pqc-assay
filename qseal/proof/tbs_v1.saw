@@ -78,6 +78,53 @@ let parse_spec = do {
 parse_ov <- llvm_verify m "qseal_tbs_parse" [] true parse_spec z3;
 print "VERIFIED: qseal_tbs_parse == Cryptol parse on well-formed input (returns 1, fills struct)";
 
+// Fail-closed direction (the attacker-controlled one). On input that does not carry the magic prefix
+// the parser must return 0 AND leave the caller's struct exactly as it found it: no partial decode of
+// an unauthenticated buffer. The accept spec above says nothing about this half, since it assumes the
+// prefix; a parser that decoded first and checked afterwards would satisfy it.
+let parse_reject_spec = do {
+    inp <- llvm_fresh_var "inp" (llvm_array 231 (llvm_int 8));
+    llvm_precond {{ ~ (well_formed inp) }};
+    pin <- llvm_alloc_readonly (llvm_array 231 (llvm_int 8));
+    llvm_points_to pin (llvm_term inp);
+
+    // whatever the caller's struct held before the call, it must hold after it
+    p_version                 <- field "p_version" 1;
+    p_suite_id                <- field "p_suite_id" 2;
+    p_assertion_type          <- field "p_assertion_type" 1;
+    p_assertion_origin        <- field "p_assertion_origin" 1;
+    p_issuer_id               <- field "p_issuer_id" 16;
+    p_verifier_id             <- field "p_verifier_id" 16;
+    p_ak_id                   <- field "p_ak_id" 16;
+    p_request_id              <- field "p_request_id" 16;
+    p_nonce                   <- field "p_nonce" 32;
+    p_policy_id               <- field "p_policy_id" 4;
+    p_issued_at               <- field "p_issued_at" 8;
+    p_expires_at              <- field "p_expires_at" 8;
+    p_subject_ref             <- field "p_subject_ref" 32;
+    p_object_hash_algorithm   <- field "p_object_hash_algorithm" 1;
+    p_object_length           <- field "p_object_length" 8;
+    p_object_digest           <- field "p_object_digest" 32;
+    p_associated_claim_digest <- field "p_associated_claim_digest" 32;
+
+    let before = llvm_struct_value [
+        llvm_term p_version, llvm_term p_suite_id, llvm_term p_assertion_type,
+        llvm_term p_assertion_origin, llvm_term p_issuer_id, llvm_term p_verifier_id,
+        llvm_term p_ak_id, llvm_term p_request_id, llvm_term p_nonce, llvm_term p_policy_id,
+        llvm_term p_issued_at, llvm_term p_expires_at, llvm_term p_subject_ref,
+        llvm_term p_object_hash_algorithm, llvm_term p_object_length, llvm_term p_object_digest,
+        llvm_term p_associated_claim_digest ];
+
+    pt <- llvm_alloc (llvm_alias "struct.qseal_tbs_t");
+    llvm_points_to pt before;
+    llvm_execute_func [pin, pt];
+    llvm_points_to pt before;
+    llvm_return (llvm_term {{ 0 : [32] }});
+};
+
+parse_reject_ov <- llvm_verify m "qseal_tbs_parse" [] true parse_reject_spec z3;
+print "VERIFIED: qseal_tbs_parse fails closed (no magic prefix => returns 0 and does not touch the caller's struct)";
+
 // Non-vacuity. Neither mutant may satisfy the spec its correct twin satisfies; `fails` succeeds exactly
 // when the verification does not go through.
 fails (llvm_verify m "qseal_tbs_serialize_aliased" [] true serialize_spec z3);
@@ -85,3 +132,6 @@ print "MUTATION CAUGHT: the aliased serializer (issuer_id written into the verif
 
 fails (llvm_verify m "qseal_tbs_parse_shifted" [] true parse_spec z3);
 print "MUTATION CAUGHT: the off-by-one parser (nonce read one byte early) is REJECTED";
+
+fails (llvm_verify m "qseal_tbs_parse_nomagic" [] true parse_reject_spec z3);
+print "MUTATION CAUGHT: the not-fail-closed parser (magic check dropped) is REJECTED by the reject spec";

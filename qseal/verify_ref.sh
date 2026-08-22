@@ -18,14 +18,14 @@ mkdir -p "$HERE/build"
 
 cd "$HERE/proof"
 
-# Count the outcomes rather than trusting the exit status: four obligations must discharge and all
-# three injected mutants must be rejected.
+# Count the outcomes rather than trusting the exit status: six obligations must discharge (serialize,
+# parse-accept and parse-reject for each of V1 and V2) and all five injected mutants must be rejected.
 OUT="$(saw tbs_v1.saw; saw tbs_v2.saw)"
 echo "$OUT"
 OK="$(printf '%s\n' "$OUT" | grep -c '^VERIFIED:' || true)"
 MUT="$(printf '%s\n' "$OUT" | grep -c '^MUTATION CAUGHT:' || true)"
-if [ "$OK" -ne 4 ] || [ "$MUT" -ne 3 ]; then
-  echo "FAIL: expected 4 VERIFIED + 3 MUTATION CAUGHT; got VERIFIED=$OK MUTATION=$MUT"
+if [ "$OK" -ne 6 ] || [ "$MUT" -ne 5 ]; then
+  echo "FAIL: expected 6 VERIFIED + 5 MUTATION CAUGHT; got VERIFIED=$OK MUTATION=$MUT"
   exit 1
 fi
-echo "OK: 4 obligations discharged, 3 injected mutants rejected"
+echo "OK: 6 obligations discharged, 5 injected mutants rejected"

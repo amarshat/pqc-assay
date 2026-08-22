@@ -46,4 +46,7 @@ int qseal_tbs_parse(const uint8_t in[QSEAL_TBS_LEN], qseal_tbs_t *t);
 void qseal_tbs_serialize_aliased(const qseal_tbs_t *t, uint8_t out[QSEAL_TBS_LEN]);
 int  qseal_tbs_parse_shifted(const uint8_t in[QSEAL_TBS_LEN], qseal_tbs_t *t);
 
+/* Deliberate mutant: drops the magic check, so it is not fail-closed. */
+int qseal_tbs_parse_nomagic(const uint8_t in[QSEAL_TBS_LEN], qseal_tbs_t *t);
+
 #endif

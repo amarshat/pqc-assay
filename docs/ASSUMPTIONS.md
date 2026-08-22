@@ -559,21 +559,30 @@ Pinned and installed by `scripts/setup.sh` into `.tools/` (gitignored). Platform
   parser rejects it, the documented fallback is a pinned mainline `clang`. Part of the trust base
   (see "Compiler correctness").
 
-## Q-SEAL property 5 (ProVerif reachability) modeling assumptions
-- **Symbolic (Dolev-Yao) model, not code-level.** Property 5 (`PROFILE_ACTION_OBSERVED` unreachable via a
-  host-exposed APDU path) is checked in ProVerif over an abstract model of the applet's command surface
-  (`qseal/proof/proverif/property5.pv`). There is no C == model link for this property, unlike the SAW
-  properties 1-4/6/7. The proof is about the acceptance/dispatch structure, with cryptography idealized
-  (a free `sign` constructor, perfect symbolic keys).
-- **Channel-privacy mapping is an assumption.** "Host-exposed" is modeled as a public (attacker) channel
-  and the trusted internal eUICC event callback as a private channel. This assumes the real secure-element
-  access-control boundary (spec section 12) maps onto that privacy: that the host cannot reach the
-  internal-callback channel, and that the only host-reachable signing entry is the modeled `hostCreate`.
-- **Abstracted applet.** The model reduces the applet to the assertion-type dispatch; it does not model
-  full CREATE_ASSERTION field validation, READ_EVIDENCE, sessions, or APDU framing. The guard proved
-  necessary (host path must refuse type `0x04`) is the authorization check property 7's field gate does
-  not make; closing that at the code level would require adding the `0x04` rejection to the verified C
-  `qseal_validate_request` and is not yet done.
+## Q-SEAL property 5 (ProVerif) modeling assumptions
+
+Rebuilt 2026-08-22 after OF-3. The model (`qseal/proof/proverif/property5.pv`) carries a signing key,
+two transcript shapes so the assertion type is inside the signed bytes, a host command handler, a
+profile-event source and a separate assertion builder behind a private channel. Three queries hold: the
+event correspondence, the same statement over signatures the attacker can hold, and secrecy of the
+signing key. Assumptions and non-results, all load-bearing:
+
+- **No C == model link.** Property 5 is symbolic only. The guard it needs (the host path refuses type
+  `0x04`) is separately enforced in the verified C by `qseal_validate_request`; nothing formally ties
+  the two together.
+- **Injectivity is not proved.** With the two events in separate processes ProVerif's abstraction lets
+  one private-channel message be consumed more than once, so replaying one internal transition into
+  several assertions is not excluded. The pre-OF-3 model did prove the injective form, but only because
+  both events were emitted by one process, which was an artefact of the modelling rather than a fact
+  about the design.
+- **No mutable profile state.** A variant holding the current profile state in a private channel and
+  read-modify-writing it under replication did not terminate (ProVerif still generating rules after 10
+  minutes on an M-series laptop). The shipped model uses a fresh event id per transition, so "a real
+  state transition occurred" is assumed, not checked.
+- **Abstract signing.** `sign` is a free constructor: no ML-DSA or ECDSA semantics, no verification
+  rule, and the attacker's inability to forge is by construction, not by reduction.
+- **No APDU layer.** Fragmentation, chaining and the applet's command dispatch beyond the assertion type
+  are not modelled.
 
 ## Open findings (handle per CONTRIBUTING.md → Responsible disclosure)
 - **OF-3 (2026-08-22, found in an audit of the submitted artifact): the Q-SEAL property-5 ProVerif

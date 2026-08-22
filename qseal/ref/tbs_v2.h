@@ -47,4 +47,7 @@ int qseal_tbs_v2_parse(const uint8_t in[QSEAL_TBS_V2_LEN], qseal_tbs_v2_t *t);
  * pair_commitment slot, so the transcript does not commit to the hybrid key pair. */
 void qseal_tbs_v2_serialize_nocommit(const qseal_tbs_v2_t *t, uint8_t out[QSEAL_TBS_V2_LEN]);
 
+/* Deliberate mutant: drops the magic check, so it is not fail-closed. */
+int qseal_tbs_v2_parse_nomagic(const uint8_t in[QSEAL_TBS_V2_LEN], qseal_tbs_v2_t *t);
+
 #endif
