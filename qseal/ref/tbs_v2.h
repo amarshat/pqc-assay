@@ -50,4 +50,7 @@ void qseal_tbs_v2_serialize_nocommit(const qseal_tbs_v2_t *t, uint8_t out[QSEAL_
 /* Deliberate mutant: drops the magic check, so it is not fail-closed. */
 int qseal_tbs_v2_parse_nomagic(const uint8_t in[QSEAL_TBS_V2_LEN], qseal_tbs_v2_t *t);
 
+/* Deliberate mutant: reads the nonce one byte early on parse. */
+int qseal_tbs_v2_parse_shifted(const uint8_t in[QSEAL_TBS_V2_LEN], qseal_tbs_v2_t *t);
+
 #endif

@@ -131,3 +131,6 @@ print "MUTATION CAUGHT: the no-commitment serializer (pair_commitment slot zeroe
 
 fails (llvm_verify m "qseal_tbs_v2_parse_nomagic" [] true parse_reject_spec z3);
 print "MUTATION CAUGHT: the not-fail-closed V2 parser (magic check dropped) is REJECTED by the reject spec";
+
+fails (llvm_verify m "qseal_tbs_v2_parse_shifted" [] true parse_spec z3);
+print "MUTATION CAUGHT: the off-by-one V2 parser (nonce read one byte early) is REJECTED by the accept spec";

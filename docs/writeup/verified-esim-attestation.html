@@ -377,7 +377,7 @@ a systematic pass (<code>make qseal-mutants</code>): apply the CVE’s
 operator class (<code>&lt;</code> vs <code>&lt;=</code>, <code>==</code>
 vs <code>!=</code>, <code>&amp;&amp;</code> vs <code>||</code>, and so
 on) to each C reference, one mutation at a time, and rerun the matching
-proof. The proofs kill 42 of 44 such mutants; the two survivors are
+proof. The proofs kill 55 of 58 such mutants; the three survivors are
 equivalent mutants (a loop bound whose extra iteration a downstream
 guard makes a no-op), so no proof or test could kill them. And the C
 references are written to be verifiable; the shipped Rust deserializer,

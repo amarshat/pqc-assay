@@ -25,4 +25,7 @@ int qseal_create_assertion_checked_nosuitecheck(const qseal_request_t *r, const 
 int qseal_create_assertion_checked_allowobserved(const qseal_request_t *r, const qseal_applet_id_t *a,
                                    uint8_t out[QSEAL_TBS_LEN]);
 
+/* Deliberate mutant: widens the assertion-origin enumeration by one. */
+int qseal_validate_request_wideorigin(const qseal_request_t *r, const qseal_applet_id_t *a);
+
 #endif

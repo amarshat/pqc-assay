@@ -564,13 +564,32 @@ Pinned and installed by `scripts/setup.sh` into `.tools/` (gitignored). Platform
   parser rejects it, the documented fallback is a pinned mainline `clang`. Part of the trust base
   (see "Compiler correctness").
 
+## Q-SEAL assumed specifications (`llvm_unsafe_assume_spec`)
+
+The Q-SEAL proofs assume exactly two function specifications. Both are in
+`qseal/proof/hybrid.saw` and both are deliberate, not workarounds for something that would not verify.
+
+- **`qseal_verify_ecdsa`** (hybrid.saw:28) and **`qseal_verify_mldsa`** (hybrid.saw:37) are assumed to
+  return 1 exactly when the abstract Cryptol predicates `vE pk tbs sig` / `vM pk tbs sig` hold. The C
+  bodies in `qseal/ref/hybrid.c` are placeholders returning 0; a deployment links real ECDSA P-256 and
+  ML-DSA-44 verifiers there. Assuming them is the point of property 3: the result is about the shape of
+  the acceptance decision (both signatures required, over the same transcript bytes) and holds for
+  whatever the real verifiers compute. Nothing about ECDSA or ML-DSA correctness is claimed, and the
+  1312-byte and 2420-byte key and signature sizes are carried as array lengths only.
+- **The tactic is load-bearing and is part of this assumption.** `vE` and `vM` have placeholder Cryptol
+  bodies (`QSEAL_Verify.cry:20,23`) that are constantly `False`. Under plain `z3` those unfold, every
+  acceptance term collapses to `False`, and the obligation holds for any implementation including the
+  accept-on-either downgrade. Only `w4_unint_z3 ["vE","vM"]` keeps them uninterpreted and makes the
+  result structural. Any future obligation in that file must use the same tactic.
+
 ## Q-SEAL property 5 (ProVerif) modeling assumptions
 
 Rebuilt 2026-08-22 after OF-3. The model (`qseal/proof/proverif/property5.pv`) carries a signing key,
 two transcript shapes so the assertion type is inside the signed bytes, a host command handler, a
-profile-event source and a separate assertion builder behind a private channel. Three queries hold: the
-event correspondence, the same statement over signatures the attacker can hold, and secrecy of the
-signing key. Assumptions and non-results, all load-bearing:
+profile-event source and a separate assertion builder behind a private channel. Four queries hold: the
+event correspondence, the same statement over signatures the attacker can hold, that the attacker cannot
+obtain an assertion over content it chose, and secrecy of the signing key. Assumptions and non-results,
+all load-bearing:
 
 - **No C == model link.** Property 5 is symbolic only. The guard it needs (the host path refuses type
   `0x04`) is separately enforced in the verified C by `qseal_validate_request`; nothing formally ties
@@ -580,6 +599,14 @@ signing key. Assumptions and non-results, all load-bearing:
   several assertions is not excluded. The pre-OF-3 model did prove the injective form, but only because
   both events were emitted by one process, which was an artefact of the modelling rather than a fact
   about the design.
+- **The fourth query was added 2026-08-22 after review.** The first rebuild of this model read the
+  attested subject, digest and policy from the host channel, so the handset could obtain a signed
+  observed-action assertion carrying content of its own choosing while the first two queries still
+  reported true. `property5_mutant_hostdata.pv` preserves that version as a regression witness. The
+  shipped model generates those fields inside the event source instead.
+- **That a profile operation really occurred is still assumed.** The attested fields now come from the
+  card rather than the handset, but nothing ties them to a state change; the host names a profile and
+  the card attests fresh values.
 - **No mutable profile state.** A variant holding the current profile state in a private channel and
   read-modify-writing it under replication did not terminate (ProVerif still generating rules after 10
   minutes on an M-series laptop). The shipped model uses a fresh event id per transition, so "a real
@@ -622,7 +649,8 @@ What neither version establishes, stated plainly because the proofs are easy to 
   the model. The mutant file was falsified only because it adds a *reachable* emitter in `hostCreate`,
   so the mutation check never tested the honest model.
   - Scope of the damage: property 5 only. The six SAW properties are unaffected; the whole artifact was
-    rebuilt from scratch, including the 41-mutant pass (39 killed, 2 survivors), and they reproduce.
+    rebuilt from scratch, including the mutation pass, and they reproduce. (That pass is now 58
+    mutants, 55 killed, 3 survivors, re-measured 2026-08-22; the 41/39/2 figure was the July run.)
   - Lesson, now enforced: **a falsified mutant does not establish that the honest model is
     non-vacuous.** Every ProVerif query in this repo must be paired with a reachability witness showing
     the events in its antecedent can actually occur. `qseal/verify_reachability.sh` gates on this.
@@ -636,10 +664,10 @@ What neither version establishes, stated plainly because the proofs are easy to 
     2.05: the correspondence is true, `not event(SignedObserved(...))` is **false** (so the event is
     reachable and the positive result is not vacuous), and the mutant is refuted. The gate was itself
     checked against the pre-fix model, which reports the event unreachable and trips `FAIL (VACUITY)`.
-  - Still open at the level of the claim, not the code: the corrected model still satisfies its
-    correspondence by syntactic adjacency of the two events in one process, so it establishes very
-    little. Rebuilding it with applet state, a transcript and a host process is tracked in the rewrite
-    plan held outside this repo.
+  - Superseded 2026-08-22: the model was rebuilt again so the two events are emitted by different
+    processes, and a fourth query was added after review found that the rebuilt model still let the
+    handset choose the attested content (see the property-5 section below). The adjacency objection no
+    longer applies; the remaining limits are listed there.
 - **DISCLOSED 2026-06-09:** OF-1 and OF-2 were filed together (deliberate, human-routed) as a single
   upstream issue: **pq-crystals/dilithium#114** ("ref/reduce.c: doc-comment output bounds for
   montgomery_reduce and reduce32 are off by one at endpoints"). Both are documentation/contract fixes,

@@ -27,7 +27,8 @@
    several assertions is NOT ruled out here.
 
    Companion files: property5_reachable.pv (the honest path is live), property5_mutant.pv (host guard
-   dropped), property5_mutant_databind.pv (builder signs handset-supplied data). *)
+   dropped), property5_mutant_databind.pv (builder signs handset-supplied data), and
+   property5_mutant_hostdata.pv (the event source reads the attested fields from the host). *)
 
 free host: channel.                  (* host-exposed APDU path: attacker-controlled *)
 free internalCb: channel [private].  (* trusted internal event callback: not attacker-reachable *)
@@ -41,6 +42,12 @@ fun tbsHost(bitstring, bitstring, bitstring, bitstring, bitstring, bitstring): b
 fun tbsObserved(bitstring, bitstring, bitstring, bitstring): bitstring.
 
 const OBSERVED: bitstring.           (* assertion type PROFILE_ACTION_OBSERVED (0x04) *)
+
+(* Values the attacker knows and would like to see attested. Free names, so they are in its knowledge
+   from the start. *)
+free evilSubject: bitstring.
+free evilDigest: bitstring.
+free evilPolicy: bitstring.
 
 event SignedObserved(bitstring, bitstring, bitstring, bitstring).
 event InternalFired(bitstring, bitstring, bitstring, bitstring).
@@ -56,12 +63,18 @@ let hostCreate =
     out(host, sign(tbsHost(t, v, n, s, d, p), sk))
   ).
 
-(* Profile-event source inside the eUICC. The attacker drives the handset, so it chooses which profile
-   operation is requested and with what subject, digest and policy, but the event id and the callback
-   channel are internal. *)
+(* Profile-event source inside the eUICC. The attacker drives the handset, so it names which profile to
+   operate on, but everything the card attests about that operation comes from the card: the event id and
+   the subject, object digest and policy are generated here, not read from the host channel. An earlier
+   version of this model read all three from `host`, which let the attacker obtain a signed
+   observed-action assertion carrying content of its own choosing while queries 1 and 2 still held.
+   property5_mutant_hostdata.pv is that version, kept as a regression witness for query 3. *)
 let profileTransition =
-  in(host, (subject: bitstring, digest: bitstring, policy: bitstring));
+  in(host, profileRef: bitstring);
   new id: bitstring;
+  new subject: bitstring;
+  new digest: bitstring;
+  new policy: bitstring;
   event InternalFired(id, subject, digest, policy);
   out(internalCb, (id, subject, digest, policy)).
 

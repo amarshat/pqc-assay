@@ -1,0 +1,37 @@
+name: proverif
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# The Q-SEAL property-5 gate. It lives in its own job because it needs no SMT toolchain, only OCaml,
+# so it runs on a cheap Linux runner in a couple of minutes rather than riding along with the SAW job
+# on macOS. It was missing entirely until 2026-08-22: the model that OF-3 caught being vacuous had no
+# CI gate at all, which is how it stayed vacuous.
+jobs:
+  reachability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache the built proverif
+        uses: actions/cache@v4
+        with:
+          path: .tools
+          key: proverif-2.05-${{ runner.os }}-${{ hashFiles('scripts/setup.sh') }}
+
+      - name: OCaml toolchain (for the CLI-only proverif build)
+        run: sudo apt-get update && sudo apt-get install -y ocaml ocaml-findlib
+
+      # ONLY_PROVERIF skips SAW, bitwuzla and Isabelle. The pinned version, URL and sha256 stay in
+      # scripts/setup.sh so this workflow cannot drift from what a developer installs locally.
+      - name: Build proverif (pinned 2.05, sha256-checked, no GTK)
+        run: ONLY_PROVERIF=1 ./scripts/setup.sh
+
+      - name: Property 5, all four queries across five models
+        run: |
+          export PATH="$PWD/.tools/bin:$PATH"
+          ./qseal/verify_reachability.sh
+
+      - name: Claim lint (mutant pairing, assumed specs, vacuity gate, figure agreement)
+        run: make claim-lint

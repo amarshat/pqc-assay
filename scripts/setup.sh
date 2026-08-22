@@ -85,7 +85,16 @@ link() {   # symlink <target> into BIN_DIR
   ln -sf "$target" "$BIN_DIR/$name"
 }
 
+# ONLY_PROVERIF=1 builds just the ProVerif leg and skips SAW, bitwuzla and Isabelle. Used by the
+# reachability CI job, which needs no SMT toolchain, so the one pinned build recipe stays in this file
+# rather than being copied into a workflow.
+if [[ -n "${ONLY_PROVERIF:-}" ]]; then
+  echo ">> ONLY_PROVERIF set — building the ProVerif leg only"
+  SKIP_ISABELLE=1
+fi
+
 # --- SAW + Cryptol + cryptol-to-isabelle (Galois) ---------------------------
+if [[ -z "${ONLY_PROVERIF:-}" ]]; then
 SAW_HOME="$TOOLS_DIR/saw-${SAW_VERSION}"
 if [[ ! -x "$SAW_HOME/bin/saw" ]]; then
   fetch "$SAW_URL" "$DL_DIR/$SAW_ASSET"
@@ -108,7 +117,10 @@ if command -v codesign >/dev/null; then
     -exec codesign --force --sign - {} \; 2>/dev/null || true
 fi
 
+fi  # end ONLY_PROVERIF guard for the SAW leg
+
 # --- Bitwuzla (pinned separately; not in the SAW tarball) -------------------
+if [[ -z "${ONLY_PROVERIF:-}" ]]; then
 BITWUZLA_HOME="$TOOLS_DIR/bitwuzla-${BITWUZLA_VERSION}"
 if [[ -z "$BITWUZLA_ASSET" ]]; then
   echo ">> SKIP: no pinned bitwuzla build for $UNAME_S/$UNAME_M. Only the wide-domain Barrett study"
@@ -123,10 +135,11 @@ elif [[ ! -x "$BITWUZLA_HOME/bin/bitwuzla" ]]; then
   mkdir -p "$BITWUZLA_HOME/bin"; [[ "$found" != "$BITWUZLA_HOME/bin/bitwuzla" ]] && cp "$found" "$BITWUZLA_HOME/bin/bitwuzla"
 fi
 [[ -n "$BITWUZLA_ASSET" ]] && link "$BITWUZLA_HOME/bin/bitwuzla" "bitwuzla"
-xattr -dr com.apple.quarantine "$BITWUZLA_HOME" 2>/dev/null || true
-if command -v codesign >/dev/null; then
+[[ "$UNAME_S" == "Darwin" ]] && xattr -dr com.apple.quarantine "$BITWUZLA_HOME" 2>/dev/null || true
+if [[ -n "$BITWUZLA_ASSET" ]] && command -v codesign >/dev/null; then
   codesign --force --sign - "$BITWUZLA_HOME/bin/bitwuzla" 2>/dev/null || true
 fi
+fi  # end ONLY_PROVERIF guard for bitwuzla
 
 # --- ProVerif (Q-SEAL reachability leg; optional, needs OCaml) ---------------
 # Set SKIP_PROVERIF=1 to skip. Otherwise build from source IF an OCaml toolchain is on PATH; the opam
@@ -165,7 +178,7 @@ fi
 # --- Isabelle ---------------------------------------------------------------
 # Set SKIP_ISABELLE=1 to skip the (large, ~1.6GB) Isabelle download — e.g. CI that only runs
 # `make saw` does not need it.
-if [[ -z "${SKIP_ISABELLE:-}" ]]; then
+if [[ -z "${SKIP_ISABELLE:-}" && -z "${ONLY_PROVERIF:-}" ]]; then
   ISA_HOME="$TOOLS_DIR/Isabelle${ISABELLE_VERSION}"
   if [[ ! -x "$ISA_HOME/bin/isabelle" ]] && [[ -z "$(find "$ISA_HOME" -name isabelle -path '*/bin/*' 2>/dev/null | head -1)" ]]; then
     fetch "$ISA_URL" "$DL_DIR/$ISA_ASSET"
@@ -193,7 +206,11 @@ echo
 echo ">> toolchain installed under $TOOLS_DIR"
 echo ">> add to PATH for this shell:   export PATH=\"$BIN_DIR:\$PATH\""
 echo ">> verifying versions:"
-"$BIN_DIR/saw" --version || { echo "!! saw failed to run" >&2; exit 1; }
+if [[ -z "${ONLY_PROVERIF:-}" ]]; then
+  "$BIN_DIR/saw" --version || { echo "!! saw failed to run" >&2; exit 1; }
+else
+  "$BIN_DIR/proverif" -help | head -1 || { echo "!! proverif failed to run" >&2; exit 1; }
+fi
 if [[ -z "${SKIP_ISABELLE:-}" ]]; then
   "$BIN_DIR/isabelle" version || { echo "!! isabelle failed to run" >&2; exit 1; }
 fi

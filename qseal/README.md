@@ -42,7 +42,7 @@ statement (spec 6.1/7.1 key-usage rules are policy obligations, not format prope
 implementations written to be verifiable (fixed offsets, constant-size copies, no slicing). SAW
 proves, on their LLVM bitcode (`proof/tbs_v1.saw`, `proof/tbs_v2.saw`):
 
-- `qseal_tbs_serialize` equals the Cryptol `serialize` (every field lands at its FIPS-spec offset),
+- `qseal_tbs_serialize` equals the Cryptol `serialize` (every field lands at the offset the Q-SEAL v0.1 spec gives it),
   and `qseal_tbs_v2_serialize` equals `serialize2` (including the signed `pair_commitment` at its
   spec offset).
 - `qseal_tbs_parse` equals the Cryptol `parse` on well-formed input (returns 1, fills the struct);
@@ -224,11 +224,16 @@ builder reachable only over a private callback channel. Three queries, all disch
 
 1. every observed-action assertion the applet signs follows an internal event carrying the same data;
 2. every observed-typed signature the **attacker** can hold followed such an event;
-3. the applet signing key never reaches the attacker.
+3. the attacker cannot obtain an assertion over content of its own choosing;
+4. the applet signing key never reaches the attacker.
 
-Two mutants and a witness gate it. Dropping the host-path guard breaks queries 1 and 2. A builder that
-is correctly gated on the private channel but signs a handset-supplied subject leaves query 1 **true**
-and breaks query 2, which is why query 2 exists. `property5_reachable.pv` checks the observed-action
+Three mutants and a witness gate it, and each is invisible to the queries above it. Dropping the
+host-path guard breaks 1, 2 and 3. A builder correctly gated on the private channel but signing a
+handset-supplied subject leaves query 1 true and breaks 2. An event source that reads the attested
+subject, digest and policy from the host channel leaves queries 1 **and** 2 true and breaks only 3: the
+card faithfully attests exactly what the handset told it to. That third mutant is not hypothetical. It
+was the state of this model after its first rebuild, and a review caught it, so it is kept as a
+regression witness (`property5_mutant_hostdata.pv`). `property5_reachable.pv` checks the observed-action
 event is reachable at all: without it every positive result above would hold vacuously, which is how an
 earlier version of this model came to prove nothing (`docs/ASSUMPTIONS.md` OF-3). `verify_reachability.sh`
 runs all four and gates on each outcome.
@@ -289,3 +294,18 @@ code-level (a C reference is verified); property 5 is a symbolic protocol model 
 scope note under each property states what it does and does not establish. A shipped Rust
 (de)serializer cannot be verified directly here (a crucible-mir limitation on slice access), which is why
 the code-level work is done against C references written to be verifiable.
+
+## Continuous integration
+
+Two workflows gate this artifact on every push.
+
+- `.github/workflows/saw.yml` (macOS, Apple Silicon) runs the SAW and Cryptol targets:
+  `qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence` and
+  `cve-anchor`.
+- `.github/workflows/proverif.yml` (Linux) builds the pinned ProVerif 2.05 and runs
+  `verify_reachability.sh`, the property-5 gate, plus `make claim-lint`. It exists because that gate ran
+  in no workflow until 2026-08-22, which is part of why the vacuous model of OF-3 survived as long as it
+  did.
+
+Not gated per push: `make qseal-mutants` (about five minutes) and `make qseal-evidence-scale` (86 s at
+4x255, and no result at all above four fragments; see the arity table above).

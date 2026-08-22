@@ -22,16 +22,22 @@ adjacent statements.
 
 | file | what it is | expected |
 |------|-----------|----------|
-| `property5.pv` | the model, three queries | Q1 true, Q2 true, key secret |
+| `property5.pv` | the model, four queries | Q1 true, Q2 true, Q3 true, key secret |
 | `property5_reachable.pv` | same model, reachability query only | event reachable (`not event(...)` is **false**) |
-| `property5_mutant.pv` | host path drops the spec 8.4 guard | Q1 false, Q2 false |
+| `property5_mutant.pv` | host path drops the spec 8.4 guard | Q1 false, Q2 false, Q3 false |
 | `property5_mutant_databind.pv` | builder signs a handset-supplied subject | Q1 **true**, Q2 false |
+| `property5_mutant_hostdata.pv` | event source reads attested fields from the host | Q1 **true**, Q2 **true**, Q3 false |
 
 Q1 is the correspondence over applet events: every observed-action assertion follows an internal event
-carrying the same data. Q2 states it over what the attacker can hold: any observed-typed signature it
-obtains was preceded by such an event. Q2 exists because of the fourth row. A builder that is correctly
-gated on the private channel but signs handset-supplied fields satisfies Q1 and violates Q2, so Q1 alone
-would report a clean result for a broken applet.
+carrying the same data. Q2 states it over what the attacker can hold. Q3 asks whether the attacker can
+get the card to attest values it chose.
+
+Each query exists because of the mutant below it. A builder gated correctly on the private channel but
+signing handset-supplied fields satisfies Q1 and violates Q2. An event source that reads the attested
+subject, digest and policy from the host satisfies Q1 and Q2 and violates only Q3: every assertion does
+follow a genuine internal event, and the handset picked the contents of that event. The second case was
+the actual state of this model after its first rebuild and was found in review, not by the gate, which
+is why it is now a file rather than a note.
 
 `verify_reachability.sh` runs all four and gates on every cell of that table.
 
@@ -42,6 +48,9 @@ would report a clean result for a broken applet.
   once. The previous model proved injectivity only because both events came from the same process, which
   is not evidence about the design. Replay of one internal transition into several assertions is
   therefore **not** ruled out here.
+- **That a profile operation really happened.** The event source generates the attested fields itself,
+  which models "these come from the card, not the handset", but nothing in the model ties them to an
+  actual profile state change. The host names a profile and the card attests fresh values.
 - **Mutable profile state.** A version with a real state cell (the current profile state held on a
   private channel, read-modify-written under replication, so an event fires only on an actual state
   change) does not terminate: ProVerif was still generating rules after 10 minutes. The shipped model

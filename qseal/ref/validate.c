@@ -56,3 +56,16 @@ int qseal_create_assertion_checked_allowobserved(const qseal_request_t *r, const
     qseal_create_assertion(r, a, out);
     return 1;
 }
+
+/* MUTANT paired to validate_spec (not to checked_spec, which the other two mutants target): the origin
+ * range check is widened by one, so an out-of-enumeration origin passes the gate. */
+int qseal_validate_request_wideorigin(const qseal_request_t *r, const qseal_applet_id_t *a) {
+    int ok = 1;
+    if (a->version[0] != 0x01) ok = 0;
+    if (!(r->suite_id[0] == 0x00 && r->suite_id[1] == 0x01)) ok = 0;
+    if (!(r->assertion_type[0] >= 0x01 && r->assertion_type[0] <= 0x06)) ok = 0;
+    if (r->assertion_type[0] == 0x04) ok = 0;
+    if (!(r->assertion_origin[0] >= 0x01 && r->assertion_origin[0] <= 0x04)) ok = 0;  /* BUG: <= 0x03 */
+    if (r->object_hash_algorithm[0] != 0x01) ok = 0;
+    return ok;
+}

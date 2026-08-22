@@ -1,4 +1,9 @@
-(* Q-SEAL section 16 property 5: PROFILE_ACTION_OBSERVED (assertion type 0x04) must not be obtainable
+(* MUTANT of property5.pv, and the defect a review found in the first rebuild of this model: the event
+   source reads the attested fields from the host channel, so the handset chooses what the card attests
+   about a profile operation. Queries 1 and 2 STILL HOLD, which is what made it easy to miss. Query 3
+   must report false.
+
+   Q-SEAL section 16 property 5: PROFILE_ACTION_OBSERVED (assertion type 0x04) must not be obtainable
    through a host-exposed APDU path. Spec 8.4: that assertion type is produced only from a trusted
    internal eUICC event callback after a profile state transition, and "MUST NOT be callable directly by
    a handset application."
@@ -70,11 +75,9 @@ let hostCreate =
    observed-action assertion carrying content of its own choosing while queries 1 and 2 still held.
    property5_mutant_hostdata.pv is that version, kept as a regression witness for query 3. *)
 let profileTransition =
-  in(host, profileRef: bitstring);
+  in(host, (subject: bitstring, digest: bitstring, policy: bitstring));
   new id: bitstring;
-  new subject: bitstring;
-  new digest: bitstring;
-  new policy: bitstring;
+  (* BUG: the card attests subject, digest and policy the handset handed it. *)
   event InternalFired(id, subject, digest, policy);
   out(internalCb, (id, subject, digest, policy)).
 

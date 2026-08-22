@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
 # Q-SEAL section 16 property 5: PROFILE_ACTION_OBSERVED (assertion type 0x04) must not be obtainable
-# through a host-exposed APDU path. A safety property over the command surface, so it is checked in
-# ProVerif (Dolev-Yao) rather than in the SAW/Cryptol pipeline. Four runs, all gated:
-#   1. property5.pv                   three queries, all TRUE:
-#                                       Q1 every observed assertion follows an internal event
-#                                       Q2 every observed signature the attacker holds follows one
-#                                       SK the signing key never leaks
-#   2. property5_reachable.pv         the observed-action event must be REACHABLE. Without this the
-#                                     positive results above prove nothing, which is how an earlier
-#                                     version of this model came to be vacuous (ASSUMPTIONS.md OF-3).
-#   3. property5_mutant.pv            host guard dropped: Q1 and Q2 must both be FALSE.
-#   4. property5_mutant_databind.pv   builder signs handset-supplied data: Q1 stays TRUE and Q2 must be
-#                                     FALSE. That asymmetry is why Q2 exists.
-# Exits 0 only if all four match.
+# through a host-exposed APDU path. A safety property over the command surface, checked in ProVerif
+# (Dolev-Yao). Four queries, five runs, and the whole matrix is gated:
+#
+#   Q1  every observed-action assertion follows an internal event with the same data
+#   Q2  every observed-typed signature the ATTACKER holds follows such an event
+#   Q3  the attacker cannot obtain an assertion over content of its own choosing
+#   SK  the signing key never leaks
+#
+#   property5.pv                    Q1 true,  Q2 true,  Q3 true,  SK true
+#   property5_reachable.pv          the observed-action event must be REACHABLE, else everything above
+#                                   holds vacuously (docs/ASSUMPTIONS.md OF-3)
+#   property5_mutant.pv             host guard dropped:            Q1 false, Q2 false, Q3 false
+#   property5_mutant_databind.pv    builder signs handset subject: Q1 TRUE,  Q2 false, Q3 true
+#   property5_mutant_hostdata.pv    card attests host-supplied fields: Q1 TRUE, Q2 TRUE, Q3 false
+#
+# The last two rows are why Q2 and Q3 exist: each mutant is invisible to the queries above it. The
+# hostdata case is a real defect that survived a rebuild of this model and was caught in review.
+# Exits 0 only if every cell matches.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -30,37 +35,50 @@ echo "== toolchain: $(if command -v saw >/dev/null 2>&1; then saw --version | he
 
 PV="$HERE/proof/proverif"
 
-q1='^RESULT event\(SignedObserved'         # correspondence over applet events
-q2='^RESULT attacker\(sign\(tbsObserved'   # correspondence over what the attacker holds
-sk='^RESULT not attacker\(sk'              # signing-key secrecy
-wit='^RESULT not event\(SignedObserved'    # reachability witness
+q1='^RESULT event\(SignedObserved'
+q2='^RESULT attacker\(sign\(tbsObserved'
+q3='^RESULT not attacker\(sign\(tbsObserved'
+sk='^RESULT not attacker\(sk'
+wit='^RESULT not event\(SignedObserved'
 
 fail=0
 say_fail() { echo "FAIL: $*"; fail=1; }
 run()   { proverif "$PV/$1.pv" 2>&1; }
 count() { printf '%s\n' "$2" | grep -cE "$1" || true; }
+# expect <label> <output> <pattern> <true|false> <description>
+expect() {
+  local out="$2" pat="$3" want="$4"
+  [ "$(count "$pat.*is $want\." "$out")" -ge 1 ] || say_fail "$1: $5 is not $want"
+}
 
-echo ">> property5.pv: expect Q1 true, Q2 true, key secret"
+echo ">> property5.pv: expect Q1 true, Q2 true, Q3 true, key secret"
 GOOD="$(run property5)"; printf '%s\n' "$GOOD" | grep -E '^RESULT' || true
-[ "$(count "$q1.*is true\." "$GOOD")" -eq 1 ] || say_fail "property5.pv Q1 (event correspondence) is not true"
-[ "$(count "$q2.*is true\." "$GOOD")" -eq 1 ] || say_fail "property5.pv Q2 (attacker-held signature) is not true"
-[ "$(count "$sk.*is true\." "$GOOD")" -eq 1 ] || say_fail "property5.pv signing key is not secret"
+expect property5 "$GOOD" "$q1" true  "Q1 (event correspondence)"
+expect property5 "$GOOD" "$q2" true  "Q2 (attacker-held signature)"
+expect property5 "$GOOD" "$q3" true  "Q3 (no attacker-chosen content)"
+expect property5 "$GOOD" "$sk" true  "signing-key secrecy"
 
 echo ">> property5_reachable.pv: expect the observed-action event REACHABLE"
 REACH="$(run property5_reachable)"; printf '%s\n' "$REACH" | grep -E '^RESULT' || true
-# ProVerif proves the negation of a reachability query, so "is false" here means a trace emitting the
-# event exists. A "true" means the honest path is dead and property5.pv proves nothing.
+# ProVerif proves the negation of a reachability query, so "is false" means a trace emitting it exists.
 [ "$(count "$wit.*is false\." "$REACH")" -ge 1 ] || say_fail "(VACUITY) the observed-action event is not reachable, so property5.pv proves nothing. See docs/ASSUMPTIONS.md OF-3."
 
-echo ">> property5_mutant.pv (host guard dropped): expect Q1 false, Q2 false"
+echo ">> property5_mutant.pv (host guard dropped): expect Q1 false, Q2 false, Q3 false"
 MUT="$(run property5_mutant)"; printf '%s\n' "$MUT" | grep -E '^RESULT' || true
-[ "$(count "$q1.*is false\." "$MUT")" -eq 1 ] || say_fail "the host-guard mutant is not caught by Q1"
-[ "$(count "$q2.*is false\." "$MUT")" -eq 1 ] || say_fail "the host-guard mutant is not caught by Q2"
+expect host-guard-mutant "$MUT" "$q1" false "Q1"
+expect host-guard-mutant "$MUT" "$q2" false "Q2"
+expect host-guard-mutant "$MUT" "$q3" false "Q3"
 
-echo ">> property5_mutant_databind.pv (builder signs handset data): expect Q1 true, Q2 false"
+echo ">> property5_mutant_databind.pv (builder signs handset subject): expect Q1 true, Q2 false"
 MUTB="$(run property5_mutant_databind)"; printf '%s\n' "$MUTB" | grep -E '^RESULT' || true
-[ "$(count "$q1.*is true\." "$MUTB")" -eq 1 ]  || say_fail "the data-binding mutant unexpectedly breaks Q1"
-[ "$(count "$q2.*is false\." "$MUTB")" -eq 1 ] || say_fail "the data-binding mutant is not caught by Q2"
+expect databind-mutant "$MUTB" "$q1" true  "Q1 (it should stay true; that is the point)"
+expect databind-mutant "$MUTB" "$q2" false "Q2"
+
+echo ">> property5_mutant_hostdata.pv (card attests host-supplied fields): expect Q1 true, Q2 true, Q3 false"
+MUTH="$(run property5_mutant_hostdata)"; printf '%s\n' "$MUTH" | grep -E '^RESULT' || true
+expect hostdata-mutant "$MUTH" "$q1" true  "Q1 (it should stay true; that is the point)"
+expect hostdata-mutant "$MUTH" "$q2" true  "Q2 (it should stay true; that is the point)"
+expect hostdata-mutant "$MUTH" "$q3" false "Q3"
 
 [ "$fail" -eq 0 ] || exit 1
-echo "OK: observed-action event reachable; both correspondences hold; the host-guard mutant breaks both, the data-binding mutant breaks the attacker-side one."
+echo "OK: event reachable; all four queries hold; each of the three mutants is caught, and the last two only by the query added for it."

@@ -21,12 +21,12 @@ skipped. The run works on a copy of `qseal/`, so tracked files are never modifie
     make qseal-mutants                     # all reference files (~1 min)
     python3 qseal/mutation/mutate.py nonce.c   # one file
 
-## Result (2026-07-06)
+## Result (re-measured 2026-08-22)
 
-41 valid relational/logical mutants across the six C references, **39 killed, 2 survived** (95%). Both
+58 valid relational/logical mutants across the eight C references, **55 killed, 3 survived** (95%), re-measured 2026-08-22 on an Apple M2 Max. All three
 survivors are the same shape and are semantically equivalent mutants, not adequacy gaps:
 
-- `nonce.c:23` and `evidence.c:20`, a loop upper bound `i < CAP` changed to `i <= CAP`. The extra
+- `nonce.c:23`, `nonce_exp.c:26` and `evidence.c:20`, a loop upper bound `i < CAP` changed to `i <= CAP`. The extra
   iteration is a no-op: a downstream guard (`if (i == count)` / `if (frags[i].seq == j)`) is false for
   the out-of-range index, so nothing is written and no out-of-bounds access happens. No behavior
   changes, so no proof or test could kill it.

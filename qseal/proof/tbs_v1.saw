@@ -1,6 +1,6 @@
 // SAW: the C reference TBS-V1 (de)serializer computes exactly the Cryptol model QSEAL_TBS.cry,
 // which is proven bijective + injective. Composing, the C serializer inherits those properties: it
-// places every field at its FIPS-spec offset, with no transcript-level malleability.
+// places every field at its Q-SEAL section 7 offset, with no transcript-level malleability.
 //
 // Exits 0 only when llvm_verify genuinely discharges the goals.
 enable_experimental;
@@ -52,7 +52,7 @@ let serialize_spec = do {
 };
 
 serialize_ov <- llvm_verify m "qseal_tbs_serialize" [] true serialize_spec z3;
-print "VERIFIED: qseal_tbs_serialize == Cryptol serialize (every field at its FIPS-spec offset)";
+print "VERIFIED: qseal_tbs_serialize == Cryptol serialize (every field at its Q-SEAL section 7 offset)";
 
 // parse: on a well-formed (magic-prefixed) input, C returns 1 and fills the struct with exactly the
 // Cryptol parse result. Composed with serialize above, the C pair round-trips like the Cryptol pair.
