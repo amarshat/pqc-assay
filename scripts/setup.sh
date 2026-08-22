@@ -20,18 +20,42 @@ mkdir -p "$BIN_DIR" "$DL_DIR"
 # PINNED VERSIONS  (mirror any change here into docs/ASSUMPTIONS.md)
 # ---------------------------------------------------------------------------
 SAW_VERSION="1.5.1"                              # first release shipping cryptol-to-isabelle
-SAW_ASSET="saw-${SAW_VERSION}-macos-15-ARM64-with-solvers.tar.gz"
-SAW_URL="https://github.com/GaloisInc/saw-script/releases/download/v${SAW_VERSION}/${SAW_ASSET}"
-
 ISABELLE_VERSION="2025-2"                        # Isabelle2025-2 (Jan 2026)
-ISA_ASSET="Isabelle${ISABELLE_VERSION}_macos.tar.gz"
+
+# Platform selection. The pinned versions are the same everywhere; only the prebuilt asset differs.
+# macOS arm64 is the platform this project is developed and CI'd on. The Linux x86_64 path selects the
+# upstream Linux builds of the same pinned versions and has NOT been exercised on this machine, so treat
+# a first Linux run as a check of these names rather than a supported path.
+UNAME_S="$(uname -s)"
+UNAME_M="$(uname -m)"
+case "$UNAME_S/$UNAME_M" in
+  Darwin/arm64)
+    SAW_ASSET="saw-${SAW_VERSION}-macos-15-ARM64-with-solvers.tar.gz"
+    ISA_ASSET="Isabelle${ISABELLE_VERSION}_macos.tar.gz"
+    BITWUZLA_ASSET="Bitwuzla-macOS-arm64-static.zip" ;;
+  Darwin/x86_64)
+    SAW_ASSET="saw-${SAW_VERSION}-macos-15-intel-X64-with-solvers.tar.gz"
+    ISA_ASSET="Isabelle${ISABELLE_VERSION}_macos.tar.gz"
+    BITWUZLA_ASSET="" ;;                         # no macOS x86_64 bitwuzla asset upstream
+  Linux/x86_64)
+    SAW_ASSET="saw-${SAW_VERSION}-ubuntu-24.04-X64-with-solvers.tar.gz"
+    ISA_ASSET="Isabelle${ISABELLE_VERSION}_linux.tar.gz"
+    BITWUZLA_ASSET="Bitwuzla-Linux-x86_64-static.zip" ;;
+  Linux/aarch64|Linux/arm64)
+    echo "!! No upstream SAW ${SAW_VERSION} build for Linux arm64 (macOS arm64, macOS x86_64, Linux" >&2
+    echo "   x86_64 and Windows x86_64 are the published targets). Build SAW from source or use x86_64." >&2
+    exit 1 ;;
+  *)
+    echo "!! Unsupported platform $UNAME_S/$UNAME_M. See the case block in scripts/setup.sh." >&2
+    exit 1 ;;
+esac
+SAW_URL="https://github.com/GaloisInc/saw-script/releases/download/v${SAW_VERSION}/${SAW_ASSET}"
 ISA_URL="https://isabelle.in.tum.de/dist/${ISA_ASSET}"
 
 # Bitwuzla: the abstraction-refinement SMT solver that discharges wide-domain Barrett reduction
 # where eager bit-blasters (z3/cvc5/yices/abc, all bundled with SAW) stall. SAW calls it via the
 # w4_unint_bitwuzla backend. Not in the SAW tarball, so pinned separately.
 BITWUZLA_VERSION="0.9.1"
-BITWUZLA_ASSET="Bitwuzla-macOS-arm64-static.zip"
 BITWUZLA_URL="https://github.com/bitwuzla/bitwuzla/releases/download/${BITWUZLA_VERSION}/${BITWUZLA_ASSET}"
 
 # ProVerif: symbolic protocol verifier for the Q-SEAL reachability property (section 16 property 5).
@@ -86,7 +110,10 @@ fi
 
 # --- Bitwuzla (pinned separately; not in the SAW tarball) -------------------
 BITWUZLA_HOME="$TOOLS_DIR/bitwuzla-${BITWUZLA_VERSION}"
-if [[ ! -x "$BITWUZLA_HOME/bin/bitwuzla" ]]; then
+if [[ -z "$BITWUZLA_ASSET" ]]; then
+  echo ">> SKIP: no pinned bitwuzla build for $UNAME_S/$UNAME_M. Only the wide-domain Barrett study"
+  echo "         (implementations/rustcrypto-ml-dsa/proof/ntt) needs it; the Q-SEAL legs do not."
+elif [[ ! -x "$BITWUZLA_HOME/bin/bitwuzla" ]]; then
   fetch "$BITWUZLA_URL" "$DL_DIR/$BITWUZLA_ASSET"
   echo ">> extracting bitwuzla ${BITWUZLA_VERSION}"
   rm -rf "$BITWUZLA_HOME" && mkdir -p "$BITWUZLA_HOME"
@@ -95,7 +122,7 @@ if [[ ! -x "$BITWUZLA_HOME/bin/bitwuzla" ]]; then
   found="$(find "$BITWUZLA_HOME" -type f -name bitwuzla | head -1)"
   mkdir -p "$BITWUZLA_HOME/bin"; [[ "$found" != "$BITWUZLA_HOME/bin/bitwuzla" ]] && cp "$found" "$BITWUZLA_HOME/bin/bitwuzla"
 fi
-link "$BITWUZLA_HOME/bin/bitwuzla" "bitwuzla"
+[[ -n "$BITWUZLA_ASSET" ]] && link "$BITWUZLA_HOME/bin/bitwuzla" "bitwuzla"
 xattr -dr com.apple.quarantine "$BITWUZLA_HOME" 2>/dev/null || true
 if command -v codesign >/dev/null; then
   codesign --force --sign - "$BITWUZLA_HOME/bin/bitwuzla" 2>/dev/null || true
@@ -144,10 +171,11 @@ if [[ -z "${SKIP_ISABELLE:-}" ]]; then
     fetch "$ISA_URL" "$DL_DIR/$ISA_ASSET"
     echo ">> extracting Isabelle ${ISABELLE_VERSION}"
     rm -rf "$ISA_HOME" && mkdir -p "$ISA_HOME"
-    # macOS tarball unpacks to an .app bundle; --strip-components flattens it to ISA_HOME.
+    # The macOS tarball unpacks to an .app bundle and the Linux one to a plain directory;
+    # --strip-components=1 flattens either into ISA_HOME.
     tar -xzf "$DL_DIR/$ISA_ASSET" -C "$ISA_HOME" --strip-components=1
   fi
-  xattr -dr com.apple.quarantine "$ISA_HOME" 2>/dev/null || true
+  [[ "$UNAME_S" == "Darwin" ]] && xattr -dr com.apple.quarantine "$ISA_HOME" 2>/dev/null || true
   # The CLI launcher lives at <app>/bin/isabelle (or Contents/Resources/.../bin/isabelle).
   ISA_BIN="$(find "$ISA_HOME" -type f -name isabelle -path '*/bin/*' | head -1 || true)"
   [[ -n "$ISA_BIN" ]] && link "$ISA_BIN" "isabelle"
