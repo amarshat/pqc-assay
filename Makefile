@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: claim-lint qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: claim-lint eid-anchor qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -213,6 +213,12 @@ cve-anchor:
 	./cve-anchor/verify.sh
 
 ## Mutation-adequacy report for the Q-SEAL C references: apply relational/logical operator mutations
+## eid-anchor: GSMA SGP.29 v1.1 EID validation. The second external referent in this repo (the first is
+## the FIPS 204 hint predicate in cve-anchor/): rules GSMA wrote, transcribed clause by clause, with the
+## C reference proved equal to them and three mutants rejected. About 45 s.
+eid-anchor:
+	@./esim-eid/verify.sh
+
 ## claim-lint: the mechanical half of the pre-submission review checklist. Catches
 ## the defect classes that had to be found by hand once already: a SAW proof with no non-vacuity guard, a
 ## ProVerif model whose events cannot fire, an assumed spec nobody justified, a comment citing a path

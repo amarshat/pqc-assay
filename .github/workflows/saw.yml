@@ -31,6 +31,8 @@ jobs:
         run: make mutation-test
       - name: Q-SEAL protocol properties (cryptol + SAW; each with a mutation guard)
         run: make qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence
+      - name: GSMA SGP.29 EID anchor (an external standard's clauses, C == transcription)
+        run: make eid-anchor
       - name: CVE-2026-24850 anchor (FIPS 204 hint canonicity; the CVE variant is caught)
         run: make cve-anchor
       - name: ML-KEM-512 reduce layer (C == Cryptol + math correctness by direct SMT, mutants rejected)

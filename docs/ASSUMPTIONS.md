@@ -640,6 +640,23 @@ What neither version establishes, stated plainly because the proofs are easy to 
   between verifying and consuming under concurrency is not expressible, so two simultaneous submissions
   of the same key both seeing "fresh" is out of scope.
 
+## GSMA SGP.29 EID anchor (esim-eid/) assumptions
+
+- **The composition is argued, not mechanized.** The one-digit bridge lemma (reducing early equals
+  reducing at the end when the accumulator is below 97) is proved, and the accumulator invariant is
+  proved, but the step from those to "the 32-digit fold equals the standard's single remainder over the
+  whole value" is an ordinary induction done on paper. The direct SMT obligation does not discharge:
+  no result within 10 minutes as a 128-bit bitvector goal, and none over Cryptol `Integer` either.
+  Mechanizing it would mean Isabelle, as with the ML-DSA NTT bound.
+- **Digits, not characters.** The model and the C work on one digit per byte with value 0..9. Decoding
+  ASCII or BCD into that form is out of scope, so a real deployment carries a decoding step this
+  verification says nothing about.
+- **EID.R01 is discharged by the type**, not by a check: the model works on a 32-element array, so a
+  wrongly sized input cannot be expressed rather than being rejected. A deployment reading an EID off a
+  wire must enforce the length itself.
+- **Only three clauses are mechanized.** SGP.29 also governs assignment, ERHI structure and eligibility
+  criteria; none of that is a property of a single identifier and none is modelled here.
+
 ## Open findings (handle per CONTRIBUTING.md → Responsible disclosure)
 - **OF-3 (2026-08-22, found in an audit of the submitted artifact): the Q-SEAL property-5 ProVerif
   result was vacuous.** In `qseal/proof/proverif/property5.pv` the channel `internalCb` is declared private and

@@ -17,7 +17,7 @@ note "== 1. every SAW obligation has a mutant paired to the SAME spec =="
 # Counting `fails` guards per FILE is not enough: a file can hold three guards that all target one spec
 # while another spec in the same file carries none. Pair them by spec name, and ignore comment lines,
 # which an earlier version of this check counted as obligations.
-for f in qseal/proof/*.saw cve-anchor/proof/*.saw; do
+for f in qseal/proof/*.saw cve-anchor/proof/*.saw esim-eid/proof/*.saw; do
   [ -e "$f" ] || continue
   while read -r spec nobl nguard; do
     [ -z "$spec" ] && continue
@@ -64,7 +64,7 @@ note "== 3. every assumed spec is justified in docs/ASSUMPTIONS.md =="
 assumed=0
 # Strict for this artifact (qseal + the CVE anchor). The Rust ML-DSA proofs under implementations/ are
 # a separate piece of work with its own assumption record, so they are listed, not gated.
-for f in $(git ls-files 'qseal/*.saw' 'cve-anchor/*.saw'); do
+for f in $(git ls-files 'qseal/*.saw' 'cve-anchor/*.saw' 'esim-eid/*.saw'); do
   for fn in $(grep -oE '(llvm|mir)_unsafe_assume_spec[[:space:]]+[A-Za-z0-9_]+[[:space:]]+"[^"]+"' "$f" \
               | sed 's/.*"\(.*\)"/\1/'); do
     assumed=$((assumed+1))

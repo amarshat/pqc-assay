@@ -1,0 +1,27 @@
+// SAW: the C reference GSMA SGP.29 EID validator equals the Cryptol transcription of the standard's
+// clauses (esim-eid/model/EID.cry `eidValid`). The three mutants are each rejected. Exits 0 only when
+// the goal discharges and every mutant fails.
+enable_experimental;
+
+m <- llvm_load_module "../build/eid.bc";
+import "../model/EID.cry";
+
+let valid_spec = do {
+    ds <- llvm_fresh_var "ds" (llvm_array 32 (llvm_int 8));
+    pd <- llvm_alloc_readonly (llvm_array 32 (llvm_int 8));
+    llvm_points_to pd (llvm_term ds);
+    llvm_execute_func [pd];
+    llvm_return (llvm_term {{ if eidValid ds then (1 : [32]) else 0 }});
+};
+
+valid_ov <- llvm_verify m "gsma_eid_valid" [] true valid_spec z3;
+print "VERIFIED: gsma_eid_valid == Cryptol eidValid (SGP.29 EID.R01 by type, AE.R02, section 10 check digits)";
+
+fails (llvm_verify m "gsma_eid_valid_noe118" [] true valid_spec z3);
+print "MUTATION CAUGHT: dropping AE.R02 (the reserved 89 prefix) is REJECTED";
+
+fails (llvm_verify m "gsma_eid_valid_latereduce" [] true valid_spec z3);
+print "MUTATION CAUGHT: taking the standard's wording literally in a 32-bit word (one remainder at the end) is REJECTED";
+
+fails (llvm_verify m "gsma_eid_valid_nodigits" [] true valid_spec z3);
+print "MUTATION CAUGHT: dropping the decimal-digit check is REJECTED";

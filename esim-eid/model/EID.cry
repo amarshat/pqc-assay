@@ -1,0 +1,126 @@
+// GSMA SGP.29 v1.1 EID validation, transcribed clause by clause.
+//
+// This is the second EXTERNAL referent in this repository (the first is the FIPS 204 hint-decode
+// predicate in cve-anchor/). It matters because every Q-SEAL property checks a rule this project wrote
+// against code this project wrote. Here the rule belongs to someone else: GSMA published it, EUMs
+// implement it, and nothing about it was chosen to make verification convenient.
+//
+// Source: GSM Association Official Document SGP.29, "EID Definition and Assignment Process", v1.1
+// (22 March 2024). Clauses transcribed:
+//
+//   EID.R01 (section 8): "The length of the EID SHALL be 32 digits."
+//   AE.R02  (section 9): "The EID assignment defined in this document SHALL not use EIDs that start
+//                         with 89; such values are reserved for the ITU-T E.118 based scheme."
+//   section 10:          "The Check Digits: 2 digits containing check digits calculated by the EUM
+//                         over all 32 digits as specified below: 1. Set the two check digits to 0,
+//                         2. Using the resulting 32 digits as a decimal integer, compute the remainder
+//                         of that number on division by 97, 3. Subtract the remainder from 98, and use
+//                         the decimal result for the two check digits, if the result is one digit long,
+//                         its value SHALL be prefixed by one digit of 0."
+//   section 10:          "Verification ... 1. Using the 32 digits as a decimal integer, compute the
+//                         remainder of that number on division by 97. 2. If the remainder of the
+//                         division is 1, the verification is successful; otherwise the EID is invalid."
+//
+// Digits are held one per byte with value 0..9, not ASCII: decoding characters is a separate concern
+// and is not what SGP.29 specifies.
+
+module EID where
+
+type NDIG = 32
+
+// EID.R01 is discharged by the type: an EID is exactly 32 digits here.
+
+// Positional weights 10^31 .. 10^0 as literals. Writing `10 ^^ (31 - i)` instead makes the exponent
+// symbolic and costs the solver a great deal for no gain in fidelity.
+weights : [NDIG][128]
+weights =
+  [ 10000000000000000000000000000000, 1000000000000000000000000000000
+  , 100000000000000000000000000000,   10000000000000000000000000000
+  , 1000000000000000000000000000,     100000000000000000000000000
+  , 10000000000000000000000000,       1000000000000000000000000
+  , 100000000000000000000000,         10000000000000000000000
+  , 1000000000000000000000,           100000000000000000000
+  , 10000000000000000000,             1000000000000000000
+  , 100000000000000000,               10000000000000000
+  , 1000000000000000,                 100000000000000
+  , 10000000000000,                   1000000000000
+  , 100000000000,                     10000000000
+  , 1000000000,                       100000000
+  , 10000000,                         1000000
+  , 100000,                           10000
+  , 1000,                             100
+  , 10,                               1 ]
+
+// "the 32 digits as a decimal integer" (section 10). 32 decimal digits need about 107 bits.
+value : [NDIG][8] -> [128]
+value ds = sum [ (zext d) * w | d <- ds | w <- weights ]
+
+// Section 10 verification, worded exactly as the standard words it.
+checkDigitsValid : [NDIG][8] -> Bit
+checkDigitsValid ds = (value ds) % 97 == 1
+
+// What an implementation must compute instead: 32 digits do not fit in a machine word, so the remainder
+// is folded through the digits and stays below 97 throughout.
+foldRem : [NDIG][8] -> [32]
+foldRem ds = foldl step 0 ds
+  where step acc d = (acc * 10 + (zext d)) % 97
+
+checkDigitsValidFold : [NDIG][8] -> Bit
+checkDigitsValidFold ds = foldRem ds == 1
+
+digitsOnly : [NDIG][8] -> Bit
+digitsOnly ds = and [ d <= 9 | d <- ds ]
+
+// AE.R02: the 89 prefix is reserved for the ITU-T E.118 scheme.
+notE118Reserved : [NDIG][8] -> Bit
+notE118Reserved ds = ~ ((ds @ 0 == 8) && (ds @ 1 == 9))
+
+// The validator a deployment runs: well-formed digits, not the reserved prefix, check digits verify.
+eidValid : [NDIG][8] -> Bit
+eidValid ds = digitsOnly ds && notE118Reserved ds && checkDigitsValidFold ds
+
+// ---------------------------------------------------------------------------------------------
+// The bridge from the standard's wording to the implementable fold.
+//
+// Reducing early is the same as reducing at the end, one digit at a time, PROVIDED the accumulator is
+// already below 97. The precondition is not decoration: see step_wide_is_false below.
+property step_reduce_early (a : [32]) (d : [8]) =
+  (a < 97) && (d <= 9) ==>
+  (((a % 97) * 10 + (zext d)) % 97 == ((a * 10 + (zext d)) % 97))
+
+// The same identity stated without an accumulator bound at the width that holds the standard's
+// "decimal integer" is FALSE: a * 10 wraps. A transcription that carries the standard's unbounded
+// arithmetic into fixed-width machine arithmetic acquires a side condition the standard never states.
+// This is a :sat obligation, not a :prove one, and the witness is the point.
+property step_wide_is_false (a : [128]) (d : [8]) =
+  (d <= 9) && (((a % 97) * 10 + (zext d)) % 97 != ((a * 10 + (zext d)) % 97))
+
+// The fold's accumulator invariant, which is what lets the step lemma apply at every digit.
+property fold_acc_bounded ds = digitsOnly ds ==> (foldRem ds < 97)
+
+// ---------------------------------------------------------------------------------------------
+// Clause-directed vectors. One conformant EID and one near-miss per clause, each breaking exactly one
+// rule, so a predicate that quietly drops a clause fails a named vector rather than a kill-rate.
+// Generated against the standard's own arithmetic, not against this model.
+
+vGood : [NDIG][8]                       // 30 assigned digits + check digits 95, value mod 97 == 1
+vGood = [ 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 9, 5 ]
+
+vBadCheck : [NDIG][8]                   // section 10 verification: check digits off by one, mod 97 == 2
+vBadCheck = [ 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 9, 6 ]
+
+vE118 : [NDIG][8]                       // AE.R02: reserved 89 prefix, check digits otherwise correct
+vE118 = [ 8, 9, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 1 ]
+
+vNonDigit : [NDIG][8]                   // a byte outside 0..9, which no decimal digit string contains
+vNonDigit = [ 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8,
+              9, 9, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 10, 5, 9, 5 ]
+
+property kav_good      = eidValid vGood == True
+property kav_badcheck  = eidValid vBadCheck == False
+property kav_e118      = eidValid vE118 == False
+property kav_nondigit  = eidValid vNonDigit == False
+
+// The E.118 vector isolates AE.R02 from section 10: its check digits are correct, so only the reserved
+// prefix rule rejects it. Dropping that clause would keep every other vector passing.
+property e118_checksum_is_valid = checkDigitsValidFold vE118 == True
