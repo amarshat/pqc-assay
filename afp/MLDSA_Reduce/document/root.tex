@@ -1,0 +1,42 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage{isabelle,isabellesym}
+\usepackage{amssymb}
+
+\usepackage{pdfsetup}
+
+\urlstyle{rm}
+\isabellestyle{it}
+
+\begin{document}
+
+\title{The modular-reduction layer of ML-DSA (FIPS 204)}
+\author{Amar Akshat}
+\maketitle
+
+\begin{abstract}
+FIPS 204 fixes the prime modulus $q = 8380417$ for ML-DSA. Deployed implementations reduce values
+modulo $q$ with a small layer of routines that the standard does not itself spell out: Montgomery
+reduction, a Barrett-style \emph{reduce32}, a conditional addition and their composition. This entry
+specifies what each routine must satisfy at the integer level and proves the arithmetic core of
+Montgomery reduction: if $T$ is congruent to $A \cdot \mathit{QINV}$ modulo $2^{32}$ and lies in the
+signed 32-bit range, then $(A - T q) / 2^{32}$ is congruent to $A \cdot 2^{-32}$ modulo $q$ and lies
+strictly between $-q$ and $q$.
+
+Two of the specifications depart deliberately from the bounds documented in the reference
+implementation, because those bounds are off by one at an endpoint. Montgomery reduction is specified
+on a half-open input domain, since the inclusive upper endpoint returns exactly $q$ and so violates
+the documented strict bound; and \emph{reduce32} is specified on its true reachable output window,
+which is asymmetric. Both departures are noted where they occur.
+\end{abstract}
+
+\tableofcontents
+
+\parindent 0pt\parskip 0.5ex
+
+\input{session}
+
+\bibliographystyle{abbrv}
+\bibliography{root}
+
+\end{document}
