@@ -59,6 +59,21 @@ for f in qseal/proof/proverif/*.pv; do
   done
 done
 
+note "== 2b. every mutant guard names a function that exists =="
+# SAW's `fails` succeeds on ANY exception from the wrapped action, including "could not find
+# definition for function named ...". So a typo in a mutant's name yields a green guard that verifies
+# nothing. The pairing check in section 1 matches on spec names and cannot see this.
+for f in qseal/proof/*.saw cve-anchor/proof/*.saw esim-eid/proof/*.saw; do
+  [ -e "$f" ] || continue
+  for fn in $(grep -E '^fails' "$f" | grep -oE 'llvm_verify[[:space:]]+[A-Za-z0-9_]+[[:space:]]+"[^"]+"' | sed 's/.*"\(.*\)"/\1/'); do
+    if grep -rqE "\b$fn[[:space:]]*\(" qseal/ref cve-anchor/ref esim-eid/ref 2>/dev/null; then
+      printf '  %-46s exists\n' "$fn"
+    else
+      bad "$f guards '$fn', which is not defined in any reference C file: the guard passes on the error, not on a rejected mutant"
+    fi
+  done
+done
+
 note "== 3. every assumed spec is justified in docs/ASSUMPTIONS.md =="
 assumed=0
 # Strict for this artifact (qseal + the CVE anchor). The Rust ML-DSA proofs under implementations/ are
