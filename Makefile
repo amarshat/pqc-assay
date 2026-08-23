@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: claim-lint cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: claim-lint afp-dist cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -230,6 +230,21 @@ cve-anchor-fidelity:
 ## text can. Reports which checks notice. About 3 minutes.
 eid-spec-mutation:
 	@python3 ./esim-eid/spec_mutation.py
+
+## afp-dist: build both submission archives and prove each one extracts and builds on its own. macOS
+## adds __MACOSX and ._ entries from extended attributes unless zip -X and COPYFILE_DISABLE are used,
+## and the AFP form rejects those.
+afp-dist:
+	@rm -f dist/MLDSA_Reduce.zip dist/MLDSA_Reduce.tar.gz
+	@mkdir -p dist
+	@cd afp && zip -r -X -q ../dist/MLDSA_Reduce.zip MLDSA_Reduce -x '*.DS_Store' -x '__MACOSX/*' -x '*/._*'
+	@COPYFILE_DISABLE=1 tar --exclude='.*' --exclude='__MACOSX' -czf dist/MLDSA_Reduce.tar.gz -C afp MLDSA_Reduce
+	@for a in dist/MLDSA_Reduce.zip dist/MLDSA_Reduce.tar.gz; do \
+	  echo ">> $$a"; shasum -a 256 $$a; done
+	@echo ">> checking neither archive carries hidden or AppleDouble entries"
+	@! unzip -Z1 dist/MLDSA_Reduce.zip | grep -qE '__MACOSX|/\._|^\.' || { echo "FAIL: zip has forbidden entries"; exit 1; }
+	@! tar -tzf dist/MLDSA_Reduce.tar.gz | grep -qE '__MACOSX|/\._|(^|/)\.[a-zA-Z]' || { echo "FAIL: tar has forbidden entries"; exit 1; }
+	@echo "OK: one folder each, no hidden files. Verify a build with: make afp-dist-verify"
 
 ## claim-lint: the mechanical half of the pre-submission review checklist. Catches
 ## the defect classes that had to be found by hand once already: a SAW proof with no non-vacuity guard, a

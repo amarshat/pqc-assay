@@ -1,0 +1,50 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage{isabelle,isabellesym}
+\usepackage{amssymb}
+
+\usepackage{pdfsetup}
+
+\urlstyle{rm}
+\isabellestyle{it}
+
+\begin{document}
+
+\title{The Modular-Reduction Layer of ML-DSA}
+\author{Amar Akshat \\ \texttt{amar.akshat@gmail.com}}
+\maketitle
+
+\begin{abstract}
+FIPS 204~\cite{fips204} fixes the prime modulus $q = 8380417$ for ML-DSA. Deployed implementations
+reduce values modulo $q$ with a small layer of routines that the standard does not itself spell out:
+Montgomery reduction~\cite{montgomery1985}, a Barrett-style \emph{reduce32}, a conditional addition,
+and their composition. This entry specifies what each routine must satisfy at the integer level,
+defines the fixed-width implementations used by the reference
+implementation~\cite{dilithium_ref}, and proves that those implementations meet the specifications.
+
+The arithmetic core is that if $T \equiv A \cdot \mathit{QINV} \pmod{2^{32}}$, $T$ lies in the
+signed 32-bit range, and $A$ lies in the half-open domain $-2^{31}q \le A < 2^{31}q$, then
+$(A - Tq)/2^{32}$ is congruent to $A \cdot 2^{-32}$ modulo $q$ and lies strictly between $-q$ and $q$.
+The bound on $A$ is not optional: without it the conclusion fails.
+
+Two specifications depart deliberately from what the reference implementation documents, because its
+comments are off by one at an endpoint. Montgomery reduction is specified on a half-open input domain,
+since the inclusive upper endpoint returns exactly $q$ and so violates the documented strict output
+bound; and \emph{reduce32} is specified on its true reachable output window, which is asymmetric
+rather than the symmetric one documented. Each departure is set out in the theory text where it occurs.
+
+The entry concerns the reduction layer only, and relates the definitions to the specifications and
+nothing else. The definitions are written so that a reader can compare them with the reference
+implementation, but the entry makes no claim that any compiled binary computes them.
+\end{abstract}
+
+\tableofcontents
+
+\parindent 0pt\parskip 0.5ex
+
+\input{session}
+
+\bibliographystyle{abbrv}
+\bibliography{root}
+
+\end{document}

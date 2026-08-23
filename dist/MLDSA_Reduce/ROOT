@@ -1,0 +1,10 @@
+chapter AFP
+
+session MLDSA_Reduce (AFP) = "Word_Lib" +
+  options [timeout = 300]
+  theories
+    MLDSA_Reduce_Spec
+    MLDSA_Reduce
+  document_files
+    "root.tex"
+    "root.bib"

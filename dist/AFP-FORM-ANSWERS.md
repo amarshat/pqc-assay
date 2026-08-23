@@ -1,7 +1,20 @@
 # AFP submission form: exactly what to paste
 
-Form: <https://isa-afp.org/webapp/submit/>. Upload `dist/MLDSA_Reduce.tar.gz`, which contains the
-folder `MLDSA_Reduce/` with `ROOT`, both theory files and `document/`.
+Form: <https://isa-afp.org/webapp/submit/>. Upload **either** `dist/MLDSA_Reduce.zip` **or**
+`dist/MLDSA_Reduce.tar.gz`; both contain exactly the folder `MLDSA_Reduce/` with `ROOT`, both theory
+files and `document/`, and nothing else.
+
+AFP requires exactly one folder per entry, named the short name, with no hidden files or `__MACOSX`.
+Both archives were checked against that and then extracted into a clean directory and built there, so
+what a referee unpacks is known to build rather than assumed to:
+
+| archive | sha256 | extracted build |
+|---|---|---|
+| `MLDSA_Reduce.zip` | `bc04807b…` | exit 0 with AFP's options |
+| `MLDSA_Reduce.tar.gz` | `75d2292f…` | exit 0 with AFP's options |
+
+They are built with `zip -X` and `COPYFILE_DISABLE=1 tar` respectively, because macOS otherwise writes
+`__MACOSX` and `._` entries from extended attributes, which the form rejects.
 
 ---
 
