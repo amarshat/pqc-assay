@@ -196,6 +196,21 @@ else
   echo ">> SKIP_ISABELLE set — skipping Isabelle install"
 fi
 
+# --- LaTeX (document preparation for the AFP entry) -------------------------
+# Isabelle needs lualatex to build an entry's PDF, and AFP requires that PDF. On macOS a BasicTeX or
+# MacTeX install puts the binaries in /Library/TeX/texbin, which is not on PATH in non-login shells,
+# so a bare `isabelle build -o document=pdf` reports "lualatex: command not found" on a machine that
+# has a perfectly good TeX. Report the state rather than guessing.
+if [[ -d /Library/TeX/texbin ]] && ! command -v lualatex >/dev/null 2>&1; then
+  echo ">> NOTE: TeX found at /Library/TeX/texbin but not on PATH. For document builds:"
+  echo "         export PATH=\"/Library/TeX/texbin:\$PATH\""
+fi
+if command -v kpsewhich >/dev/null 2>&1 && ! kpsewhich txfonts.sty >/dev/null 2>&1; then
+  echo ">> NOTE: txfonts is missing. isabelle.sty declares the blackboard math group as U/txmia,"
+  echo "         so Isabelle fails the document build without it even though the PDF compiles."
+  echo "         Fix: sudo tlmgr install txfonts"
+fi
+
 # --- clang (system) ---------------------------------------------------------
 if ! clang --version | grep -qF "$EXPECTED_CLANG"; then
   echo "!! WARNING: system clang != pinned '$EXPECTED_CLANG' — record the delta in ASSUMPTIONS.md" >&2

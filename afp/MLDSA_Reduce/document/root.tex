@@ -15,9 +15,9 @@
 \maketitle
 
 \begin{abstract}
-FIPS 204 fixes the prime modulus $q = 8380417$ for ML-DSA. Deployed implementations reduce values
+FIPS 204~\cite{fips204} fixes the prime modulus $q = 8380417$ for ML-DSA. Deployed implementations reduce values
 modulo $q$ with a small layer of routines that the standard does not itself spell out: Montgomery
-reduction, a Barrett-style \emph{reduce32}, a conditional addition and their composition. This entry
+reduction~\cite{montgomery1985}, a Barrett-style \emph{reduce32}, a conditional addition and their composition. This entry
 specifies what each routine must satisfy at the integer level and proves the arithmetic core of
 Montgomery reduction: if $T$ is congruent to $A \cdot \mathit{QINV}$ modulo $2^{32}$ and lies in the
 signed 32-bit range, then $(A - T q) / 2^{32}$ is congruent to $A \cdot 2^{-32}$ modulo $q$ and lies

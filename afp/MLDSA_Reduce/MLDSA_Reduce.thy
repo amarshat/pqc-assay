@@ -16,7 +16,8 @@ begin
 
 section \<open>Montgomery reduction\<close>
 
-text \<open>QINV is the inverse of -q modulo 2^32, as fixed by the reference implementation.\<close>
+text \<open>\<open>QINV\<close> is the inverse of \<open>-q\<close> modulo \<open>2 ^ 32\<close>, as fixed by the reference
+implementation.\<close>
 
 definition QINV :: "64 word" where "QINV = 58728449"
 
@@ -197,12 +198,12 @@ proof -
   have lo31: "- 2147483648 \<le> a'" and hi31: "a' < 2147483648"
     unfolding a'_def using sint_greater_eq[of aw] sint_lt[of aw] by simp_all
   have dom': "a' \<le> 2143289343" using dom A unfolding reduce32_input_ok_def by simp
-  \<comment> \<open>the shifted addend does not overflow int32, so its signed value is exactly a' + 2^22\<close>
+  \<comment> \<open>the shifted addend does not overflow a signed 32-bit word, so its signed value is exactly a' plus two-to-the-22\<close>
   have add_eq: "aw + 0x400000 = word_of_int (a' + 4194304)"
     unfolding a'_def by (metis of_int_add of_int_numeral of_int_sint)
   have sint_add: "sint (aw + 0x400000) = a' + 4194304"
     unfolding add_eq by (rule sint_of_int_eq) (use lo31 dom' in simp)+
-  \<comment> \<open>the arithmetic shift is exactly floor-division by 2^23\<close>
+  \<comment> \<open>the arithmetic shift is exactly floor division by two-to-the-23\<close>
   define t :: int where "t = (a' + 4194304) div 8388608"
   have sint_t: "sint (sshiftr (aw + 0x400000) 23) = t"
     unfolding t_def using sint_add by (simp add: sshiftr_div_2n)
@@ -258,7 +259,7 @@ proof -
       by (rule sint_of_int_eq) (use BND in simp)+
     finally show ?thesis .
   qed
-  \<comment> \<open>residue preservation: a' - t*Q \<equiv> a' (mod Q)\<close>
+  \<comment> \<open>residue preservation: a' - t*Q is congruent to a' (mod Q)\<close>
   have cong: "(a' - t * 8380417) mod 8380417 = a' mod 8380417"
     using mod_mult_self1[of a' "- t" 8380417] by (simp add: algebra_simps)
   show ?thesis

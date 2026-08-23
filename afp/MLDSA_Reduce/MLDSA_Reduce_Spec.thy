@@ -72,7 +72,7 @@ proof -
   have D_eq: "A - T * 8380417 = 4294967296 * r"
     unfolding r_def T_eq by (simp add: algebra_simps)
   hence r_is: "(A - T * 8380417) div 4294967296 = r" by simp
-  \<comment> \<open>congruence: 2^32*r = A - T*Q \<equiv> A (mod Q), since Q dvd T*Q (NO presburger: huge modulus)\<close>
+  \<comment> \<open>congruence: the reduced value times two-to-the-32 is congruent to A modulo Q, since Q divides T*Q. Note: presburger does not cope with a modulus this large\<close>
   have cong: "(4294967296 * r) mod 8380417 = A mod 8380417"
   proof -
     have eq: "4294967296 * r = A - T * 8380417" using D_eq by simp
@@ -80,7 +80,7 @@ proof -
       using mod_mult_self1[of A "- T" 8380417] by (simp add: algebra_simps)
     thus ?thesis using eq by simp
   qed
-  \<comment> \<open>bounds: multiply the range hyps by Q, then divide the 2^32*r relation. Evaluate the big
+  \<comment> \<open>bounds: multiply the range hypotheses by Q, then divide the relation through. Evaluate the big
       numeral products up front so linarith only sees plain integers.\<close>
   have e1: "(2147483648::int) * 8380417 = 17996808470921216" by simp
   have e2: "(4294967296::int) * 8380417 = 35993616941842432" by simp
