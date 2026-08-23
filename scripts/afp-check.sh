@@ -8,6 +8,15 @@
 # Usage: scripts/afp-check.sh [entry-dir]   (default afp/MLDSA_Reduce)
 set -uo pipefail
 
+# Set up our own PATH rather than inheriting one. This script was green for its author and red for
+# everyone else, because his shell had /Library/TeX/texbin on PATH and no one else's did: the document
+# build needs lualatex, and Isabelle reports its absence as a failed session rather than as a missing
+# tool. A check that only passes in one person's shell is not a check.
+for d in "$(cd "$(dirname "$0")/.." && pwd)/.tools/bin" /Library/TeX/texbin; do
+  [ -d "$d" ] && case ":$PATH:" in *":$d:"*) ;; *) PATH="$d:$PATH" ;; esac
+done
+export PATH
+
 ENTRY="${1:-afp/MLDSA_Reduce}"
 NAME="$(basename "$ENTRY")"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -105,6 +114,17 @@ else
 fi
 
 # --- the build, with AFP's own options ---------------------------------------------------------------
+if ! command -v lualatex >/dev/null 2>&1; then
+  bad "lualatex not found, so the document cannot build and AFP requires the document."
+  echo "        On macOS a BasicTeX/MacTeX install lives at /Library/TeX/texbin (added to PATH above)."
+  echo "        If TeX is genuinely absent: brew install --cask basictex, then"
+  echo "        tlmgr init-usertree && tlmgr --usermode -repository https://mirror.ctan.org/systems/texlive/tlnet install txfonts"
+elif ! kpsewhich txfonts.sty >/dev/null 2>&1; then
+  bad "txfonts not installed; isabelle.sty declares its blackboard math group as U/txmia and the"
+  echo "        document build fails without it. Install without root:"
+  echo "        tlmgr init-usertree && tlmgr --usermode -repository https://mirror.ctan.org/systems/texlive/tlnet install txfonts"
+fi
+
 if command -v isabelle >/dev/null 2>&1; then
   AFP_THYS=$(find "$REPO/.tools" -maxdepth 2 -type d -name thys -path '*afp*' | head -1)
   echo "  ..    building with AFP's options (this is the one that matters)"
