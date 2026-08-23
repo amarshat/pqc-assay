@@ -10,17 +10,26 @@ reduce values modulo q with a small layer of routines that the standard does not
 itself spell out: Montgomery reduction, a Barrett-style reduce32, a conditional
 addition, and their composition. This entry specifies what each routine must
 satisfy at the integer level, defines the fixed-width implementations used by the
-reference implementation, and proves that the implementations meet the
+reference implementation, and proves that those implementations meet the
 specifications.
 
-The arithmetic core is that if T is congruent to A * QINV modulo 2^32 and lies in
-the signed 32-bit range, then (A - T*q) / 2^32 is congruent to A * 2^-32 modulo q
-and lies strictly between -q and q. Two specifications depart deliberately from the
-bounds documented in the reference implementation, because those bounds are off by
-one at an endpoint: Montgomery reduction is specified on a half-open input domain,
-since the inclusive upper endpoint returns exactly q and so violates the documented
-strict bound, and reduce32 is specified on its true reachable output window, which
-is asymmetric. Both departures are noted where they occur."""
+The arithmetic core is that if T is congruent to A * QINV modulo 2^32, T lies in the
+signed 32-bit range, and A lies in the half-open domain -2^31*q <= A < 2^31*q, then
+(A - T*q) / 2^32 is congruent to A * 2^-32 modulo q and lies strictly between -q and
+q. The bound on A is not optional: without it the conclusion fails.
+
+Two specifications depart deliberately from what the reference implementation
+documents, because its comments are off by one at an endpoint. Montgomery reduction
+is specified on a half-open input domain, since the inclusive upper endpoint returns
+exactly q and so violates the documented strict output bound; and reduce32 is
+specified on its true reachable output window, which is asymmetric rather than the
+symmetric one documented. Each departure is set out in the theory text where it
+occurs.
+
+The entry concerns the reduction layer only, and relates the definitions to the
+specifications and nothing else. The definitions are written so that a reader can
+compare them with the reference implementation, but the entry makes no claim that
+any compiled binary computes them."""
 license = "bsd"
 note = ""
 

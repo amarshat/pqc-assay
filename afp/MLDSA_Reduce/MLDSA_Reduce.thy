@@ -5,6 +5,9 @@
    Fixed-width implementations of the ML-DSA reduction layer, and their correctness against the
    contracts in MLDSA_Reduce_Spec.
 
+   SCOPE: this entry relates the definitions below to the specifications, and nothing else. It makes
+   no claim that any compiled binary computes these functions.
+
    The definitions mirror the arithmetic of the widely used reference implementation: Montgomery
    reduction takes the low 32 bits of a * QINV, multiplies by q, subtracts and shifts right by 32.
    Nothing here is generated; the definitions are written out so that a reader can compare them with
@@ -12,13 +15,20 @@
    binary computes these functions is a separate activity and is not part of this entry. *)
 
 theory MLDSA_Reduce
-  imports MLDSA_Reduce_Spec "Word_Lib.Word_Lib_Sumo"
+  imports
+    MLDSA_Reduce_Spec
+    "Word_Lib.Word_Lemmas"
+    "Word_Lib.Bit_Shifts_Infix_Syntax"
+    "Word_Lib.Most_significant_bit"
 begin
+
+unbundle bit_operations_syntax
 
 section \<open>Montgomery reduction\<close>
 
-text \<open>\<open>QINV\<close> is the inverse of \<open>-q\<close> modulo \<open>2 ^ 32\<close>, as fixed by the reference
-implementation.\<close>
+text \<open>\<open>QINV\<close> is the inverse of \<open>q\<close> modulo \<open>2 ^ 32\<close>, as fixed by the reference implementation
+\<^cite>\<open>"dilithium_ref"\<close>: \<open>QINV * q = 1 + 2 ^ 32 * 114592\<close>. That multiplier 114592 is what the
+proof of the arithmetic core uses when it exhibits its witness.\<close>
 
 definition QINV :: "64 word" where "QINV = 58728449"
 
@@ -144,7 +154,10 @@ section \<open>The rest of the reduction layer\<close>
 
 text \<open>\<open>caddq\<close> adds \<open>q\<close> exactly when its argument is negative, using the sign mask rather than a
 branch. \<open>reduce32\<close> is the Barrett-style reduction of the reference implementation, and \<open>freeze\<close> is
-their composition, giving the canonical representative in \<open>[0, q)\<close>.\<close>
+their composition, giving the canonical representative in \<open>[0, q)\<close>. The definitions are written out so
+that a reader can compare them with the reference implementation \<^cite>\<open>"dilithium_ref"\<close> line by
+line; that comparison is the only one this entry supports, since nothing here concerns compiled
+code.\<close>
 
 definition caddq :: "32 word \<Rightarrow> 32 word" where
   "caddq a = a + (sshiftr a 31 AND 0x7FE001)"
@@ -155,7 +168,7 @@ definition reduce32 :: "32 word \<Rightarrow> 32 word" where
 definition freeze :: "32 word \<Rightarrow> 32 word" where
   "freeze a = caddq (reduce32 a)"
 
-lemma caddq_correct:
+theorem caddq_correct:
   fixes a :: "32 word"
   shows "is_caddq (sint a) (sint (caddq a))"
 proof -
@@ -188,7 +201,7 @@ proof -
     using lo hi by (auto simp: mod_add_self2)
 qed
 
-lemma reduce32_correct:
+theorem reduce32_correct:
   fixes a :: "32 word"
   assumes dom: "reduce32_input_ok (sint a)"
   shows "is_reduce32 (sint a) (sint (reduce32 a))"
@@ -268,7 +281,7 @@ proof -
     using BND cong by simp
 qed
 
-lemma freeze_correct:
+theorem freeze_correct:
   fixes a :: "32 word"
   assumes dom: "reduce32_input_ok (sint a)"
   shows "is_freeze (sint a) (sint (freeze a))"

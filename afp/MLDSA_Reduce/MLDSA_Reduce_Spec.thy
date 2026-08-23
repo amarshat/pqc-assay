@@ -15,48 +15,65 @@ theory MLDSA_Reduce_Spec
   imports Main
 begin
 
+section \<open>The modulus\<close>
+
+text \<open>FIPS 204 \<^cite>\<open>"fips204"\<close> fixes the prime modulus of ML-DSA. Everything below is stated
+relative to it.\<close>
+
 definition q :: int where "q = 8380417"
 
-(* Input domain for the strict-bound correctness claim: HALF-OPEN  -2^31*q <= a < 2^31*q.
-   NB: PQClean's reduce.c comment documents the INCLUSIVE domain -2^31*q <= a <= q*2^31 together
-   with the strict postcondition -q < r < q, but those are inconsistent at the upper endpoint:
-   montgomery_reduce(2^31*q) = q, violating r < q (see docs/ASSUMPTIONS.md, finding OF-1). The
-   strict postcondition holds exactly on the half-open domain below, which is what we specify. *)
+section \<open>What each routine must satisfy\<close>
+
+text \<open>The reference implementation \<^cite>\<open>"dilithium_ref"\<close> carries four routines in its
+reduction layer. FIPS 204 does not specify them: they are the device by which an implementation keeps
+coefficients in a workable range, and the standard constrains only the values they stand for. The
+contracts below are therefore read off the reference implementation's own documented behaviour, with
+two deliberate exceptions that are set out where they occur.\<close>
+
+text \<open>\<^bold>\<open>First deliberate departure.\<close> The reference implementation documents the
+\<^emph>\<open>inclusive\<close> input domain \<open>-2 ^ 31 * q \<le> a \<le> 2 ^ 31 * q\<close> together with the strict
+postcondition \<open>- q < r < q\<close>. Those two are inconsistent at the upper endpoint: the routine returns
+exactly \<open>q\<close> for \<open>a = 2 ^ 31 * q\<close>, which violates \<open>r < q\<close>. The strict postcondition holds on the
+half-open domain, and that is what is specified here. A reader comparing this entry with the reference
+implementation's comment will find the difference at that one endpoint and nowhere else.\<close>
 definition mont_input_ok :: "int \<Rightarrow> bool" where
   "mont_input_ok a \<longleftrightarrow> -(2^31 * q) \<le> a \<and> a < 2^31 * q"
 
-(* r is a correct Montgomery reduction of a iff  2^32 * r \<equiv> a  (mod q)  and  -q < r < q.
-   (Equivalently r \<equiv> a * 2^-32 (mod q), since gcd(2,q)=1.) *)
+text \<open>\<open>r\<close> is a correct Montgomery reduction \<^cite>\<open>"montgomery1985"\<close> of \<open>a\<close> when
+\<open>2 ^ 32 * r\<close> is congruent to \<open>a\<close> modulo \<open>q\<close> and \<open>r\<close> lies strictly between \<open>-q\<close> and \<open>q\<close>.\<close>
 definition is_montgomery_reduction :: "int \<Rightarrow> int \<Rightarrow> bool" where
   "is_montgomery_reduction a r \<longleftrightarrow> (2^32 * r) mod q = a mod q \<and> -q < r \<and> r < q"
 
-(* --- the rest of the reduce.c layer -------------------------------------------------------- *)
-
-(* caddq: add q iff a is negative. Preserves the residue, and maps (-q, q) into [0, q). *)
+text \<open>\<open>caddq\<close> adds \<open>q\<close> exactly when its argument is negative: it preserves the residue and maps
+\<open>(-q, q)\<close> into \<open>[0, q)\<close>.\<close>
 definition is_caddq :: "int \<Rightarrow> int \<Rightarrow> bool" where
   "is_caddq a r \<longleftrightarrow> r mod q = a mod q \<and> (-q \<le> a \<and> a < q \<longrightarrow> 0 \<le> r \<and> r < q)"
 
-(* Input domain for reduce32, matching the SAW leg's precondition: the one-sided bound that keeps
-   a + (1<<22) from overflowing int32. (a >= -2^31 holds automatically for an int32 value.) *)
+text \<open>The input domain for \<open>reduce32\<close> is the one-sided bound that keeps \<open>a + 2 ^ 22\<close> from
+overflowing a signed 32-bit word; the lower bound holds automatically for such a word.\<close>
 definition reduce32_input_ok :: "int \<Rightarrow> bool" where
   "reduce32_input_ok a \<longleftrightarrow> a \<le> 2143289343"  (* 2^31 - 2^22 - 1 *)
 
-(* reduce32 (Barrett-style): r \<equiv> a (mod q) within the TRUE reachable output window.
-   NB: PQClean's reduce.c comment claims [-6283008, 6283008], but under its (one-sided) precondition
-   a <= 2^31-2^22-1 the input a = -2143289344 is admissible and gives reduce32 a = -6283009, one below
-   the documented bound (see docs/ASSUMPTIONS.md, finding OF-2). The documented bound holds only under
-   a symmetric |a| <= 2^31-2^22-1. We specify the honest reachable window, which is asymmetric. *)
+text \<open>\<^bold>\<open>Second deliberate departure.\<close> The reference implementation documents the symmetric
+output window \<open>[-6283008, 6283008]\<close> for \<open>reduce32\<close>. Under its own one-sided precondition
+\<open>a \<le> 2 ^ 31 - 2 ^ 22 - 1\<close> the input \<open>a = -2143289344\<close> is admissible and produces \<open>-6283009\<close>,
+one below the documented bound; the documented window is correct only under the symmetric precondition
+\<open>\<bar>a\<bar> \<le> 2 ^ 31 - 2 ^ 22 - 1\<close>. What is specified here is the true reachable window, which is
+asymmetric, and both of its endpoints are attained.\<close>
 definition is_reduce32 :: "int \<Rightarrow> int \<Rightarrow> bool" where
   "is_reduce32 a r \<longleftrightarrow> r mod q = a mod q \<and> -6283009 \<le> r \<and> r \<le> 6283008"
 
-(* freeze = caddq \<circ> reduce32: the canonical representative in [0, q). *)
+text \<open>\<open>freeze\<close> is \<open>caddq\<close> after \<open>reduce32\<close>, giving the canonical representative in \<open>[0, q)\<close>.\<close>
 definition is_freeze :: "int \<Rightarrow> int \<Rightarrow> bool" where
   "is_freeze a r \<longleftrightarrow> r mod q = a mod q \<and> 0 \<le> r \<and> r < q"
 
 
-(* The integer core of Montgomery reduction: if T is congruent to A * QINV modulo 2^32 and lies in
-   the signed 32-bit range, then (A - T*q) / 2^32 is a correct Montgomery reduction of A. Every
-   fixed-width implementation in MLDSA_Reduce.thy reduces to this lemma. *)
+section \<open>The arithmetic core\<close>
+
+text \<open>If \<open>T\<close> is congruent to \<open>A * QINV\<close> modulo \<open>2 ^ 32\<close>, lies in the signed 32-bit range, and
+\<open>A\<close> lies in the half-open domain above, then \<open>(A - T * q) / 2 ^ 32\<close> is a correct Montgomery reduction
+of \<open>A\<close>. All four results in the next theory reduce to this lemma. The bound on \<open>A\<close> is not optional:
+without it the conclusion fails for large \<open>A\<close>.\<close>
 lemma mont_core:
   fixes A T :: int
   assumes Tc:  "(T - A * 58728449) mod 4294967296 = 0"

@@ -33,22 +33,24 @@ folder `MLDSA_Reduce/` with `ROOT`, both theory files and `document/`.
 modulo \(q\) with a small layer of routines that the standard does not itself spell out: Montgomery
 reduction, a Barrett-style <code>reduce32</code>, a conditional addition, and their composition. This
 entry specifies what each routine must satisfy at the integer level, defines the fixed-width
-implementations used by the reference implementation, and proves that the implementations meet the
+implementations used by the reference implementation, and proves that those implementations meet the
 specifications.</p>
 
-<p>The arithmetic core is that if \(T \equiv A \cdot \mathit{QINV} \pmod{2^{32}}\) and \(T\) lies in the
-signed 32-bit range, then \((A - Tq)/2^{32}\) is congruent to \(A \cdot 2^{-32}\) modulo \(q\) and lies
-strictly between \(-q\) and \(q\).</p>
+<p>The arithmetic core is that if \(T \equiv A \cdot \mathit{QINV} \pmod{2^{32}}\), \(T\) lies in
+the signed 32-bit range, and \(A\) lies in the half-open domain \(-2^{31}q \le A &lt; 2^{31}q\), then
+\((A - Tq)/2^{32}\) is congruent to \(A \cdot 2^{-32}\) modulo \(q\) and lies strictly between
+\(-q\) and \(q\). The bound on \(A\) is not optional: without it the conclusion fails.</p>
 
-<p>Two specifications depart deliberately from the bounds documented in the reference implementation,
-because those bounds are off by one at an endpoint. Montgomery reduction is specified on a half-open
-input domain, since the inclusive upper endpoint returns exactly \(q\) and so violates the documented
-strict bound; and <code>reduce32</code> is specified on its true reachable output window, which is
-asymmetric. Both departures are noted where they occur.</p>
+<p>Two specifications depart deliberately from what the reference implementation documents, because its
+comments are off by one at an endpoint. Montgomery reduction is specified on a half-open input domain,
+since the inclusive upper endpoint returns exactly \(q\) and so violates the documented strict output
+bound; and <code>reduce32</code> is specified on its true reachable output window, which is asymmetric
+rather than the symmetric one documented. Each departure is set out in the theory text where it
+occurs.</p>
 
-<p>The entry concerns the reduction layer only. The definitions mirror the reference implementation so
-that a reader can compare them, but the entry makes no claim that any compiled binary computes
-them.</p>
+<p>The entry concerns the reduction layer only, and relates the definitions to the specifications and
+nothing else. The definitions are written so that a reader can compare them with the reference
+implementation, but the entry makes no claim that any compiled binary computes them.</p>
 ```
 
 **Use of generative AI** — the form asks directly, and leaving it empty would be a false statement here.
@@ -60,8 +62,11 @@ produced initial versions of the definitions and proofs and carried an earlier v
 development across from a machine-generated Cryptol lift to the standalone form submitted here. Every
 theorem was checked by Isabelle, and the entry was additionally checked negatively: introducing a false
 conjunct into the Montgomery theorem, and substituting the output window that the reference
-implementation's own comment documents, each make the build fail. The author reviewed the definitions
-against FIPS 204 and the reference implementation and is responsible for the entry and its maintenance.
+implementation's own comment documents, each make the build fail. The entry was also refereed before submission by a
+separate AI agent working from the AFP submission rules, which mutation-tested the theorems and
+differentially tested the definitions against the vendored reference C, and whose findings were fixed.
+The author reviewed the definitions against FIPS 204 and the reference implementation and is
+responsible for the entry and its maintenance.
 ```
 
 ---
