@@ -1,5 +1,6 @@
 (* Title:      MLDSA_Reduce/MLDSA_Reduce_Spec.thy
-   Author:     Amar Akshat, 2026
+   Author:     Amar Akshat <amar.akshat@gmail.com>, 2026
+   License:    BSD 3-clause
 
    Specification of the modular-reduction layer of ML-DSA (FIPS 204), at the integer level.
 

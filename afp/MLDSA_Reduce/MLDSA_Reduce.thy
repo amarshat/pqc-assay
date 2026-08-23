@@ -1,5 +1,6 @@
 (* Title:      MLDSA_Reduce/MLDSA_Reduce.thy
-   Author:     Amar Akshat, 2026
+   Author:     Amar Akshat <amar.akshat@gmail.com>, 2026
+   License:    BSD 3-clause
 
    Fixed-width implementations of the ML-DSA reduction layer, and their correctness against the
    contracts in MLDSA_Reduce_Spec.
