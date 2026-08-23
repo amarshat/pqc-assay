@@ -9,7 +9,7 @@
    no claim that any compiled binary computes these functions.
 
    The definitions mirror the arithmetic of the widely used reference implementation: Montgomery
-   reduction takes the low 32 bits of a * QINV, multiplies by q, subtracts and shifts right by 32.
+   reduction takes the low 32 bits of a * mldsa_QINV, multiplies by mldsa_q, subtracts and shifts right by 32.
    Nothing here is generated; the definitions are written out so that a reader can compare them with
    the C by eye, which is the only comparison this entry supports. Establishing that a particular
    binary computes these functions is a separate activity and is not part of this entry. *)
@@ -26,15 +26,18 @@ unbundle bit_operations_syntax
 
 section \<open>Montgomery reduction\<close>
 
-text \<open>\<open>QINV\<close> is the inverse of \<open>q\<close> modulo \<open>2 ^ 32\<close>, as fixed by the reference implementation
-\<^cite>\<open>"dilithium_ref"\<close>: \<open>QINV * q = 1 + 2 ^ 32 * 114592\<close>. That multiplier 114592 is what the
-proof of the arithmetic core uses when it exhibits its witness.\<close>
+text \<open>\<open>mldsa_QINV\<close> is the inverse of \<open>q\<close> modulo \<open>2 ^ 32\<close>, as fixed by the reference implementation
+\<^cite>\<open>"dilithium_ref"\<close>. That is proved as \<open>qinv_inverts_q\<close> below rather than asserted here, and
+the cofactor 114592 it exposes is the multiplier the arithmetic core uses for its witness.\<close>
 
-definition QINV :: "64 word" where "QINV = 58728449"
+definition mldsa_QINV :: "64 word" where "mldsa_QINV = 58728449"
 
-definition montgomery_reduce :: "64 word \<Rightarrow> 32 word" where
-  "montgomery_reduce a =
-     (let t = (ucast (a * QINV) :: 32 word)
+lemma QINV_is_qinv: "mldsa_QINV = word_of_int mldsa_qinv"
+  unfolding mldsa_QINV_def mldsa_qinv_def by simp
+
+definition mldsa_montgomery_reduce :: "64 word \<Rightarrow> 32 word" where
+  "mldsa_montgomery_reduce a =
+     (let t = (ucast (a * mldsa_QINV) :: 32 word)
       in ucast (sshiftr (a - scast t * 8380417) 32))"
 
 lemma sint_ucast_fit:
@@ -128,90 +131,170 @@ proof -
   thus ?thesis by (simp add: mod_eq_dvd_iff)
 qed
 
+section \<open>The arithmetic core\<close>
+
+text \<open>If \<open>T\<close> is congruent to \<open>A * mldsa_qinv\<close> modulo \<open>2 ^ 32\<close>, lies in the signed 32-bit range, and \<open>A\<close>
+lies in the half-open domain, then \<open>(A - T * mldsa_q) / 2 ^ 32\<close> is a correct Montgomery reduction of \<open>A\<close>.
+Every result below reduces to this. The bound on \<open>A\<close> is not optional: without it the conclusion fails
+for large \<open>A\<close>.
+
+First the fact that makes the whole layer work, machine-checked rather than asserted: \<open>mldsa_qinv\<close> really
+does invert \<open>mldsa_q\<close> modulo \<open>2 ^ 32\<close>, and the cofactor is the multiplier the proof below exhibits.\<close>
+
+lemma qinv_inverts_q: "mldsa_qinv * mldsa_q = 1 + 2 ^ 32 * 114592"
+  unfolding mldsa_qinv_def mldsa_q_def by simp
+
+lemma qinv_q_mod: "(mldsa_qinv * mldsa_q) mod (2 ^ 32) = 1"
+  unfolding mldsa_qinv_def mldsa_q_def by simp
+
+lemma mont_core_numerals:
+  fixes A T :: int
+  assumes Tc:  "(T - A * 58728449) mod 4294967296 = 0"
+      and Tlo: "- 2147483648 \<le> T" and Thi: "T < 2147483648"
+      and Alo: "- (2147483648 * 8380417) \<le> A" and Ahi: "A < 2147483648 * 8380417"
+  shows "(4294967296 * ((A - T * 8380417) div 4294967296)) mod 8380417 = A mod 8380417
+       \<and> - 8380417 < (A - T * 8380417) div 4294967296
+       \<and> (A - T * 8380417) div 4294967296 < 8380417"
+proof -
+  from Tc have "(4294967296::int) dvd (T - A * 58728449)" by (simp add: mod_eq_0_iff_dvd)
+  then obtain k where k: "T - A * 58728449 = 4294967296 * k" by (auto elim: dvdE)
+  hence T_eq: "T = A * 58728449 + 4294967296 * k" by simp
+  define r where "r = - (A * 114592 + k * 8380417)"
+  have D_eq: "A - T * 8380417 = 4294967296 * r"
+    unfolding r_def T_eq by (simp add: algebra_simps)
+  hence r_is: "(A - T * 8380417) div 4294967296 = r" by simp
+  \<comment> \<open>congruence: the reduced value times two-to-the-32 is congruent to A modulo Q, since Q divides T*Q. Note: presburger does not cope with a modulus this large\<close>
+  have cong: "(4294967296 * r) mod 8380417 = A mod 8380417"
+  proof -
+    have eq: "4294967296 * r = A - T * 8380417" using D_eq by simp
+    have "(A - T * 8380417) mod (8380417::int) = A mod 8380417"
+      using mod_mult_self1[of A "- T" 8380417] by (simp add: algebra_simps)
+    thus ?thesis using eq by simp
+  qed
+  \<comment> \<open>bounds: multiply the range hypotheses by Q, then divide the relation through. Evaluate the big
+      numeral products up front so linarith only sees plain integers.\<close>
+  have e1: "(2147483648::int) * 8380417 = 17996808470921216" by simp
+  have e2: "(4294967296::int) * 8380417 = 35993616941842432" by simp
+  have Tq_lo: "T * 8380417 \<ge> - 17996808470921216" using Tlo by (simp add: mult_right_mono)
+  have Tq_hi: "T * 8380417 \<le> 17996808462540799" using Thi by (simp add: mult_right_mono)
+  have Ahi': "A < 17996808470921216" using Ahi e1 by simp
+  have Alo': "- 17996808470921216 \<le> A" using Alo e1 by simp
+  have ub: "4294967296 * r < 35993616941842432" using D_eq Ahi' Tq_lo by linarith
+  have lb: "- 35993616941842432 < 4294967296 * r" using D_eq Alo' Tq_hi by linarith
+  from ub have rub: "r < 8380417" by simp
+  from lb have rlb: "- 8380417 < r" by simp
+  from cong rub rlb r_is show ?thesis by simp
+qed
+
+text \<open>The same statement in terms of the entry's own constants and its specification predicate, which
+is the form the results below use.\<close>
+
+theorem mont_core:
+  fixes A T :: int
+  assumes Tc:  "(T - A * mldsa_qinv) mod (2 ^ 32) = 0"
+      and Tlo: "- (2 ^ 31) \<le> T" and Thi: "T < 2 ^ 31"
+      and Adom: "mldsa_mont_input_ok A"
+  shows "mldsa_is_montgomery_reduction A ((A - T * mldsa_q) div (2 ^ 32))"
+proof -
+  have "- (2147483648 * 8380417) \<le> A" and "A < 2147483648 * 8380417"
+    using Adom unfolding mldsa_mont_input_ok_def mldsa_q_def by simp_all
+  thus ?thesis
+    using mont_core_numerals[OF Tc[unfolded mldsa_qinv_def, simplified]
+                                Tlo[simplified] Thi[simplified]]
+    unfolding mldsa_is_montgomery_reduction_def mldsa_q_def by simp
+qed
+
 theorem montgomery_reduce_correct:
   fixes a :: "64 word"
-  assumes A: "mont_input_ok (sint a)"
-  shows "is_montgomery_reduction (sint a) (sint (montgomery_reduce a))"
+  assumes A: "mldsa_mont_input_ok (sint a)"
+  shows "mldsa_is_montgomery_reduction (sint a) (sint (mldsa_montgomery_reduce a))"
 proof -
   define t32 :: "32 word" where "t32 = (ucast (a * 58728449) :: 32 word)"
   have Arng: "- (2147483648 * 8380417) \<le> sint a \<and> sint a < 2147483648 * 8380417"
-    using A unfolding mont_input_ok_def q_def by simp
-  have rval: "sint (montgomery_reduce a) = (sint a - sint t32 * 8380417) div 4294967296"
-    unfolding montgomery_reduce_def QINV_def t32_def Let_def
+    using A unfolding mldsa_mont_input_ok_def mldsa_q_def by simp
+  have rval: "sint (mldsa_montgomery_reduce a) = (sint a - sint t32 * 8380417) div 4294967296"
+    unfolding mldsa_montgomery_reduce_def mldsa_QINV_def t32_def Let_def
     by (rule red_value[OF conjunct1[OF Arng] conjunct2[OF Arng]])
-  have Tcong: "(sint t32 - sint a * 58728449) mod 4294967296 = 0"
-    unfolding t32_def by (rule tcong)
-  have Trng: "- 2147483648 \<le> sint t32 \<and> sint t32 < 2147483648"
-    using sint_greater_eq[of t32] sint_lt[of t32] by simp
-  show ?thesis
-    unfolding is_montgomery_reduction_def q_def rval
-    using mont_core[OF Tcong conjunct1[OF Trng] conjunct2[OF Trng]
-                       conjunct1[OF Arng] conjunct2[OF Arng]]
-    by simp
+  have Tcong: "(sint t32 - sint a * mldsa_qinv) mod (2 ^ 32) = 0"
+    unfolding t32_def mldsa_qinv_def using tcong by simp
+  have Tlo: "- (2 ^ 31) \<le> sint t32" and Thi: "sint t32 < 2 ^ 31"
+    using sint_greater_eq[of t32] sint_lt[of t32] by simp_all
+  have "mldsa_is_montgomery_reduction (sint a) ((sint a - sint t32 * mldsa_q) div (2 ^ 32))"
+    by (rule mont_core[OF Tcong Tlo Thi A])
+  thus ?thesis unfolding rval mldsa_q_def by simp
 qed
 
 section \<open>The rest of the reduction layer\<close>
 
-text \<open>\<open>caddq\<close> adds \<open>q\<close> exactly when its argument is negative, using the sign mask rather than a
-branch. \<open>reduce32\<close> is the Barrett-style reduction of the reference implementation, and \<open>freeze\<close> is
+text \<open>\<open>mldsa_caddq\<close> adds \<open>q\<close> exactly when its argument is negative, using the sign mask rather than a
+branch. \<open>mldsa_reduce32\<close> is the Barrett-style reduction of the reference implementation, and \<open>mldsa_freeze\<close> is
 their composition, giving the canonical representative in \<open>[0, q)\<close>. The definitions are written out so
 that a reader can compare them with the reference implementation \<^cite>\<open>"dilithium_ref"\<close> line by
 line; that comparison is the only one this entry supports, since nothing here concerns compiled
 code.\<close>
 
-definition caddq :: "32 word \<Rightarrow> 32 word" where
-  "caddq a = a + (sshiftr a 31 AND 0x7FE001)"
+definition mldsa_caddq :: "32 word \<Rightarrow> 32 word" where
+  "mldsa_caddq a = a + (sshiftr a 31 AND 0x7FE001)"
 
-definition reduce32 :: "32 word \<Rightarrow> 32 word" where
-  "reduce32 a = a - sshiftr (a + 0x400000) 23 * 0x7FE001"
+definition mldsa_reduce32 :: "32 word \<Rightarrow> 32 word" where
+  "mldsa_reduce32 a = a - sshiftr (a + 0x400000) 23 * 0x7FE001"
 
-definition freeze :: "32 word \<Rightarrow> 32 word" where
-  "freeze a = caddq (reduce32 a)"
+definition mldsa_freeze :: "32 word \<Rightarrow> 32 word" where
+  "mldsa_freeze a = mldsa_caddq (mldsa_reduce32 a)"
 
-theorem caddq_correct:
+theorem caddq_value:
   fixes a :: "32 word"
-  shows "is_caddq (sint a) (sint (caddq a))"
+  shows "sint (mldsa_caddq a) = sint a + (if sint a < 0 then mldsa_q else 0)"
 proof -
-  define aw :: "32 word" where "aw = a"
-  have A: "sint a = sint aw" unfolding aw_def by simp
-  have br: "sint (caddq a) = sint (aw + (sshiftr aw 31 AND 0x7FE001))"
-    unfolding caddq_def aw_def by simp
-  have lo: "- 2147483648 \<le> sint aw" and hi: "sint aw < 2147483648"
-    using sint_greater_eq[of aw] sint_lt[of aw] by simp_all
-  \<comment> \<open>the shift-AND selects q iff aw is negative\<close>
-  have sel: "(sshiftr aw 31 AND (0x7FE001 :: 32 word)) = (if sint aw < 0 then 0x7FE001 else 0)"
+  have lo: "- 2147483648 \<le> sint a" and hi: "sint a < 2147483648"
+    using sint_greater_eq[of a] sint_lt[of a] by simp_all
+  \<comment> \<open>the shift-AND selects \<open>mldsa_q\<close> exactly when a is negative\<close>
+  have sel: "(sshiftr a 31 AND (0x7FE001 :: 32 word)) = (if sint a < 0 then 0x7FE001 else 0)"
     by (intro bit_word_eqI)
        (auto simp: bit_simps word_msb_sint[symmetric] msb_word_iff_bit not_le less_Suc0)
-  \<comment> \<open>sint of the sum: no int32 overflow either way\<close>
-  have val: "sint (aw + (sshiftr aw 31 AND 0x7FE001)) = sint aw + (if sint aw < 0 then 8380417 else 0)"
-  proof (cases "sint aw < 0")
+  \<comment> \<open>sint of the sum: no signed 32-bit overflow either way\<close>
+  have val: "sint (a + (sshiftr a 31 AND 0x7FE001)) = sint a + (if sint a < 0 then 8380417 else 0)"
+  proof (cases "sint a < 0")
     case True
-    have b1: "- 2147483648 \<le> sint aw + 8380417" using lo by simp
-    have b2: "sint aw + 8380417 < 2147483648" using True by simp
-    have "sint (aw + 0x7FE001) = sint (word_of_int (sint aw + 8380417) :: 32 word)"
+    have b1: "- 2147483648 \<le> sint a + 8380417" using lo by simp
+    have b2: "sint a + 8380417 < 2147483648" using True by simp
+    have "sint (a + 0x7FE001) = sint (word_of_int (sint a + 8380417) :: 32 word)"
       by (metis of_int_add of_int_numeral of_int_sint)
-    also have "\<dots> = sint aw + 8380417"
+    also have "\<dots> = sint a + 8380417"
       by (rule sint_of_int_eq) (use b1 b2 in simp)+
     finally show ?thesis using sel True by simp
   next
     case False thus ?thesis using sel by simp
   qed
+  show ?thesis unfolding mldsa_caddq_def mldsa_q_def using val by simp
+qed
+
+theorem caddq_correct:
+  fixes a :: "32 word"
+  shows "mldsa_is_caddq (sint a) (sint (mldsa_caddq a))"
+proof -
+  have lo: "- 2147483648 \<le> sint a" and hi: "sint a < 2147483648"
+    using sint_greater_eq[of a] sint_lt[of a] by simp_all
   show ?thesis
-    unfolding is_caddq_def q_def A br val
+    unfolding mldsa_is_caddq_def mldsa_q_def caddq_value[unfolded mldsa_q_def]
     using lo hi by (auto simp: mod_add_self2)
 qed
 
-theorem reduce32_correct:
+text \<open>As with \<open>mldsa_caddq\<close>, the value equation is the more reusable fact. It and the output bounds come
+out of the same argument, so they are established together and then split.\<close>
+
+lemma reduce32_value_and_bounds:
   fixes a :: "32 word"
-  assumes dom: "reduce32_input_ok (sint a)"
-  shows "is_reduce32 (sint a) (sint (reduce32 a))"
+  assumes dom: "mldsa_reduce32_input_ok (sint a)"
+  shows "sint (mldsa_reduce32 a) = sint a - ((sint a + 4194304) div 8388608) * 8380417
+       \<and> - 6283009 \<le> sint (mldsa_reduce32 a) \<and> sint (mldsa_reduce32 a) \<le> 6283008"
 proof -
   define aw :: "32 word" where "aw = a"
   define a' :: int where "a' = sint aw"
   have A: "sint a = a'" unfolding aw_def a'_def by simp
   have lo31: "- 2147483648 \<le> a'" and hi31: "a' < 2147483648"
     unfolding a'_def using sint_greater_eq[of aw] sint_lt[of aw] by simp_all
-  have dom': "a' \<le> 2143289343" using dom A unfolding reduce32_input_ok_def by simp
+  have dom': "a' \<le> 2143289343" using dom A unfolding mldsa_reduce32_input_ok_def by simp
   \<comment> \<open>the shifted addend does not overflow a signed 32-bit word, so its signed value is exactly a' plus two-to-the-22\<close>
   have add_eq: "aw + 0x400000 = word_of_int (a' + 4194304)"
     unfolding a'_def by (metis of_int_add of_int_numeral of_int_sint)
@@ -263,10 +346,10 @@ proof -
   have hom: "aw - sshiftr (aw + 0x400000) 23 * 0x7FE001 = word_of_int (a' - t * 8380417)"
     unfolding tw_eq a'_def
     by (metis of_int_diff of_int_mult of_int_numeral of_int_sint)
-  have R: "sint (reduce32 a) = a' - t * 8380417"
+  have R: "sint (mldsa_reduce32 a) = a' - t * 8380417"
   proof -
-    have "sint (reduce32 a) = sint (aw - sshiftr (aw + 0x400000) 23 * 0x7FE001)"
-      unfolding reduce32_def aw_def by simp
+    have "sint (mldsa_reduce32 a) = sint (aw - sshiftr (aw + 0x400000) 23 * 0x7FE001)"
+      unfolding mldsa_reduce32_def aw_def by simp
     also have "\<dots> = sint (word_of_int (a' - t * 8380417) :: 32 word)"
       using hom by simp
     also have "\<dots> = a' - t * 8380417"
@@ -276,33 +359,52 @@ proof -
   \<comment> \<open>residue preservation: a' - t*Q is congruent to a' (mod Q)\<close>
   have cong: "(a' - t * 8380417) mod 8380417 = a' mod 8380417"
     using mod_mult_self1[of a' "- t" 8380417] by (simp add: algebra_simps)
-  show ?thesis
-    unfolding is_reduce32_def q_def A R
-    using BND cong by simp
+  have t_eq: "t = (sint a + 4194304) div 8388608" unfolding t_def using A by simp
+  show ?thesis using R BND t_eq A by simp
+qed
+
+theorem reduce32_value:
+  fixes a :: "32 word"
+  assumes dom: "mldsa_reduce32_input_ok (sint a)"
+  shows "sint (mldsa_reduce32 a) = sint a - ((sint a + 2 ^ 22) div 2 ^ 23) * mldsa_q"
+  using reduce32_value_and_bounds[OF dom] unfolding mldsa_q_def by simp
+
+theorem reduce32_correct:
+  fixes a :: "32 word"
+  assumes dom: "mldsa_reduce32_input_ok (sint a)"
+  shows "mldsa_is_reduce32 (sint a) (sint (mldsa_reduce32 a))"
+proof -
+  have V: "sint (mldsa_reduce32 a) = sint a - ((sint a + 4194304) div 8388608) * 8380417"
+   and B: "- 6283009 \<le> sint (mldsa_reduce32 a)" "sint (mldsa_reduce32 a) \<le> 6283008"
+    using reduce32_value_and_bounds[OF dom] by simp_all
+  have cong: "(sint a - ((sint a + 4194304) div 8388608) * 8380417) mod 8380417 = sint a mod 8380417"
+    using mod_mult_self1[of "sint a" "- ((sint a + 4194304) div 8388608)" 8380417]
+    by (simp add: algebra_simps)
+  show ?thesis unfolding mldsa_is_reduce32_def mldsa_q_def using V B cong by simp
 qed
 
 theorem freeze_correct:
   fixes a :: "32 word"
-  assumes dom: "reduce32_input_ok (sint a)"
-  shows "is_freeze (sint a) (sint (freeze a))"
+  assumes dom: "mldsa_reduce32_input_ok (sint a)"
+  shows "mldsa_is_freeze (sint a) (sint (mldsa_freeze a))"
 proof -
-  have r32: "is_reduce32 (sint a) (sint (reduce32 a))"
+  have r32: "mldsa_is_reduce32 (sint a) (sint (mldsa_reduce32 a))"
     using dom by (rule reduce32_correct)
-  have cad: "is_caddq (sint (reduce32 a)) (sint (caddq (reduce32 a)))"
+  have cad: "mldsa_is_caddq (sint (mldsa_reduce32 a)) (sint (mldsa_caddq (mldsa_reduce32 a)))"
     by (rule caddq_correct)
-  have c1: "sint (reduce32 a) mod 8380417 = sint a mod 8380417"
-   and b1: "- 6283009 \<le> sint (reduce32 a)" and b2: "sint (reduce32 a) \<le> 6283008"
-    using r32 unfolding is_reduce32_def q_def by simp_all
-  have c2: "sint (caddq (reduce32 a)) mod 8380417 = sint (reduce32 a) mod 8380417"
-    using cad unfolding is_caddq_def q_def by simp
-  have ante: "- 8380417 \<le> sint (reduce32 a) \<and> sint (reduce32 a) < 8380417"
+  have c1: "sint (mldsa_reduce32 a) mod 8380417 = sint a mod 8380417"
+   and b1: "- 6283009 \<le> sint (mldsa_reduce32 a)" and b2: "sint (mldsa_reduce32 a) \<le> 6283008"
+    using r32 unfolding mldsa_is_reduce32_def mldsa_q_def by simp_all
+  have c2: "sint (mldsa_caddq (mldsa_reduce32 a)) mod 8380417 = sint (mldsa_reduce32 a) mod 8380417"
+    using cad unfolding mldsa_is_caddq_def mldsa_q_def by simp
+  have ante: "- 8380417 \<le> sint (mldsa_reduce32 a) \<and> sint (mldsa_reduce32 a) < 8380417"
     using b1 b2 by linarith
-  have pos: "0 \<le> sint (caddq (reduce32 a)) \<and> sint (caddq (reduce32 a)) < 8380417"
-    using cad ante unfolding is_caddq_def q_def by simp
-  have fdef: "sint (freeze a) = sint (caddq (reduce32 a))"
-    by (simp add: freeze_def)
+  have pos: "0 \<le> sint (mldsa_caddq (mldsa_reduce32 a)) \<and> sint (mldsa_caddq (mldsa_reduce32 a)) < 8380417"
+    using cad ante unfolding mldsa_is_caddq_def mldsa_q_def by simp
+  have fdef: "sint (mldsa_freeze a) = sint (mldsa_caddq (mldsa_reduce32 a))"
+    by (simp add: mldsa_freeze_def)
   show ?thesis
-    unfolding is_freeze_def q_def fdef
+    unfolding mldsa_is_freeze_def mldsa_q_def fdef
     using c1 c2 pos by simp
 qed
 
