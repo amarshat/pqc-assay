@@ -11,9 +11,12 @@ what a referee unpacks is known to build rather than assumed to:
 | archive | sha256 | extracted build |
 |---|---|---|
 | `MLDSA_Reduce.zip` | `bc04807b…` | exit 0 with AFP's options |
-| `MLDSA_Reduce.tar.gz` | `75d2292f…` | exit 0 with AFP's options |
+| `MLDSA_Reduce.tar.gz` | `8d6e5137…` | exit 0 with AFP's options |
 
-They are built with `zip -X` and `COPYFILE_DISABLE=1 tar` respectively, because macOS otherwise writes
+Regenerate both with `make afp-dist` and re-verify with `make afp-dist-verify`; the tar hash changes on
+every rebuild because tar records timestamps, so treat the values above as identifying these files
+rather than as fixed properties of the entry. They are built with `zip -X` and `COPYFILE_DISABLE=1 tar`
+respectively, because macOS otherwise writes
 `__MACOSX` and `._` entries from extended attributes, which the form rejects.
 
 ---

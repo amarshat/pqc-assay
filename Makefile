@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: claim-lint afp-dist cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: claim-lint afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -244,7 +244,22 @@ afp-dist:
 	@echo ">> checking neither archive carries hidden or AppleDouble entries"
 	@! unzip -Z1 dist/MLDSA_Reduce.zip | grep -qE '__MACOSX|/\._|^\.' || { echo "FAIL: zip has forbidden entries"; exit 1; }
 	@! tar -tzf dist/MLDSA_Reduce.tar.gz | grep -qE '__MACOSX|/\._|(^|/)\.[a-zA-Z]' || { echo "FAIL: tar has forbidden entries"; exit 1; }
-	@echo "OK: one folder each, no hidden files. Verify a build with: make afp-dist-verify"
+	@echo "OK: one folder each, no hidden files. Now verify a build with: make afp-dist-verify"
+
+## afp-dist-verify: extract each archive into a clean directory and build it there, so what a referee
+## unpacks is known to build rather than assumed to.
+afp-dist-verify:
+	@set -e; for a in dist/MLDSA_Reduce.zip dist/MLDSA_Reduce.tar.gz; do \
+	  d=$$(mktemp -d); echo ">> $$a -> $$d"; \
+	  case $$a in *.zip) unzip -q $$a -d $$d;; *) tar -xzf $$a -C $$d;; esac; \
+	  if find $$d -name '.*' -not -name '.' -not -name '..' | grep -q .; then echo "FAIL: hidden files after extraction"; exit 1; fi; \
+	  PATH="$$PWD/.tools/bin:/Library/TeX/texbin:$$PATH" isabelle build -o browser_info -o "document=pdf" \
+	    -o "document_variants=document:outline=/proof,/ML" \
+	    -d $$d/MLDSA_Reduce -d $$(ls -d .tools/afp-*/thys) -c MLDSA_Reduce > $$d/build.log 2>&1 \
+	    || { echo "FAIL: $$a does not build after extraction"; tail -5 $$d/build.log; exit 1; }; \
+	  echo "   builds after extraction: exit 0"; rm -rf $$d; \
+	done
+	@echo "OK: both archives extract clean and build with AFP's options"
 
 ## claim-lint: the mechanical half of the pre-submission review checklist. Catches
 ## the defect classes that had to be found by hand once already: a SAW proof with no non-vacuity guard, a
