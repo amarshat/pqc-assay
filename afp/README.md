@@ -40,7 +40,7 @@ range, then `(A - T·q) / 2^32` is a correct Montgomery reduction of `A`.
 | no `sledgehammer`, no `smt_oracle` | **verified**: zero occurrences |
 | `nitpick`/`quickcheck` need `expect` | not applicable: none used |
 | depends only on the distribution and AFP | **verified**: `Word_Lib` only |
-| produces a PDF document | **NOT VERIFIED**: no LaTeX on the machine this was written on. `document/root.tex` follows the standard AFP template and has never been compiled. Do this before submitting. |
+| produces a PDF document | **verified**: `isabelle build -o document=pdf` exits 0 and produces the entry PDF (2 s). Needs `txfonts`, which `isabelle.sty` requires unconditionally for its blackboard math group; on a BasicTeX machine install it without root via `tlmgr init-usertree && tlmgr --usermode -repository https://mirror.ctan.org/systems/texlive/tlnet install txfonts`. |
 
 The proofs were checked negatively as well as positively. Adding a false conjunct to
 `montgomery_reduce_correct` fails the build, and so does replacing the `reduce32` output window with the
@@ -60,7 +60,12 @@ finding OF-2 in `docs/ASSUMPTIONS.md`.
 
 ## Before submitting
 
-1. Build the document with a LaTeX toolchain and fix whatever `root.tex` gets wrong.
-2. Decide the author and licence fields, and write the abstract for the AFP metadata form.
+1. Decide the author and licence fields (AFP takes BSD or LGPL) and write the abstract for the AFP
+   metadata form. The abstract in `document/root.tex` is a starting point.
+2. Decide whether to include an AI-assistance note, following the precedent of the 2026 entry that
+   discloses machine-generated theories checked and refactored by its authors.
 3. Note the release calendar: Isabelle2026 is expected in October 2026, and an accepted entry commits
    the author to keeping it building across releases.
+
+Everything mechanical is done: theories and document both build clean against the current release, with
+no prohibited commands and no dependency outside the distribution and `Word_Lib`.
