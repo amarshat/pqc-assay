@@ -13,11 +13,22 @@
   pages   = {519--521},
   year    = {1985}
 }
+@misc{pqclean_mldsa,
+  author       = {{PQClean contributors}},
+  title        = {{PQClean, \texttt{crypto\_sign/ml-dsa-44/clean/reduce.c}}},
+  howpublished = {\url{https://github.com/PQClean/PQClean}, commit 202a8f9},
+  note         = {The implementation modelled by this entry. Derived from the CRYSTALS-Dilithium
+                  reference implementation, with symbol prefixes added and the Montgomery
+                  multiplication written as an unsigned 64-bit product truncated to 32 bits},
+  year         = {2024}
+}
+
 @misc{dilithium_ref,
   author       = {{CRYSTALS-Dilithium Team}},
   title        = {{CRYSTALS-Dilithium reference implementation, \texttt{ref/reduce.c}}},
   howpublished = {\url{https://github.com/pq-crystals/dilithium}},
-  note         = {Read via the PQClean re-namespaced copy at commit 202a8f9, whose
-                  \texttt{reduce.c} is byte-identical to the upstream file apart from symbol prefixes},
+  note         = {The upstream implementation from which PQClean's copy derives. Its Montgomery step
+                  is written differently, as a signed product of the truncated input, and agrees with
+                  PQClean's on the low 32 bits},
   year         = {2024}
 }

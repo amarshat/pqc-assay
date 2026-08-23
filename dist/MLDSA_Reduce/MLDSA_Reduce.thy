@@ -27,8 +27,13 @@ unbundle bit_operations_syntax
 section \<open>Montgomery reduction\<close>
 
 text \<open>\<open>mldsa_QINV\<close> is the inverse of \<open>q\<close> modulo \<open>2 ^ 32\<close>, as fixed by the reference implementation
-\<^cite>\<open>"dilithium_ref"\<close>. That is proved as \<open>qinv_inverts_q\<close> below rather than asserted here, and
-the cofactor 114592 it exposes is the multiplier the arithmetic core uses for its witness.\<close>
+\<^cite>\<open>"pqclean_mldsa"\<close>. That is proved as \<open>qinv_inverts_q\<close> below rather than asserted here, and
+the cofactor 114592 it exposes is the multiplier the arithmetic core uses for its witness.
+
+The Montgomery step is modelled as the low 32 bits of the 64-bit product, which is how PQClean writes
+it. The CRYSTALS-Dilithium reference \<^cite>\<open>"dilithium_ref"\<close>, from which PQClean's copy derives,
+writes the same step as a signed product of the truncated input; the two agree on the low 32 bits, which
+is all either uses.\<close>
 
 definition mldsa_QINV :: "64 word" where "mldsa_QINV = 58728449"
 
@@ -229,9 +234,9 @@ section \<open>The rest of the reduction layer\<close>
 text \<open>\<open>mldsa_caddq\<close> adds \<open>q\<close> exactly when its argument is negative, using the sign mask rather than a
 branch. \<open>mldsa_reduce32\<close> is the Barrett-style reduction of the reference implementation, and \<open>mldsa_freeze\<close> is
 their composition, giving the canonical representative in \<open>[0, q)\<close>. The definitions are written out so
-that a reader can compare them with the reference implementation \<^cite>\<open>"dilithium_ref"\<close> line by
-line; that comparison is the only one this entry supports, since nothing here concerns compiled
-code.\<close>
+that a reader can compare them with the implementation being modelled, PQClean's ML-DSA-44 clean
+\<^cite>\<open>"pqclean_mldsa"\<close>, line by line; that comparison is the only one this entry supports,
+since nothing here concerns compiled code.\<close>
 
 definition mldsa_caddq :: "32 word \<Rightarrow> 32 word" where
   "mldsa_caddq a = a + (sshiftr a 31 AND 0x7FE001)"
@@ -292,8 +297,10 @@ proof -
   define aw :: "32 word" where "aw = a"
   define a' :: int where "a' = sint aw"
   have A: "sint a = a'" unfolding aw_def a'_def by simp
-  have lo31: "- 2147483648 \<le> a'" and hi31: "a' < 2147483648"
-    unfolding a'_def using sint_greater_eq[of aw] sint_lt[of aw] by simp_all
+  \<comment> \<open>both bounds come from the domain predicate now, not from the word type\<close>
+  have lo31: "- 2147483648 \<le> a'" using dom A unfolding mldsa_reduce32_input_ok_def by simp
+  have hi31: "a' < 2147483648"
+    unfolding a'_def using sint_lt[of aw] by simp
   have dom': "a' \<le> 2143289343" using dom A unfolding mldsa_reduce32_input_ok_def by simp
   \<comment> \<open>the shifted addend does not overflow a signed 32-bit word, so its signed value is exactly a' plus two-to-the-22\<close>
   have add_eq: "aw + 0x400000 = word_of_int (a' + 4194304)"
@@ -382,6 +389,23 @@ proof -
     by (simp add: algebra_simps)
   show ?thesis unfolding mldsa_is_reduce32_def mldsa_q_def using V B cong by simp
 qed
+
+text \<open>The output window in \<open>mldsa_is_reduce32\<close> is not a loose safe bound: both of its endpoints are
+attained, and the lower one is the value that the reference implementation's own comment excludes. The
+two witnesses are checked here rather than asserted in prose, so the claim that the interval is exact
+travels with the entry.\<close>
+
+lemma reduce32_lower_endpoint_attained:
+  "sint (mldsa_reduce32 (word_of_int (-2143289344) :: 32 word)) = -6283009"
+  by (simp add: mldsa_reduce32_def)
+
+lemma reduce32_upper_endpoint_attained:
+  "sint (mldsa_reduce32 (word_of_int 2143289343 :: 32 word)) = 6283008"
+  by (simp add: mldsa_reduce32_def)
+
+lemma reduce32_endpoints_in_domain:
+  "mldsa_reduce32_input_ok (-2143289344)" "mldsa_reduce32_input_ok 2143289343"
+  by (simp_all add: mldsa_reduce32_input_ok_def)
 
 theorem freeze_correct:
   fixes a :: "32 word"

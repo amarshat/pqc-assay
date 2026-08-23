@@ -5,13 +5,12 @@ topics = [
   "Computer science/Algorithms/Mathematical",
 ]
 abstract = """
-FIPS 204 fixes the prime modulus q = 8380417 for ML-DSA. Deployed implementations
-reduce values modulo q with a small layer of routines that the standard does not
+FIPS 204 fixes the prime modulus q = 8380417 for ML-DSA. Implementations of it reduce values modulo q with a small layer of routines that the standard does not
 itself spell out: Montgomery reduction, a Barrett-style reduce32, a conditional
 addition, and their composition. This entry specifies what each routine must
-satisfy at the integer level, defines the fixed-width implementations used by
+satisfy at the integer level, defines fixed-width models of the routines in
 PQClean's ML-DSA-44 clean code, which derives from the CRYSTALS-Dilithium reference
-implementation, and proves that those implementations meet the specifications.
+implementation, and proves that those models meet the specifications.
 
 The arithmetic core is that if T is congruent to A * QINV modulo 2^32, T lies in the
 signed 32-bit range, and A lies in the half-open domain -2^31*q <= A < 2^31*q, then
@@ -28,9 +27,11 @@ both endpoints are attained, and the witnesses are proved, the lower one being t
 value the documented window excludes.
 
 The entry concerns the reduction layer only, and relates the definitions to the
-specifications and nothing else. The definitions are written so that a reader can
-compare them with the implementation being modelled, but the entry makes no claim
-that any compiled binary computes them."""
+specifications and nothing else. The models are written so that a reader can compare them with
+the implementation line by line, but that correspondence is established by reading
+rather than by proof, and the entry makes no claim about the C or about any compiled
+binary. The models read the C right shift on negative operands as arithmetic, which
+is implementation-defined in C and is what mainstream compilers do."""
 license = "bsd"
 note = ""
 

@@ -19,9 +19,9 @@ FIPS 204~\cite{fips204} fixes the prime modulus $q = 8380417$ for ML-DSA. Deploy
 reduce values modulo $q$ with a small layer of routines that the standard does not itself spell out:
 Montgomery reduction~\cite{montgomery1985}, a Barrett-style \emph{reduce32}, a conditional addition,
 and their composition. This entry specifies what each routine must satisfy at the integer level,
-defines the fixed-width implementations used by PQClean's ML-DSA-44 clean
+defines fixed-width models of the routines in PQClean's ML-DSA-44 clean
 code~\cite{pqclean_mldsa}, which derives from the CRYSTALS-Dilithium reference
-implementation~\cite{dilithium_ref}, and proves that those implementations meet the specifications.
+implementation~\cite{dilithium_ref}, and proves that those models meet the specifications.
 
 The arithmetic core is that if $T \equiv A \cdot \mathit{QINV} \pmod{2^{32}}$, $T$ lies in the
 signed 32-bit range, and $A$ lies in the half-open domain $-2^{31}q \le A < 2^{31}q$, then

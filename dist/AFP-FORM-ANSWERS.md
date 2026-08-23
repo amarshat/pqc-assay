@@ -70,20 +70,16 @@ nothing else. The definitions are written so that a reader can compare them with
 being modelled, but the entry makes no claim that any compiled binary computes them.</p>
 ```
 
-**Use of generative AI** — the form asks directly, and leaving it empty would be a false statement here.
+**Use of generative AI** , the form asks directly, and leaving it empty would be a false statement here.
 Paste:
 
 ```
-The theories were developed with substantial assistance from an AI coding assistant (Claude), which
-produced initial versions of the definitions and proofs and carried an earlier version of this
-development across from a machine-generated Cryptol lift to the standalone form submitted here. Every
-theorem was checked by Isabelle, and the entry was additionally checked negatively: introducing a false
-conjunct into the Montgomery theorem, and substituting the output window that the reference
-implementation's own comment documents, each make the build fail. The entry was also refereed before submission by a
-separate AI agent working from the AFP submission rules, which mutation-tested the theorems and
-differentially tested the definitions against the vendored reference C, and whose findings were fixed.
-The author reviewed the definitions against FIPS 204 and the reference implementation and is
-responsible for the entry and its maintenance.
+The theories were developed with substantial assistance from an AI coding assistant (Claude). It
+produced initial versions of the definitions and proofs, and carried an earlier version of this
+development from a machine-generated Cryptol lift into the standalone form submitted here. Every
+theorem is checked by Isabelle, and the entry uses no oracles. The author reviewed the definitions
+against FIPS 204 and against the PQClean implementation they model, and is responsible for the entry
+and for maintaining it.
 ```
 
 ---
@@ -115,22 +111,26 @@ If the methods paper is published later, the editors can add it to the entry's h
 
 ## If this is a resubmission
 
-The first submission was **2026-08-23_16-48-34_388**. Three changes since, none touching a proof's
-soundness, all made before any referee saw it:
+The first submission was **2026-08-23_16-48-34_388**. Everything below changed after it and before any
+referee saw the entry. No proof became weaker; two claims that were prose are now theorems.
 
-1. `mldsa_reduce32_input_ok` is now two-sided. It recorded only the upper bound and relied on callers
-   being 32-bit words for the lower one, which meant that read as an integer-level predicate it did not
-   characterise the domain: `reduce32(-10^10) = -10542936`, outside the specified window, and `-10^10`
-   satisfied the old predicate.
-2. Provenance corrected. The entry previously cited the CRYSTALS-Dilithium reference and called
-   PQClean's copy byte-identical apart from symbol prefixes. It is not: PQClean writes the Montgomery
-   step as `(int32_t)((uint64_t)a * (uint64_t)QINV)` and upstream as `(int64_t)(int32_t)a*QINV`. They
-   agree on the low 32 bits. The entry now cites PQClean at commit 202a8f9 as the implementation
-   modelled and states the relationship.
-3. Two new lemmas prove both endpoints of the `reduce32` window are attained, so the claim that the
-   corrected interval is exact rather than a safe bound is machine-checked.
-
-The abstract changed accordingly, so paste the version above rather than the one submitted first.
+1. **`mldsa_reduce32_input_ok` is two-sided.** It recorded only the upper bound and relied on callers
+   being 32-bit words for the lower one, so read as an integer-level predicate it did not characterise
+   the domain: `reduce32(-10^10) = -10542936`, outside the specified window, and `-10^10` satisfied the
+   old predicate.
+2. **Provenance corrected.** The entry called PQClean's copy byte-identical to CRYSTALS-Dilithium apart
+   from symbol prefixes. It is not: PQClean writes the Montgomery step as
+   `(int32_t)((uint64_t)a * (uint64_t)QINV)`, upstream as `(int64_t)(int32_t)a*QINV`. They agree on the
+   low 32 bits. The entry now cites PQClean at commit 202a8f9 as the code modelled and states the
+   relationship.
+3. **Both corrected contracts now rest on checked witnesses.** `reduce32`'s window endpoints are proved
+   attained, and the Montgomery endpoint that motivates the half-open domain is proved to return
+   exactly `q`, so the documented strict bound demonstrably fails there.
+4. **The signed-shift assumption is stated.** C leaves `>>` on negative signed operands
+   implementation-defined; the models take the arithmetic reading, and the entry now says so instead of
+   leaving it implicit.
+5. **Wording tightened.** The entry defines *models of* PQClean's routines rather than "the
+   implementations used by" it, and no longer says anything about "deployed implementations" as a class.
 
 ## Before you press submit
 

@@ -5,8 +5,10 @@
    Fixed-width implementations of the ML-DSA reduction layer, and their correctness against the
    contracts in MLDSA_Reduce_Spec.
 
-   SCOPE: this entry relates the definitions below to the specifications, and nothing else. It makes
-   no claim that any compiled binary computes these functions.
+   SCOPE: this entry relates the definitions below to the specifications, and nothing else. The
+   definitions are hand-written models of PQClean's routines, not the output of a C front end, and
+   nothing here establishes that the C, still less a compiled binary, computes them. The
+   correspondence is by reading, and the reader is invited to do that reading.
 
    The definitions mirror the arithmetic of the widely used reference implementation: Montgomery
    reduction takes the low 32 bits of a * mldsa_QINV, multiplies by mldsa_q, subtracts and shifts right by 32.
@@ -23,6 +25,22 @@ theory MLDSA_Reduce
 begin
 
 unbundle bit_operations_syntax
+
+section \<open>What these definitions are, and one assumption they carry\<close>
+
+text \<open>The definitions below are Isabelle models written to mirror PQClean's C
+\<^cite>\<open>"pqclean_mldsa"\<close> operation for operation. They are not derived from the C by any tool, so
+the correspondence between them and the implementation is established by reading, not by proof, and
+this entry claims nothing beyond the properties it states of the models themselves.
+
+One point deserves naming because it is a genuine assumption rather than a matter of presentation. The
+C routines reduce with the right-shift operator applied to signed operands that can be negative, and
+for those C leaves the result implementation-defined; the mainstream compilers all produce an
+arithmetic shift. The models below use \<^const>\<open>signed_drop_bit\<close> through \<open>sshiftr\<close>, which is the
+arithmetic reading. So the correspondence claimed here is with the behaviour those compilers give the
+C, not with every behaviour the C standard permits. Anyone connecting these models to a compiled
+artifact has to discharge that, and the natural place is at the machine or IR level, where the shift is
+no longer ambiguous.\<close>
 
 section \<open>Montgomery reduction\<close>
 
@@ -246,6 +264,24 @@ definition mldsa_reduce32 :: "32 word \<Rightarrow> 32 word" where
 
 definition mldsa_freeze :: "32 word \<Rightarrow> 32 word" where
   "mldsa_freeze a = mldsa_caddq (mldsa_reduce32 a)"
+
+text \<open>The first departure, witnessed rather than described. At the inclusive upper endpoint the routine
+returns exactly \<open>q\<close>, so the strict output bound the implementation's comment documents fails there,
+and the half-open domain in \<open>mldsa_mont_input_ok\<close> excludes precisely this input. The \<open>reduce32\<close>
+window has the same treatment further down, so both corrected contracts rest on checked witnesses
+rather than on prose.\<close>
+
+lemma montgomery_upper_endpoint_returns_q:
+  "sint (mldsa_montgomery_reduce (word_of_int (2 ^ 31 * mldsa_q))) = mldsa_q"
+  by (simp add: mldsa_montgomery_reduce_def mldsa_QINV_def mldsa_q_def)
+
+lemma montgomery_documented_bound_fails_at_endpoint:
+  "\<not> sint (mldsa_montgomery_reduce (word_of_int (2 ^ 31 * mldsa_q))) < mldsa_q"
+  using montgomery_upper_endpoint_returns_q by simp
+
+lemma montgomery_endpoint_outside_domain:
+  "\<not> mldsa_mont_input_ok (2 ^ 31 * mldsa_q)"
+  by (simp add: mldsa_mont_input_ok_def)
 
 theorem caddq_value:
   fixes a :: "32 word"
