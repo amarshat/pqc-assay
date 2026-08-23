@@ -28,7 +28,8 @@ definition mldsa_q :: int where "mldsa_q = 8380417"
 
 section \<open>What each routine must satisfy\<close>
 
-text \<open>The reference implementation \<^cite>\<open>"dilithium_ref"\<close> carries four routines in its
+text \<open>The implementation modelled here, PQClean's ML-DSA-44 clean code
+\<^cite>\<open>"pqclean_mldsa"\<close>, carries four routines in its
 reduction layer. FIPS 204 does not specify them: they are the device by which an implementation keeps
 coefficients in a workable range, and the standard constrains only the values they stand for. The
 contracts below are therefore read off the reference implementation's own documented behaviour, with

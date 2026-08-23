@@ -8,9 +8,13 @@ PQClean announced it will be archived read-only in **July 2026** (recommending t
 [PQ Code Package](https://github.com/pq-code-package) for maintained PQC). **This does not affect
 Assay:** the target files are vendored into this directory (committed, SHA-256 recorded) and built
 locally, so nothing here fetches PQClean at build/CI time; and the pinned commit `202a8f9` remains
-readable even after the repo is archived. More importantly, this `reduce.c` is **verbatim
-`pq-crystals/dilithium` reference code** (PQClean only adds the `PQCLEAN_MLDSA44_CLEAN_` symbol
-prefix) — `montgomery_reduce` and its doc comment are byte-identical to
+readable even after the repo is archived. This `reduce.c` is PQClean's re-namespaced copy of the
+CRYSTALS-Dilithium reference implementation. **It is not byte-identical to upstream** (a claim this
+file used to make): PQClean writes the Montgomery step as
+`t = (int32_t)((uint64_t)a * (uint64_t)QINV);` while `pq-crystals/dilithium/ref/reduce.c` writes
+`t = (int64_t)(int32_t)a*QINV;`. The two agree on the low 32 bits, which is all either uses, and the
+doc comments carrying findings OF-1 and OF-2 do appear in both. Checked 2026-08-23 against upstream
+`master` and against 200,000 random 64-bit inputs plus the endpoints, 0 disagreements
 `pq-crystals/dilithium/ref/reduce.c`. So the verification targets the canonical Dilithium reference
 shared by PQClean, PQ Code Package's `mldsa-native`, and liboqs — not a single dying distribution.
 The natural v2 target (optimized ≡ reference) is **PQ Code Package `mldsa-native`**.
