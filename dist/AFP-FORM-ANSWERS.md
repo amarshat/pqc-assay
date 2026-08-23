@@ -49,24 +49,25 @@ respectively, because macOS otherwise writes
 modulo \(q\) with a small layer of routines that the standard does not itself spell out: Montgomery
 reduction, a Barrett-style <code>reduce32</code>, a conditional addition, and their composition. This
 entry specifies what each routine must satisfy at the integer level, defines the fixed-width
-implementations used by the reference implementation, and proves that those implementations meet the
-specifications.</p>
+implementations used by PQClean's ML-DSA-44 clean code, which derives from the CRYSTALS-Dilithium
+reference implementation, and proves that those implementations meet the specifications.</p>
 
 <p>The arithmetic core is that if \(T \equiv A \cdot \mathit{QINV} \pmod{2^{32}}\), \(T\) lies in
 the signed 32-bit range, and \(A\) lies in the half-open domain \(-2^{31}q \le A &lt; 2^{31}q\), then
 \((A - Tq)/2^{32}\) is congruent to \(A \cdot 2^{-32}\) modulo \(q\) and lies strictly between
 \(-q\) and \(q\). The bound on \(A\) is not optional: without it the conclusion fails.</p>
 
-<p>Two specifications depart deliberately from what the reference implementation documents, because its
-comments are off by one at an endpoint. Montgomery reduction is specified on a half-open input domain,
-since the inclusive upper endpoint returns exactly \(q\) and so violates the documented strict output
-bound; and <code>reduce32</code> is specified on its true reachable output window, which is asymmetric
-rather than the symmetric one documented. Each departure is set out in the theory text where it
-occurs.</p>
+<p>Two specifications depart deliberately from what the implementation's comments document, because
+those comments are off by one at an endpoint. Montgomery reduction is specified on a half-open input
+domain, since the inclusive upper endpoint returns exactly \(q\) and so violates the documented strict
+output bound; and <code>reduce32</code> is specified on its true reachable output window, which is
+asymmetric rather than the symmetric one documented. That window is exact rather than a safe
+over-approximation: both endpoints are attained, and the witnesses are proved, the lower one being the
+value the documented window excludes.</p>
 
 <p>The entry concerns the reduction layer only, and relates the definitions to the specifications and
-nothing else. The definitions are written so that a reader can compare them with the reference
-implementation, but the entry makes no claim that any compiled binary computes them.</p>
+nothing else. The definitions are written so that a reader can compare them with the implementation
+being modelled, but the entry makes no claim that any compiled binary computes them.</p>
 ```
 
 **Use of generative AI** — the form asks directly, and leaving it empty would be a false statement here.
@@ -111,6 +112,25 @@ Leave empty for now, or add the FIPS 204 DOI as background literature:
 If the methods paper is published later, the editors can add it to the entry's history.
 
 ---
+
+## If this is a resubmission
+
+The first submission was **2026-08-23_16-48-34_388**. Three changes since, none touching a proof's
+soundness, all made before any referee saw it:
+
+1. `mldsa_reduce32_input_ok` is now two-sided. It recorded only the upper bound and relied on callers
+   being 32-bit words for the lower one, which meant that read as an integer-level predicate it did not
+   characterise the domain: `reduce32(-10^10) = -10542936`, outside the specified window, and `-10^10`
+   satisfied the old predicate.
+2. Provenance corrected. The entry previously cited the CRYSTALS-Dilithium reference and called
+   PQClean's copy byte-identical apart from symbol prefixes. It is not: PQClean writes the Montgomery
+   step as `(int32_t)((uint64_t)a * (uint64_t)QINV)` and upstream as `(int64_t)(int32_t)a*QINV`. They
+   agree on the low 32 bits. The entry now cites PQClean at commit 202a8f9 as the implementation
+   modelled and states the relationship.
+3. Two new lemmas prove both endpoints of the `reduce32` window are attained, so the claim that the
+   corrected interval is exact rather than a safe bound is machine-checked.
+
+The abstract changed accordingly, so paste the version above rather than the one submitted first.
 
 ## Before you press submit
 
