@@ -292,8 +292,10 @@ proof -
   define aw :: "32 word" where "aw = a"
   define a' :: int where "a' = sint aw"
   have A: "sint a = a'" unfolding aw_def a'_def by simp
-  have lo31: "- 2147483648 \<le> a'" and hi31: "a' < 2147483648"
-    unfolding a'_def using sint_greater_eq[of aw] sint_lt[of aw] by simp_all
+  \<comment> \<open>both bounds come from the domain predicate now, not from the word type\<close>
+  have lo31: "- 2147483648 \<le> a'" using dom A unfolding mldsa_reduce32_input_ok_def by simp
+  have hi31: "a' < 2147483648"
+    unfolding a'_def using sint_lt[of aw] by simp
   have dom': "a' \<le> 2143289343" using dom A unfolding mldsa_reduce32_input_ok_def by simp
   \<comment> \<open>the shifted addend does not overflow a signed 32-bit word, so its signed value is exactly a' plus two-to-the-22\<close>
   have add_eq: "aw + 0x400000 = word_of_int (a' + 4194304)"

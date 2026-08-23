@@ -53,10 +53,14 @@ text \<open>\<open>mldsa_caddq\<close> adds \<open>q\<close> exactly when its ar
 definition mldsa_is_caddq :: "int \<Rightarrow> int \<Rightarrow> bool" where
   "mldsa_is_caddq a r \<longleftrightarrow> r mod mldsa_q = a mod mldsa_q \<and> (-mldsa_q \<le> a \<and> a < mldsa_q \<longrightarrow> 0 \<le> r \<and> r < mldsa_q)"
 
-text \<open>The input domain for \<open>mldsa_reduce32\<close> is the one-sided bound that keeps \<open>a + 2 ^ 22\<close> from
-overflowing a signed 32-bit word; the lower bound holds automatically for such a word.\<close>
+text \<open>The input domain for \<open>mldsa_reduce32\<close>. The upper bound is what keeps \<open>a + 2 ^ 22\<close> from
+overflowing a signed 32-bit word. The lower bound is recorded here even though every 32-bit word
+satisfies it, because without it this predicate does not characterise the domain: the output window
+below is false for inputs far enough below \<open>-2 ^ 31\<close>, for instance \<open>a = -10 ^ 10\<close>, which the upper
+bound alone admits. A specification stated at the integer level should not depend on the caller's type
+for its own soundness.\<close>
 definition mldsa_reduce32_input_ok :: "int \<Rightarrow> bool" where
-  "mldsa_reduce32_input_ok a \<longleftrightarrow> a \<le> 2143289343"  (* 2^31 - 2^22 - 1 *)
+  "mldsa_reduce32_input_ok a \<longleftrightarrow> -2147483648 \<le> a \<and> a \<le> 2143289343"  (* -2^31 .. 2^31-2^22-1 *)
 
 text \<open>\<^bold>\<open>Second deliberate departure.\<close> The reference implementation documents the symmetric
 output window \<open>[-6283008, 6283008]\<close> for \<open>mldsa_reduce32\<close>. Under its own one-sided precondition
