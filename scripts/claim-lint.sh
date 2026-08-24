@@ -19,6 +19,13 @@ note "== 1. every SAW obligation has a mutant paired to the SAME spec =="
 # which an earlier version of this check counted as obligations.
 for f in qseal/proof/*.saw cve-anchor/proof/*.saw esim-eid/proof/*.saw; do
   [ -e "$f" ] || continue
+  # A script may declare itself exempt with a reason. The reason is printed, so an exemption is a
+  # visible statement rather than a silent hole. Used by the tactic-collapse demonstration, whose
+  # whole purpose is that its obligations pass when they should not.
+  if reason=$(grep -m1 '^// NO-MUTANT-GUARD:' "$f" | sed 's|^// NO-MUTANT-GUARD:[[:space:]]*||'); [ -n "$reason" ]; then
+    printf '  %-24s exempt: %s\n' "$(basename "$f")" "$reason"
+    continue
+  fi
   while read -r spec nobl nguard; do
     [ -z "$spec" ] && continue
     printf '  %-24s %-22s obligations=%s mutants=%s\n' "$(basename "$f")" "$spec" "$nobl" "$nguard"

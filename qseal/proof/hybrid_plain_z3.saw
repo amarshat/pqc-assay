@@ -1,3 +1,7 @@
+// NO-MUTANT-GUARD: this script exists to show the obligations passing when they should not, so a
+// guard requiring a mutant to fail would contradict its purpose. Gated instead by
+// qseal/verify_tactic_collapse.sh, which requires all three to verify.
+//
 // GENERATED-BY-HAND COUNTERPART to hybrid.saw, kept so the claim in the paper can be run rather than
 // read. It differs from hybrid.saw in exactly five places: the tactic argument at three llvm_verify
 // sites, and the two `fails (...)` wrappers, which must go because the mutants no longer fail.
