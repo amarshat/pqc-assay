@@ -41,12 +41,19 @@ instead. Two things follow, and both are in the model.
 accumulator is already below 97 (`step_reduce_early`, with `fold_acc_bounded` establishing the
 invariant). Both discharge in about 12 seconds.
 
-**The side condition the standard does not state.** The same identity without an accumulator bound, at
-the width that actually holds the standard's "decimal integer", is false: `a * 10` wraps.
-`step_wide_is_false` is a satisfiability obligation whose witness is that failure. Carrying a standard's
-unbounded arithmetic into fixed-width machine arithmetic acquires a precondition that appears nowhere in
-the standard, and a transcription that omits it is wrong in a way no test vector in the document would
-catch.
+**A bound the source text does not state, and what that is worth.** The same identity without an
+accumulator bound is false at 128 bits, because `a * 10` wraps there. `step_wide_is_false` is a
+satisfiability obligation whose witness is that failure.
+
+**Retraction (2026-08-24).** This section previously read that witness as a finding about SGP.29: that
+carrying the standard's unbounded arithmetic into fixed-width machine arithmetic acquires a precondition
+appearing nowhere in the document, which no test vector would catch. That was wrong, and it was wrong in
+a way worth recording. The witness accumulator is about 5.8e37. The largest value the standard's
+algorithm ever holds is 1e33, and 2^128 is about 3.4e38, so the multiplication in the standard's own
+procedure never wraps and the identity needs no side condition at all over the states it can reach. The
+obligation quantifies over the whole of `[128]` rather than over reachable accumulators. It is a fact
+about the type we chose, not about the standard, and asking a solver about states a system cannot enter
+is the same mistake recorded as OF-3 in `docs/ASSUMPTIONS.md` with the polarity reversed.
 
 **What did not discharge.** The direct equivalence, "the fold equals the standard's single remainder
 over the 32-digit value", does not complete. Measured on an Apple M2 Max with SAW 1.5.1 and z3:

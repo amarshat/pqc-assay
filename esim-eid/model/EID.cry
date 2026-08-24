@@ -83,7 +83,13 @@ eidValid ds = digitsOnly ds && notE118Reserved ds && checkDigitsValidFold ds
 // The bridge from the standard's wording to the implementable fold.
 //
 // Reducing early is the same as reducing at the end, one digit at a time, PROVIDED the accumulator is
-// already below 97. The precondition is not decoration: see step_wide_is_false below.
+// already below 97. RETRACTION (2026-08-24): an earlier version of this comment, and of
+// ../README.md, presented the wide-width counterexample below as showing that the standard's
+// arithmetic carries an unstated precondition. That was wrong. The witness accumulator is about
+// 5.8e37; the largest value SGP.29's algorithm ever holds is 1e33 and 2^128 is about 3.4e38, so the
+// standard's own procedure never wraps and needs no side condition. The obligation quantifies over
+// the whole of [128] rather than over reachable accumulators, which is a modelling error of ours and
+// not a fact about the standard.
 property step_reduce_early (a : [32]) (d : [8]) =
   (a < 97) && (d <= 9) ==>
   (((a % 97) * 10 + (zext d)) % 97 == ((a * 10 + (zext d)) % 97))

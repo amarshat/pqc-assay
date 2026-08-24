@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: claim-lint afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -260,6 +260,19 @@ afp-dist-verify:
 	  echo "   builds after extraction: exit 0"; rm -rf $$d; \
 	done
 	@echo "OK: both archives extract clean and build with AFP's options"
+
+## qseal-tactic-collapse: demonstrate that property 3's obligation depends on its tactic. Under the
+## default z3 the uninterpreted verifiers' placeholder bodies unfold and the obligation is satisfied by
+## the honest function and by both injected mutants alike. Fails if that stops being true, because the
+## paper reports it as a result.
+qseal-tactic-collapse:
+	@./qseal/verify_tactic_collapse.sh
+
+## paper-figures: regenerate the size table the paper reports, and verify the paper matches the tree.
+## The paper claims every figure comes from a named target; this is that target.
+paper-figures:
+	@python3 ./scripts/paper-figures.py
+	@python3 ./scripts/paper-figures.py --check
 
 ## claim-lint: the mechanical half of the pre-submission review checklist. Catches
 ## the defect classes that had to be found by hand once already: a SAW proof with no non-vacuity guard, a

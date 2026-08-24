@@ -67,19 +67,24 @@ REACH="$(proverif "$GEN/property5_reachable.pv" 2>&1)"; printf '%s\n' "$REACH" |
 
 echo ">> property5_ablation.pv (generated, spec 8.4 guard deleted): expect Q2 false, Q3 false"
 ABL="$(proverif "$GEN/property5_ablation.pv" 2>&1)"; printf '%s\n' "$ABL" | grep -E '^RESULT' || true
+expect ablation "$ABL" "$q1" true  "Q1 (it stays true: the guard is not what makes the correspondence hold)"
 expect ablation "$ABL" "$q2" false "Q2 with the guard removed (the result does not depend on the guard)"
 expect ablation "$ABL" "$q3" false "Q3 with the guard removed (the result does not depend on the guard)"
+expect ablation "$ABL" "$sk" true  "signing-key secrecy (unaffected by the guard)"
 
 echo ">> property5_mutant_databind.pv (builder signs handset subject): expect Q1 true, Q2 false"
 MUTB="$(proverif "$PV/property5_mutant_databind.pv" 2>&1)"; printf '%s\n' "$MUTB" | grep -E '^RESULT' || true
 expect databind "$MUTB" "$q1" true  "Q1 (it should stay true; that is the point)"
 expect databind "$MUTB" "$q2" false "Q2"
+expect databind "$MUTB" "$q3" true  "Q3 (this mutant does not reach attacker-chosen content)"
+expect databind "$MUTB" "$sk" true  "signing-key secrecy"
 
 echo ">> property5_mutant_hostdata.pv (card attests host-supplied fields): expect Q1 true, Q2 true, Q3 false"
 MUTH="$(proverif "$PV/property5_mutant_hostdata.pv" 2>&1)"; printf '%s\n' "$MUTH" | grep -E '^RESULT' || true
 expect hostdata "$MUTH" "$q1" true  "Q1 (it should stay true; that is the point)"
 expect hostdata "$MUTH" "$q2" true  "Q2 (it should stay true; that is the point)"
 expect hostdata "$MUTH" "$q3" false "Q3"
+expect hostdata "$MUTH" "$sk" true  "signing-key secrecy"
 
 [ "$fail" -eq 0 ] || exit 1
 echo "OK: event reachable; all four queries hold; deleting the spec 8.4 guard breaks Q2 and Q3; both content mutants caught by the query added for each."
