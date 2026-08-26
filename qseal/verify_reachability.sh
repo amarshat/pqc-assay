@@ -86,5 +86,15 @@ expect hostdata "$MUTH" "$q2" true  "Q2 (it should stay true; that is the point)
 expect hostdata "$MUTH" "$q3" false "Q3"
 expect hostdata "$MUTH" "$sk" true  "signing-key secrecy"
 
+echo ">> property5_mutant_regen.pv (builder attests a regenerated subject): expect Q1 false"
+MUTR="$(proverif "$PV/property5_mutant_regen.pv" 2>&1)"; printf '%s\n' "$MUTR" | grep -E '^RESULT' || true
+expect regen "$MUTR" "$q1" false "Q1 (this is the only variant that can falsify it)"
+expect regen "$MUTR" "$sk" true  "signing-key secrecy"
+
+echo ">> property5_mutant_leakkey.pv (host handler publishes the signing key): expect key secrecy false"
+MUTK="$(proverif "$PV/property5_mutant_leakkey.pv" 2>&1)"; printf '%s\n' "$MUTK" | grep -E '^RESULT' || true
+expect leakkey "$MUTK" "$sk" false "signing-key secrecy (this is the only variant that can falsify it)"
+expect leakkey "$MUTK" "$q1" true  "Q1 (leaking the key does not disturb the correspondence)"
+
 [ "$fail" -eq 0 ] || exit 1
-echo "OK: event reachable; all four queries hold; deleting the spec 8.4 guard breaks Q2 and Q3; both content mutants caught by the query added for each."
+echo "OK: event reachable; all four queries hold; and every query has at least one shipped variant that falsifies it."
