@@ -61,3 +61,6 @@ __pycache__/
 # generated build artifacts for the CVE anchor and the EID anchor
 cve-anchor/build/
 esim-eid/build/
+
+# submission packaging: built archives and the form answers stay local
+dist/
