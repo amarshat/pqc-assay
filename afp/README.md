@@ -1,7 +1,15 @@
 # AFP submission: `MLDSA_Reduce`
 
-An Archive of Formal Proofs entry for the modular-reduction layer of ML-DSA (FIPS 204), built as a
-standalone development so it can be refereed on its own terms.
+An Isabelle/HOL development of the modular-reduction layer of ML-DSA (FIPS 204), built as a standalone
+entry for the Archive of Formal Proofs.
+
+**Status: submitted 2026-08-23, rejected 2026-09-12.** The editor's reason was scope, not soundness: the
+four routines are a small subset of FIPS 204, and the AFP already has queued submissions covering
+FIPS 202/203/204 and covering the modular algorithms generically rather than at the concrete
+q = 8380417, which the editors prefer. Nothing was raised about the proofs, the style, the provenance or
+the build, and the theories did build clean on AFP infrastructure (their log, on a Linux/polyml platform
+this project never targeted). The development stays here because the results are still results and the
+paper cites them; it is no longer a submission in progress.
 
 There is one AFP, not two. `isa-afp.org` shows the archive built against the current Isabelle release
 and `devel.isa-afp.org` shows the same archive built against Isabelle-devel; submission is a single
@@ -58,14 +66,16 @@ finding OF-2 in `docs/ASSUMPTIONS.md`.
   FIPS 204 is a question for a reader, which is the argument for the specification audit described in
   the correspondence document.
 
-## Before submitting
+## If this is ever revived
 
-1. Decide the author and licence fields (AFP takes BSD or LGPL) and write the abstract for the AFP
-   metadata form. The abstract in `document/root.tex` is a starting point.
-2. Decide whether to include an AI-assistance note, following the precedent of the 2026 entry that
-   discloses machine-generated theories checked and refactored by its authors.
-3. Note the release calendar: Isabelle2026 is expected in October 2026, and an accepted entry commits
-   the author to keeping it building across releases.
+The rejection was about scope and duplication, so the routes that address it are contributing these
+word-level proofs under a fuller FIPS 204 entry, or waiting to see what the queued entries cover and
+whether an implementation-level layer on top of them is still wanted. Making this entry generic over
+q would collide with the second queued submission, and extending it to more of FIPS 204 would collide
+with the first.
 
-Everything mechanical is done: theories and document both build clean against the current release, with
-no prohibited commands and no dependency outside the distribution and `Word_Lib`.
+What is still true and still useful, independent of the AFP: the four contracts are machine-checked
+against fixed-width models of PQClean's routines, and two of them deliberately correct bounds the
+reference implementation documents, with witnesses (`montgomery_upper_endpoint_returns_q`,
+`reduce32_lower_endpoint_attained`). Both corrections are reported upstream in
+pq-crystals/dilithium#114.

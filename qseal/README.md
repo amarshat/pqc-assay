@@ -227,13 +227,18 @@ builder reachable only over a private callback channel. Four queries, all discha
 3. the attacker cannot obtain an assertion over content of its own choosing;
 4. the applet signing key never reaches the attacker.
 
-Three mutants and a witness gate it, and each is invisible to the queries above it. Dropping the
+Four mutants, a generated witness and a generated guard ablation gate it, and each mutant is invisible
+to the queries above it. Dropping the
 host-path guard breaks 1, 2 and 3. A builder correctly gated on the private channel but signing a
 handset-supplied subject leaves query 1 true and breaks 2. An event source that reads the attested
 subject, digest and policy from the host channel leaves queries 1 **and** 2 true and breaks only 3: the
 card faithfully attests exactly what the handset told it to. That third mutant is not hypothetical. It
 was the state of this model after its first rebuild, and a review caught it, so it is kept as a
-regression witness (`property5_mutant_hostdata.pv`). `property5_reachable.pv` checks the observed-action
+regression witness (`property5_mutant_hostdata.pv`). Two further mutants exist because building a
+falsification table for the paper showed that nothing in the repository could break query 1 or key
+secrecy: `property5_mutant_regen.pv` has the builder attest a value it regenerated, and
+`property5_mutant_leakkey.pv` has the host handler publish the signing key. A column no variant can
+falsify is a column that means nothing. `property5_reachable.pv` checks the observed-action
 event is reachable at all: without it every positive result above would hold vacuously, which is how an
 earlier version of this model came to prove nothing (`docs/ASSUMPTIONS.md` OF-3). `verify_reachability.sh`
 runs all four and gates on each outcome.

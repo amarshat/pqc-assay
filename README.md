@@ -64,14 +64,17 @@ decoder (CVE-2026-24850) shows the primitives need checking, not just testing.
 
 The applied setting is **Q-SEAL** ([`docs/qseal/QSEAL-v0.1.md`](docs/qseal/QSEAL-v0.1.md)), a hybrid
 quantum-safe secure-element attestation layer whose mandatory suite pairs ECDSA P-256 with ML-DSA-44.
-Verification of Q-SEAL lives in [`qseal/`](qseal/): all seven of the section-16 targets are
-machine-checked. Six (1 transcript bijection, 2 challenge binding, 3 hybrid no-downgrade with the
+Verification of Q-SEAL lives in [`qseal/`](qseal/): six and a half of the seven section-16 targets are
+machine-checked (target 7 covers field values, not lengths). Six (1 transcript bijection, 2 challenge binding, 3 hybrid no-downgrade with the
 signature verifiers left uninterpreted, 4 sequential single-use, 6 evidence reassembly
 round-trip-or-fail-closed, 7 field-value validation before signing) are SAW proofs that a C reference
 matches a Cryptol model of the spec rule, each with an injected-mutant non-vacuity check (and a
 mutation-adequacy pass that kills 55 of 58 systematic relational/logical mutants of the C, the three
-survivors being equivalent mutants; `make qseal-mutants`). The seventh (5, `PROFILE_ACTION_OBSERVED`
-cannot be reached through a host-exposed APDU path) is a safety property checked in ProVerif. See
+survivors being equivalent mutants; `make qseal-mutants`). The remaining one (5, `PROFILE_ACTION_OBSERVED` must not be obtainable through a host-exposed APDU
+path) is a safety property checked in ProVerif, over four queries and seven models: the honest one, a
+generated reachability witness, a generated guard ablation, and four mutants, one per query, so that
+every query has something in the repository that falsifies it. That model twice proved nothing before
+it proved anything; `docs/ASSUMPTIONS.md` OF-3 and `qseal/README.md` record both episodes. See
 [`qseal/README.md`](qseal/README.md) for the exact scope and non-claims of each. `make qseal-tbs
 qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-reachability`.
 
@@ -276,6 +279,20 @@ So the tractability boundary is measured and crossed, not left as a wall: eager 
 abstraction-refinement (bitwuzla) crosses it, and the same identity in unbounded-integer arithmetic
 discharges in 0.04 s. The `barrett-solver` proof runs out of band (too slow for the fast CI leg). Full
 trust decomposition in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md).
+
+## The reduction layer as a standalone Isabelle entry (`afp/`)
+
+[`afp/MLDSA_Reduce`](afp/MLDSA_Reduce) is the reduce-layer mathematics rewritten as a self-contained
+Isabelle development over `Word_Lib`, with no dependency on the `Cryptol` session that ships inside SAW.
+Four contracts proved against fixed-width models of PQClean's routines (Montgomery reduction, `caddq`,
+`reduce32`, `freeze`), plus the exact functional characterisations, the arithmetic core, and witnesses
+for the two places where the reference implementation's documented bounds are off by one at an endpoint.
+`scripts/afp-check.sh` gates it against the Archive of Formal Proofs rules.
+
+It was submitted to the AFP on 2026-08-23 and **rejected on 2026-09-12**, on scope: four routines at one
+fixed modulus are a small subset of FIPS 204, and entries covering FIPS 202/203/204 and the generic
+modular algorithms were already queued. Nothing was raised about the proofs or the build. See
+[`afp/README.md`](afp/README.md) for the full outcome and what would have to change to revive it.
 
 ## Scope and limitations
 

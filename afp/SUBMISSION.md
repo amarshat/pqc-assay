@@ -1,5 +1,10 @@
 # Submitting `MLDSA_Reduce` to the AFP
 
+> **Outcome: rejected, 2026-09-12.** On scope rather than quality: four routines at one fixed modulus
+> are a small subset of FIPS 204, and entries covering FIPS 202/203/204 and the generic modular
+> algorithms were already queued. The mechanics below are kept because they were verified and would
+> apply to any future submission, not because this one is pending.
+
 Everything mechanical is done and verified locally. What follows is the submission itself.
 
 ## Where to submit
