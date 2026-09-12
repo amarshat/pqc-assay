@@ -294,6 +294,27 @@ fixed modulus are a small subset of FIPS 204, and entries covering FIPS 202/203/
 modular algorithms were already queued. Nothing was raised about the proofs or the build. See
 [`afp/README.md`](afp/README.md) for the full outcome and what would have to change to revive it.
 
+## The checks, run on proofs we did not write (`make external-corpus`)
+
+Every other measurement here is on our own code, which is one data point. `external-corpus/` runs two
+of the non-vacuity checks against the worked LLVM proofs that ship inside SAW 1.5.1, written by SAW's
+authors. Nineteen of the twenty-nine scripts using `llvm_verify` run under the pinned toolchain.
+
+Emptying a specification outright, with `llvm_precond {{ False }}`, is caught by the tool: 54 of 54
+call sites rejected with `Symbolic execution failed. Infeasible branch`. Weakening one so it still
+admits a state is not. Pinning the first symbolic input with `llvm_precond {{ v == zero }}` leaves the
+path satisfiable, and 22 of 27 live specification sites still reported success with no signal at all.
+
+None of the five signals came from the proof of the weakened specification. All five came from a
+different proof downstream that consumed the result as an override and could no longer discharge the
+precondition at the call site. Specifications whose result is terminal, which is what a verification
+effort usually ships, were silent 21 times out of 21. Each site is separately probed with an
+unsatisfiable precondition and counted only if that is rejected, so a site the run never reaches
+cannot masquerade as a result; one site failed that control and is excluded.
+
+These are teaching examples, not a production proof development, and `external-corpus/README.md` says
+so. They are also not ours, which is the point.
+
 ## Scope and limitations
 
 The proofs are honestly scoped. They cover the `reduce.c` arithmetic, the forward and inverse NTT (both
@@ -371,6 +392,8 @@ make saw                             # SAW leg only (fast, no Isabelle)
 | `implementations/` | Second target: RustCrypto `ml-dsa` (MIR) and its SAW proofs |
 | `qseal/`   | Q-SEAL protocol properties (Cryptol/SAW/ProVerif) and demo |
 | `cap/`     | Cap-V1 capability layer: Kani-verified Rust verifier and demo |
+| `afp/`     | The reduce layer as a standalone Isabelle entry (submitted to the AFP, rejected on scope) |
+| `external-corpus/` | The non-vacuity checks run against SAW's own shipped example proofs |
 | `docs/`    | Roadmap, assumptions, pipeline, specs, writeups |
 | `scripts/` | Toolchain setup and pipeline orchestration |
 

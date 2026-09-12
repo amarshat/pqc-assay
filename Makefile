@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -260,6 +260,13 @@ afp-dist-verify:
 	  echo "   builds after extraction: exit 0"; rm -rf $$d; \
 	done
 	@echo "OK: both archives extract clean and build with AFP's options"
+
+## external-corpus: run two of the paper's checks against SAW's own shipped example proofs, so the
+## measurement is not only on code we wrote. Reports how many weakened specs still verify silently.
+external-corpus:
+	@PATH="$(CURDIR)/.tools/bin:$$PATH" python3 external-corpus/vacuity_probe.py
+	@PATH="$(CURDIR)/.tools/bin:$$PATH" python3 external-corpus/pinning_probe.py
+	@python3 external-corpus/analyse.py
 
 ## qseal-tactic-collapse: demonstrate that property 3's obligation depends on its tactic. Under the
 ## default z3 the uninterpreted verifiers' placeholder bodies unfold and the obligation is satisfied by

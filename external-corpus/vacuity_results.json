@@ -1,0 +1,388 @@
+{
+  "results": [
+    {
+      "script": "examples/fresh-post/fresh-post-good.saw",
+      "site": 0,
+      "spec": "example_spec",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/fresh-post/fresh-post-good.saw",
+      "site": 1,
+      "spec": "one_spec",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/partial-spec/partial-spec.saw",
+      "site": 0,
+      "spec": "inc_spec",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/partial-spec/partial-spec.saw",
+      "site": 1,
+      "spec": "use_inc_spec",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/multi-override/multi-override.saw",
+      "site": 0,
+      "spec": "(identity_spec {{1:[32]}})",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/multi-override/multi-override.saw",
+      "site": 1,
+      "spec": "(identity_spec {{2:[32]}})",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/multi-override/multi-override.saw",
+      "site": 2,
+      "spec": "example_spec",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/multi-override/multi-override.saw",
+      "site": 3,
+      "spec": "(sum_spec  3)",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/multi-override/multi-override.saw",
+      "site": 4,
+      "spec": "(sum_spec  6)",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/multi-override/multi-override.saw",
+      "site": 5,
+      "spec": "(sum_spec 10)",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/multi-override/multi-override.saw",
+      "site": 6,
+      "spec": "(sum_spec 12)",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/multi-override/multi-override.saw",
+      "site": 7,
+      "spec": "example_sums",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/multi-override/multi-override.saw",
+      "site": 8,
+      "spec": "(set_myglobal 10)",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/multi-override/multi-override.saw",
+      "site": 9,
+      "spec": "(set_myglobal 20)",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/multi-override/multi-override.saw",
+      "site": 10,
+      "spec": "(set_myglobal 30)",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/multi-override/multi-override.saw",
+      "site": 11,
+      "spec": "myglobal_example",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/multi-override/multi-override.saw",
+      "site": 12,
+      "spec": "myglobal_example",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/multi-override/multi-override.saw",
+      "site": 13,
+      "spec": "myglobal_example",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/llvm/ptrcheck.saw",
+      "site": 0,
+      "spec": "do {\n    (s, sp) <- ptr_to_fresh \"s\" (llvm_alias \"struct.s\")",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/ptr.saw",
+      "site": 0,
+      "spec": "add_setup",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/ptr.saw",
+      "site": 1,
+      "spec": "clear_setup",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/ptr.saw",
+      "site": 2,
+      "spec": "copy_setup",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/nested.saw",
+      "site": 0,
+      "spec": "f_spec",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/global.saw",
+      "site": 0,
+      "spec": "clear_setup",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/global.saw",
+      "site": 1,
+      "spec": "set_setup",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/global.saw",
+      "site": 2,
+      "spec": "get_setup",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/struct.saw",
+      "site": 0,
+      "spec": "set_spec",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/struct.saw",
+      "site": 1,
+      "spec": "add_spec",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/struct.saw",
+      "site": 2,
+      "spec": "id_spec",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/dotprod_struct.saw",
+      "site": 0,
+      "spec": "(dotprod_spec 2)",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/dotprod_struct.saw",
+      "site": 1,
+      "spec": "(dotprod_spec 2)",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/llvm/assert-null.saw",
+      "site": 0,
+      "spec": "f_spec1",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/assert-null.saw",
+      "site": 1,
+      "spec": "f_spec2",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/basic.saw",
+      "site": 0,
+      "spec": "add_setup",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/basic.saw",
+      "site": 1,
+      "spec": "dbl_setup",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/llvm/iterative_average/test.saw",
+      "site": 0,
+      "spec": "init_spec",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/iterative_average/test.saw",
+      "site": 1,
+      "spec": "(update_spec 3)",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/iterative_average/test.saw",
+      "site": 2,
+      "spec": "digest_spec",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/assert.saw",
+      "site": 0,
+      "spec": "f_spec",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/safety/set.saw",
+      "site": 0,
+      "spec": "(set_good_spec 10)",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/union/test.saw",
+      "site": 0,
+      "spec": "(inc_spec {{ INC_1 }})",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/union/test.saw",
+      "site": 1,
+      "spec": "(inc_spec {{ INC_2 }})",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/llvm/nested-full.saw",
+      "site": 0,
+      "spec": "f_spec",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/ghost/ghost.saw",
+      "site": 0,
+      "spec": "(example_spec counter)",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/salsa20/salsa.saw",
+      "site": 0,
+      "spec": "quarterround_setup",
+      "silent": false,
+      "why": "error"
+    },
+    {
+      "script": "examples/salsa20/salsa.saw",
+      "site": 1,
+      "spec": "rowround_setup",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/salsa20/salsa.saw",
+      "site": 2,
+      "spec": "columnround_setup",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/salsa20/salsa.saw",
+      "site": 3,
+      "spec": "doubleround_setup",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/salsa20/salsa.saw",
+      "site": 4,
+      "spec": "salsa20_setup",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/salsa20/salsa.saw",
+      "site": 5,
+      "spec": "salsa20_expansion_32",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/salsa20/salsa.saw",
+      "site": 6,
+      "spec": "(s20_encrypt32 63)",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/salsa20/salsa.saw",
+      "site": 7,
+      "spec": "(s20_encrypt32 64)",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/salsa20/salsa.saw",
+      "site": 8,
+      "spec": "(s20_encrypt32 65)",
+      "silent": false,
+      "why": "override could not be applied"
+    },
+    {
+      "script": "examples/salsa20/salsa.saw",
+      "site": 9,
+      "spec": "salsa20_djb_setup",
+      "silent": false,
+      "why": "override could not be applied"
+    }
+  ],
+  "dropped": [
+    [
+      "examples/fresh-post/fresh-post-bad.saw",
+      "no unguarded llvm_verify call the parser could isolate"
+    ]
+  ]
+}

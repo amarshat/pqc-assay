@@ -1,0 +1,272 @@
+[
+  {
+    "script": "examples/partial-spec/partial-spec.saw",
+    "spec": "inc_spec",
+    "var": "counter",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": true,
+    "guarded": false
+  },
+  {
+    "script": "examples/multi-override/multi-override.saw",
+    "spec": "sum_spec",
+    "var": "arr",
+    "silent": false,
+    "live": true,
+    "tail": "               ,0]",
+    "consumed": true,
+    "guarded": false
+  },
+  {
+    "script": "examples/multi-override/multi-override.saw",
+    "spec": "set_myglobal",
+    "var": "old",
+    "silent": false,
+    "live": true,
+    "tail": "               ,0]",
+    "consumed": true,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/ptr.saw",
+    "spec": "add_setup",
+    "var": "x",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/ptr.saw",
+    "spec": "clear_setup",
+    "var": "a",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/ptr.saw",
+    "spec": "copy_setup",
+    "var": "a",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/nested.saw",
+    "spec": "f_spec",
+    "var": "b",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/global.saw",
+    "spec": "set_setup",
+    "var": "x",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/global.saw",
+    "spec": "get_setup",
+    "var": "x",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/struct.saw",
+    "spec": "set_spec",
+    "var": "x",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/struct.saw",
+    "spec": "add_spec",
+    "var": "x",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/struct.saw",
+    "spec": "id_spec",
+    "var": "x",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/dotprod_struct.saw",
+    "spec": "dotprod_spec",
+    "var": "xs",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/basic.saw",
+    "spec": "add_setup",
+    "var": "x",
+    "silent": false,
+    "live": true,
+    "tail": "Proof failed.",
+    "consumed": true,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/basic.saw",
+    "spec": "dbl_setup",
+    "var": "x",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/iterative_average/test.saw",
+    "spec": "init_spec",
+    "var": "s",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/iterative_average/test.saw",
+    "spec": "update_spec",
+    "var": "st0",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/iterative_average/test.saw",
+    "spec": "digest_spec",
+    "var": "st0",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/assert.saw",
+    "spec": "f_spec",
+    "var": "x",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/safety/set.saw",
+    "spec": "set_good_spec",
+    "var": "a",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/union/test.saw",
+    "spec": "inc_spec",
+    "var": "x0",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/llvm/nested-full.saw",
+    "spec": "f_spec",
+    "var": "a",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/ghost/ghost.saw",
+    "spec": "example_spec",
+    "var": "n",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/salsa20/salsa.saw",
+    "spec": "quarterround_setup",
+    "var": "y0",
+    "silent": false,
+    "live": true,
+    "tail": "Proof failed.",
+    "consumed": true,
+    "guarded": false
+  },
+  {
+    "script": "examples/salsa20/salsa.saw",
+    "spec": "salsa20_djb_setup",
+    "var": "input",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  },
+  {
+    "script": "examples/salsa20/salsa.saw",
+    "spec": "salsa20_expansion_32",
+    "var": "k",
+    "silent": false,
+    "live": true,
+    "tail": "Proof failed.",
+    "consumed": true,
+    "guarded": false
+  },
+  {
+    "script": "examples/salsa20/salsa.saw",
+    "spec": "s20_encrypt32",
+    "var": "key",
+    "silent": true,
+    "live": true,
+    "tail": "",
+    "consumed": false,
+    "guarded": false
+  }
+]
