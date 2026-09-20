@@ -356,8 +356,92 @@ artifact is published. The ePrint rejections (3×) came from shipping proof work
 publication; broadening targets before fixing that just repeats the pattern. Leverage beats greenfield
 until there is one external win on the board.
 
+## v4 — the convolution theorem: prove the NTT actually multiplies (SCOPED 2026-09-20)
+
+Everything proven so far says the transform *is* the transform (`fwd_ntt_correct`,
+`ntt_signed_correct`), that the inverse *is* the inverse (`inv_ntt_correct`,
+`invntt_signed_correct`), and that the two round-trip (`INNTT_NNTT`, `NNTT_INNTT`, both `n·id`).
+None of it says the NTT *multiplies*. There is no pointwise multiplication anywhere in the tree: no
+Cryptol function, no SAW spec, no Isabelle theorem, and `poly.c` is not vendored.
+
+That is the structural gap. The NTT exists in ML-DSA for one reason, to compute products in
+`R_q = Z_q[X]/(X^256+1)` in `O(n log n)`, and the theorem that justifies it is
+
+    invntt(ntt f ⊙ ntt g) = f ⋆ g     in R_q
+
+Until that lands, every result here is about a transform in isolation rather than about an operation
+ML-DSA performs. Both external rejections so far (VSTTE, and the AFP editor's "very partial") read as
+reactions to exactly that. This is also the one place where a single theorem converts the existing
+pile into a structure, which is why it goes before any new target.
+
+Not available off the shelf: the AFP `Number_Theoretic_Transform` entry we already depend on proves
+`FNTT_correct`, `IFNTT_correct`, `FNTT_inv_IFNTT`, `IFNTT_inv_FNTT` and has **no convolution
+theorem**. This is new work, and a self-contained one worth offering to the AFP on its own terms,
+unlike the four-routines-at-one-modulus entry that was rejected.
+
+### Where it goes
+
+`negacyclic_butterfly` (`spec/isabelle/tier2/Negacyclic_NTT.thy`), the locale that already hosts
+`NNTT_eq_FNTT_twist`. The key reading: `nntt xs kk = (∑ j<n. xs!j * ψ^((2kk+1)*j))` is evaluation of
+the coefficient list at `ψ^(2kk+1)`, so `NNTT` is the CRT map onto the n roots of `X^n + 1` and the
+convolution theorem is the statement that evaluation is a ring homomorphism.
+
+### Proof obligations
+
+- **O1 `psi_pow_n`: `ψ^n = -1`.** Needed for every evaluation point to be a root of `X^n+1`, and not
+  currently derivable in plain `negacyclic`, which assumes only `psi_sq: ψ*ψ = ω`. It *is* derivable
+  in `negacyclic_butterfly`: `ψ^(2n) = ω^n = 1` so `(ψ^n)^2 = 1`, and over `prime_card mod_ring` that
+  forces `ψ^n = ±1`; if `ψ^n = 1` then `ω^(n div 2) = 1` with `0 < n div 2 < n`, contradicting the
+  minimality in `omega_properties`. `n` is even from `n_two_pot` plus `n_lst2`. Small.
+  Checked numerically for the ML-DSA instance: ψ = 1753 has order exactly 512 mod q and
+  `1753^256 = 8380416 = -1`.
+- **O2 `negconv`.** Define negacyclic convolution on coefficient lists: coefficient k of `f*g` minus
+  coefficient `k+n`, the wrap-around picking up the sign from `X^n = -1`. Definitional.
+- **O3 `nntt_eval`.** `nntt xs kk = eval xs (ψ^(2kk+1))` for an `eval xs z = (∑ j<n. xs!j * z^j)`.
+  Unfolding only.
+- **O4 `eval_point_is_root`.** `(ψ^(2kk+1))^n = -1`, since `2kk+1` is odd and O1. Small.
+- **O5 `NNTT_mult` (the substantive one).** `length xs = n ⟹ length ys = n ⟹
+  NNTT (negconv xs ys) = map2 (*) (NNTT xs) (NNTT ys)`. Pointwise at each `kk`: the unreduced product
+  has `2n-1` coefficients, and at a point with `z^n = -1` the high half satisfies `z^(k+n) = -z^k`,
+  so evaluation commutes with reduction mod `X^n+1`. A finite double-sum rearrangement; this is where
+  the work is.
+- **O6 `conv_via_NNTT`.** `INNTT (map2 (*) (NNTT xs) (NNTT ys)) = map ((*) (of_int_mod_ring n)) (negconv xs ys)`.
+  Immediate from O5 and the existing `INNTT_NNTT`.
+
+### Bridge to the implementation
+
+- **O7 (SAW, small).** Vendor `poly.c` at the existing PQClean pin (`target/README.md`) and verify
+  `PQCLEAN_MLDSA44_CLEAN_poly_pointwise_montgomery` against a Cryptol `pointwise`, with the
+  already-proven `montgomery_reduce` as an uninterpreted override. Same recipe as `mlkem-ntt`.
+- **O8 (the scale factor).** `poly_pointwise_montgomery` leaves `x*R^-1`, and `invntt_tomont`'s tail
+  applies `f*R^-1` with `f = 41978 = mont^2/256` (`ntt.c:80`). Worked through: those two, together
+  with the factor `n` from the unnormalised inverse, compose to **exactly 1**. So the composed
+  statement carries no residual Montgomery factor:
+
+      invntt_tomont(poly_pointwise_montgomery(ntt a, ntt b)) = a ⋆ b   in R_q
+
+  Confirm this in Isabelle rather than inheriting it from the arithmetic check; `invntt_scale_bridge`
+  is the existing pattern for that bookkeeping.
+
+### What it unlocks
+
+The matrix-vector product `Az`, and after that the real destination: **ML-DSA signature verification
+end to end**. Verify is the tractable half of the scheme, deterministic with no rejection-sampling
+loop on the hot path, and `make_hint`/`use_hint` are already verified on the Rust side. The honest
+boundary is SHAKE, assumed at a documented interface or imported. That would support a claim nothing
+else in this tree supports: the deployed C for ML-DSA verification is machine-checked equivalent to
+FIPS 204 Algorithm 8, modulo an assumed Keccak.
+
+### Considered and not chosen
+
+Constant-time / secret-independence (see v3) is serious but a different toolchain (Jasmin, ct-verif)
+and reuses none of this. Descending to the AVX2 assembly would retire the compiler-correctness
+assumption, which is real, but buys no composition: it leaves the same isolated results one level
+down.
+
 ## Non-goals (for now)
-- Full end-to-end ML-DSA. Whole-algorithm correctness. Multiple implementations at once.
+- Whole-algorithm ML-DSA *signing* (rejection sampling, randomness). Verification is scoped in v4.
+- Multiple new implementations at once.
 
 ## Disclosure
 - OF-1 (`montgomery_reduce` doc-comment strict-bound off-by-one at an endpoint) and OF-2 (`reduce32`
