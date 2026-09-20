@@ -30,9 +30,19 @@ let spec = do {
 llvm_verify m "PQCLEAN_MLDSA44_CLEAN_montgomery_reduce" [] true spec z3;
 EOF
 
-if saw "$TMP/neg.saw" >/dev/null 2>&1; then
-  echo "!! MUTATION TEST FAILED: SAW ACCEPTED a deliberately-wrong (result+1) model — proof is VACUOUS." >&2
+# Distinguish "SAW refuted the mutant" from "SAW never got there". A typo in the function name, a
+# missing bitcode file or a Cryptol type error all exit nonzero too, and an exit-code-only check
+# reports every one of them as a successful refutation. Require the refutation in the output.
+OUT="$(saw "$TMP/neg.saw" 2>&1)" && RC=0 || RC=$?
+
+if [ "$RC" -eq 0 ]; then
+  echo "!! MUTATION TEST FAILED: SAW ACCEPTED a deliberately-wrong (result+1) model - proof is VACUOUS." >&2
   exit 1
-else
-  echo ">> mutation-test OK: SAW correctly REJECTS the result+1 mutant (the proof is non-vacuous)."
 fi
+if ! grep -q "Proof failed" <<<"$OUT"; then
+  echo "!! MUTATION TEST INCONCLUSIVE: saw exited $RC without refuting the mutant, so this run" >&2
+  echo "   says nothing about vacuity. Last lines:" >&2
+  tail -5 <<<"$OUT" | sed 's/^/     /' >&2
+  exit 1
+fi
+echo ">> mutation-test OK: SAW correctly REJECTS the result+1 mutant (the proof is non-vacuous)."
