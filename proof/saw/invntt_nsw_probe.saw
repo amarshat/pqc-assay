@@ -24,6 +24,8 @@
 // Closed as impractical on this hardware (time-boxed); the Isabelle induction (invntt_overflow_free)
 // remains the tractable route for the inverse bound, on the model.
 
+// NO-MUTANT-GUARD: preserved negative result, not in the pipeline: the verification itself did not complete in ~55 h, so a mutant of it could not complete either
+
 enable_experimental;
 
 m <- llvm_load_module "../../build/mldsa_ntt.bc";

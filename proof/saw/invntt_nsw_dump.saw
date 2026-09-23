@@ -2,6 +2,8 @@
 // nsw-build verification to standalone SMT-LIB2 files (no solving), so the goals can be
 // discharged in parallel and the slow ones identified individually. Same spec as the probe.
 
+// NO-MUTANT-GUARD: dump-only variant of invntt_nsw_probe.saw: it writes SMT-LIB2 goals and solves nothing, so there is no obligation here for a mutant to falsify
+
 enable_experimental;
 
 m <- llvm_load_module "../../build/mldsa_ntt.bc";

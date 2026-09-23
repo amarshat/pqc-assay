@@ -17,7 +17,7 @@ note "== 1. every SAW obligation has a mutant paired to the SAME spec =="
 # Counting `fails` guards per FILE is not enough: a file can hold three guards that all target one spec
 # while another spec in the same file carries none. Pair them by spec name, and ignore comment lines,
 # which an earlier version of this check counted as obligations.
-for f in qseal/proof/*.saw cve-anchor/proof/*.saw esim-eid/proof/*.saw; do
+for f in proof/saw/*.saw qseal/proof/*.saw cve-anchor/proof/*.saw esim-eid/proof/*.saw; do
   [ -e "$f" ] || continue
   # A script may declare itself exempt with a reason. The reason is printed, so an exemption is a
   # visible statement rather than a silent hole. Used by the tactic-collapse demonstration, whose
@@ -39,8 +39,18 @@ $(awk '
     n = split($0, toks, /[^A-Za-z0-9_]/)
     for (i = 1; i <= n; i++) if (toks[i] ~ /_spec$/) spec = toks[i]
     if (spec == "") next
-    if ($0 ~ /fails[[:space:]]*\(/) guards[spec]++; else obl[spec]++
-    seen[spec] = 1
+    # Two mutant conventions live in this tree. qseal/ keeps the spec and points it at a mutated C
+    # function; proof/saw/ keeps the function and mutates the spec, naming it X_mut_spec. Credit the
+    # second form to X_spec so a guard is recognised either way.
+    if ($0 ~ /fails[[:space:]]*\(/) {
+      base = spec
+      sub(/_mut_spec$/, "_spec", base)
+      guards[base]++
+      seen[base] = 1
+    } else {
+      obl[spec]++
+      seen[spec] = 1
+    }
   }
   END { for (s in seen) printf "%s %d %d\n", s, obl[s] + 0, guards[s] + 0 }
 ' "$f")
@@ -70,10 +80,10 @@ note "== 2b. every mutant guard names a function that exists =="
 # SAW's `fails` succeeds on ANY exception from the wrapped action, including "could not find
 # definition for function named ...". So a typo in a mutant's name yields a green guard that verifies
 # nothing. The pairing check in section 1 matches on spec names and cannot see this.
-for f in qseal/proof/*.saw cve-anchor/proof/*.saw esim-eid/proof/*.saw; do
+for f in proof/saw/*.saw qseal/proof/*.saw cve-anchor/proof/*.saw esim-eid/proof/*.saw; do
   [ -e "$f" ] || continue
   for fn in $(grep -E '^fails' "$f" | grep -oE 'llvm_verify[[:space:]]+[A-Za-z0-9_]+[[:space:]]+"[^"]+"' | sed 's/.*"\(.*\)"/\1/'); do
-    if grep -rqE "\b$fn[[:space:]]*\(" qseal/ref cve-anchor/ref esim-eid/ref 2>/dev/null; then
+    if grep -rqE "\b$fn[[:space:]]*\(" qseal/ref cve-anchor/ref esim-eid/ref target/pqclean target/pqclean-mlkem 2>/dev/null; then
       printf '  %-46s exists\n' "$fn"
     else
       bad "$f guards '$fn', which is not defined in any reference C file: the guard passes on the error, not on a rejected mutant"
@@ -85,7 +95,7 @@ note "== 3. every assumed spec is justified in docs/ASSUMPTIONS.md =="
 assumed=0
 # Strict for this artifact (qseal + the CVE anchor). The Rust ML-DSA proofs under implementations/ are
 # a separate piece of work with its own assumption record, so they are listed, not gated.
-for f in $(git ls-files 'qseal/*.saw' 'cve-anchor/*.saw' 'esim-eid/*.saw'); do
+for f in $(git ls-files 'proof/saw/*.saw' 'qseal/*.saw' 'cve-anchor/*.saw' 'esim-eid/*.saw'); do
   for fn in $(grep -oE '(llvm|mir)_unsafe_assume_spec[[:space:]]+[A-Za-z0-9_]+[[:space:]]+"[^"]+"' "$f" \
               | sed 's/.*"\(.*\)"/\1/'); do
     assumed=$((assumed+1))
