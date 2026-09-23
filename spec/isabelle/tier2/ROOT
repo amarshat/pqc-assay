@@ -32,6 +32,7 @@ session Tier2_Inv in "inv" = Tier2_Base +
   options [document = false]
   theories
     Negacyclic_Inv
+    Negacyclic_Conv
 
 (* Inverse montgomery bridge (sub-step 2): the SAW-checked montgomery invntt model
    == the normal-domain nttInvAllRef mod q, plus the invf=mont^2/256 final scale.

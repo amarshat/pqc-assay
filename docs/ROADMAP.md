@@ -408,6 +408,28 @@ convolution theorem is the statement that evaluation is a ring homomorphism.
 - **O6 `conv_via_NNTT`.** `INNTT (map2 (*) (NNTT xs) (NNTT ys)) = map ((*) (of_int_mod_ring n)) (negconv xs ys)`.
   Immediate from O5 and the existing `INNTT_NNTT`.
 
+### Status (2026-09-23)
+
+O1-O6 are **proven** in `spec/isabelle/tier2/inv/Negacyclic_Conv.thy`, session `Tier2_Inv`, build
+exit 0, no `sorry`/`oops`/`smt`/`by eval`. The theorems are `psi_pow_n` (O1), `nntt_negconv` (O5),
+`NNTT_negconv` and `negconv_via_NNTT` (O6). O1 needed no new locale assumption, as scoped.
+
+The `negconv` definition was checked against an independent long-division implementation of
+multiply-then-reduce-mod-(X^n+1) at (n,q) = (2,17), (4,17), (8,97), (16,3329) and (256, 8380417),
+0 mismatches, and `nntt_negconv` was checked numerically at the ML-DSA parameters across all 256
+indices. That is a check on the definition, not a proof, and it is there because Isabelle proves
+theorems about the definition we wrote.
+
+- **O9 (non-vacuity, open and blocking).** All of O1-O6 live in `negacyclic_butterfly`, and
+  **nothing exhibits a model of that locale**: there is no `interpretation` of `ntt`, `butterfly`,
+  `negacyclic` or `negacyclic_butterfly` at concrete parameters anywhere in this development or in
+  the AFP entry it depends on. A theorem proven in an uninhabited locale is vacuous, so until this
+  is discharged the convolution results are conditional. The witness is `CARD('a) = 8380417`,
+  `n = 256`, `N = 8`, `k = 32736`, `omega = 3073009`, `psi = 1753`; the work is building a numeral
+  type of cardinality 8380417 and checking the order conditions. This also applies retroactively to
+  `INNTT_NNTT` and `NNTT_INNTT`, which have the same gap, and it is why `Tier2_Inv` is not in
+  `make verify`.
+
 ### Bridge to the implementation
 
 - **O7 (SAW, small).** Vendor `poly.c` at the existing PQClean pin (`target/README.md`) and verify
