@@ -420,7 +420,21 @@ multiply-then-reduce-mod-(X^n+1) at (n,q) = (2,17), (4,17), (8,97), (16,3329) an
 indices. That is a check on the definition, not a proof, and it is there because Isabelle proves
 theorems about the definition we wrote.
 
-- **O9 (non-vacuity, open and blocking).** All of O1-O6 live in `negacyclic_butterfly`, and
+- **O9 (non-vacuity, open and blocking). IN PROGRESS 2026-09-23.** Ingredients proven in
+  `spec/isabelle/tier2/inv/Mldsa_Instance.thy` (`Tier2_Inv`, exit 0, no holes): the type
+  `fin8380417` with its `finite` / `nontriv` / `prime_card` instances, primality via Pratt rather
+  than the `by eval` oracle the AFP Kyber entry uses, the eight-step squaring chain giving
+  `w^256 = 1` and `w^128 = -1`, plus `mu * w = 1`, `ps * ps = w` and `w != 1`. Still to do: the
+  order-minimality lemma (`w^m = 1 and m != 0 ==> m >= 256`, which needs that the exponents killing
+  `w` are closed under subtraction, hence contain `gcd(m,256)`, which divides 128 and contradicts
+  `w^128 = -1`) and the `interpretation` itself. Until those land O9 is NOT closed.
+
+  Two tactic notes worth keeping, both cost an hour each to find. `metis` on the numeral-carrying
+  chain goals ran 3444 s per goal without closing; the chain needs explicit calculational steps.
+  And `prime CARD(fin8380417)` must go to `blast` against the Pratt result, never to `simp`, which
+  tries to decide primality of a 7-digit numeral by trial division and does not return.
+
+- **O9, the original statement.** All of O1-O6 live in `negacyclic_butterfly`, and
   **nothing exhibits a model of that locale**: there is no `interpretation` of `ntt`, `butterfly`,
   `negacyclic` or `negacyclic_butterfly` at concrete parameters anywhere in this development or in
   the AFP entry it depends on. A theorem proven in an uninhabited locale is vacuous, so until this

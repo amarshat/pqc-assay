@@ -30,9 +30,12 @@ session Tier2 in "work" = Tier2_Base +
    Mont_Bridge. *)
 session Tier2_Inv in "inv" = Tier2_Base +
   options [document = false]
+  sessions
+    Pratt_Certificate
   theories
     Negacyclic_Inv
     Negacyclic_Conv
+    Mldsa_Instance
 
 (* Inverse montgomery bridge (sub-step 2): the SAW-checked montgomery invntt model
    == the normal-domain nttInvAllRef mod q, plus the invf=mont^2/256 final scale.
