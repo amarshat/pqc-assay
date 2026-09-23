@@ -13,6 +13,10 @@ sidesteps Apple's restricted evaluation-license pieces entirely.)
 
 - Reused Apple theories: **none.**
 
-The only external Isabelle dependency is the Archive of Formal Proofs (AFP `Word_Lib`,
-`Berlekamp_Zassenhaus`), pulled in transitively by the SAW-provided `Cryptol` support session that
-the `cryptol-to-isabelle` output imports (installed by `scripts/setup_isabelle_cryptol.sh`).
+External Isabelle dependencies, all from the Archive of Formal Proofs:
+
+- `Word_Lib` and `Berlekamp_Zassenhaus`, pulled in transitively by the SAW-provided `Cryptol` support
+  session that the `cryptol-to-isabelle` output imports (installed by
+  `scripts/setup_isabelle_cryptol.sh`).
+- `Number_Theoretic_Transform`, imported directly by `Tier2_Base` (`tier2/Negacyclic_NTT.thy`) for
+  the cyclic round-trip theorems that the negacyclic twist composes against.

@@ -19,10 +19,11 @@ doc comments carrying findings OF-1 and OF-2 do appear in both. Checked 2026-08-
 shared by PQClean, PQ Code Package's `mldsa-native`, and liboqs — not a single dying distribution.
 The natural v2 target (optimized ≡ reference) is **PQ Code Package `mldsa-native`**.
 
-## v1 target (this session: modular reduction only — NOT the NTT yet)
+## ML-DSA target
 - Source: **PQClean** reference ML-DSA (ML-DSA-44), the `clean` C implementation.
-- Subsystem: the **modular-reduction primitives** in `reduce.c`. The forward NTT (`ntt.c`) is
-  explicitly out of scope for now; we prove the smaller piece it depends on first.
+- Subsystem: the **modular-reduction primitives** in `reduce.c` and both transforms in `ntt.c`
+  (`ntt`, `invntt_tomont`). The reduce layer came first because the transforms depend on it.
+  `poly.c` is not vendored, so there is no pointwise multiplication here (see ROADMAP v4).
 - The `reduce.c` translation unit defines four functions:
   | Function | Signature | What it does |
   |---|---|---|
