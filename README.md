@@ -294,6 +294,24 @@ fixed modulus are a small subset of FIPS 204, and entries covering FIPS 202/203/
 modular algorithms were already queued. Nothing was raised about the proofs or the build. See
 [`afp/README.md`](afp/README.md) for the full outcome and what would have to change to revive it.
 
+## The NTT computes a product (`make convolution`)
+
+Every other NTT theorem here says the transform is the transform and that it inverts. The one that
+says it **multiplies** is `NNTT_negconv` in `spec/isabelle/tier2/inv/Negacyclic_Conv.thy`: the
+negacyclic transform carries convolution in `R_q = Z_q[X]/(X^n+1)` to pointwise multiplication, so
+`INNTT (pointwise (NNTT xs) (NNTT ys))` is the product, up to the factor `n` the unnormalised
+inverse leaves. That is the theorem the NTT exists for, and it had been missing.
+
+Theorems proven inside a locale are vacuous if the locale has no model, and neither this development
+nor the AFP NTT entry it builds on exhibited one. `mldsa_model` now does, at q = 8380417, n = 256,
+omega = 3073009, psi = 1753. Primality goes through a Pratt certificate rather than the code
+generator, and the order of omega is pinned by two facts (omega^256 = 1, omega^128 = -1) rather than
+by checking 255 powers. Session `Tier2_Inv`, no `sorry`/`oops`/`smt`/`by eval`.
+
+Not yet connected to the C: `poly.c` is not vendored and `poly_pointwise_montgomery` is not
+verified, so this is a statement about the mathematics, not yet about the implementation. See
+`docs/ROADMAP.md` v4, obligations O7 and O8.
+
 ## The checks, run on proofs we did not write (`make external-corpus`)
 
 Every other measurement here is on our own code, which is one data point. `external-corpus/` runs two

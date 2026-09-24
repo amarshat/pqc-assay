@@ -420,7 +420,30 @@ multiply-then-reduce-mod-(X^n+1) at (n,q) = (2,17), (4,17), (8,97), (16,3329) an
 indices. That is a check on the definition, not a proof, and it is there because Isabelle proves
 theorems about the definition we wrote.
 
-- **O9 (non-vacuity, open and blocking). IN PROGRESS 2026-09-23.** Ingredients proven in
+- **O9 (non-vacuity). CLOSED 2026-09-24.** `mldsa_model`
+  (`spec/isabelle/tier2/inv/Mldsa_Instance.thy`) proves
+  `negacyclic_butterfly 8380417 256 32736 w mu ps 8`, a closed proposition with no premises, so the
+  locale is inhabited at the parameters ML-DSA uses. Everything in `Negacyclic_Conv` is therefore
+  non-vacuous, and so are the pre-existing `INNTT_NNTT` / `NNTT_INNTT`, which had the same gap.
+  `Tier2_Inv` exits 0 with no `sorry`/`oops`/`smt`/`by eval`, and is now gated: `make convolution`,
+  in `make verify`.
+
+  Two mutation controls, because a model theorem that cannot fail would say nothing. Changing
+  `psi` from 1753 to 1754 breaks the chain at `ps_sq`, which tests the chain but not the model
+  itself, since psi is hardcoded in that lemma's statement. Changing `k` from 32736 to 32737
+  isolates the model: `k` occurs in no intermediate lemma, only in the `p = k*n + 1` obligation, and
+  the proof then fails inside `mldsa_model` with goal `False`. So that obligation is load-bearing.
+
+  Stated as the locale predicate rather than an `interpretation`: `negacyclic` and `butterfly` both
+  extend `ntt`, so interpreting the merged locale activates `ntt`'s facts twice and Isabelle
+  rejects the duplicate. The predicate form is what non-vacuity needs anyway.
+
+  The order argument came out as scoped. `w_order_minimal` proves `w^m = 1 and m != 0 ==> m >= 256`
+  from two facts rather than the 255 power checks the AFP Kyber entry does by eval: the exponents
+  killing `w` are closed under remainder against 256, so a counterexample below 256 would divide
+  256 = 2^8 and therefore divide 128, making `w^128 = 1` against `w^128 = -1`.
+
+- **O9, earlier status (superseded).** Ingredients proven in
   `spec/isabelle/tier2/inv/Mldsa_Instance.thy` (`Tier2_Inv`, exit 0, no holes): the type
   `fin8380417` with its `finite` / `nontriv` / `prime_card` instances, primality via Pratt rather
   than the `by eval` oracle the AFP Kyber entry uses, the eight-step squaring chain giving

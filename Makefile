@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -26,7 +26,7 @@ all: verify
 ## Tier2) → inverse-NTT model ≡ FIPS-204 inverse transform (Isabelle, Tier2_InvWork) → ML-KEM
 ## forward-NTT model ≡ FIPS-203 residue transform (Isabelle, Kem_Work). The ML-KEM C ≡ Cryptol legs
 ## (mlkem-reduce, mlkem-ntt) gate separately on every push in saw.yml.
-verify: target-identity lift-check saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett mlkem-isabelle
+verify: target-identity lift-check saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett mlkem-isabelle convolution
 	@echo "✔ pipeline complete — all checked steps passed"
 
 ## Integrity gate: the vendored C under proof is byte-for-byte the pinned snapshot.
@@ -92,6 +92,14 @@ isabelle:
 tier2:
 	@echo ">> Isabelle (Tier2): forward NTT ≡ FIPS-204 transform + montgomery-model bridge"
 	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -v Tier2
+
+## Tier2_Inv: the convolution theorem (v4), plus the model that makes it non-vacuous.
+## NNTT_negconv / negconv_via_NNTT say the negacyclic NTT diagonalises multiplication in
+## R_q = Z_q[X]/(X^n+1); mldsa_model exhibits a model of negacyclic_butterfly at q = 8380417,
+## n = 256, omega = 3073009, psi = 1753, so those theorems are about something that exists.
+convolution:
+	@echo ">> Isabelle (Tier2_Inv): NTT diagonalises multiplication in R_q + a model at the ML-DSA parameters"
+	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -d $(shell ls -d $(CURDIR)/.tools/afp-*/thys) -v Tier2_Inv
 
 ## Tier2_InvWork Isabelle session: lifted inverse NTT ≡ FIPS-204 inverse negacyclic transform
 ## (inv_ntt_correct) plus the model bridge (invntt_bridge) tying the SAW-checked montgomery invntt
