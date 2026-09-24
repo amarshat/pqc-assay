@@ -41,6 +41,12 @@ jobs:
         run: ./scripts/setup.sh
       - name: Build AFP + SAW 'Cryptol' Isabelle session (reused from cache when warm)
         run: ./scripts/setup_isabelle_cryptol.sh
+      - name: Report the by-eval oracle surface
+        run: |
+          python3 scripts/count_eval_oracle.py
+          echo "note: by eval trusts code-generator output instead of the kernel; the count is"
+          echo "gated against docs/ASSUMPTIONS.md by scripts/claim-lint.sh (OF-4)."
+
       - name: Reject proof holes (no sorry/oops/admit)
         run: |
           if grep -rnE --include='*.thy' '\b(sorry|oops|admit)\b' spec/; then

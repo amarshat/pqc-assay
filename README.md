@@ -13,7 +13,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
   <img src="https://img.shields.io/badge/Isabelle-2025--2-9cf.svg" alt="Isabelle2025-2">
   <img src="https://img.shields.io/badge/SAW-1.5.1-orange.svg" alt="SAW 1.5.1">
-  <img src="https://img.shields.io/badge/Isabelle%20proofs-no%20sorry%20%7C%20no%20smt-success.svg" alt="Isabelle proofs: no sorry, no smt">
+  <img src="https://img.shields.io/badge/Isabelle-no%20sorry%20%7C%20no%20smt%20%7C%2088%20code--gen%20evals-success.svg" alt="Isabelle: no sorry, no smt, 88 code-generator evals">
   <a href="https://doi.org/10.5281/zenodo.21178811"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.21178811.svg" alt="DOI"></a>
 </p>
 

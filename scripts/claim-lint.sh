@@ -113,6 +113,20 @@ for f in $(git ls-files 'implementations/*.saw'); do
     | sed "s|.*\"\(.*\)\"|  (not gated here) ${f##*/}: \1|"
 done
 
+note "== 3b. the by-eval oracle surface matches what is declared =="
+# `by eval` runs code-generator output instead of replaying inference through the kernel. It is an
+# oracle, the CI sorry/oops/admit grep is blind to it, and the headline transform theorems use it.
+# Assert the count against the number declared in ASSUMPTIONS so it cannot grow unannounced.
+declared=$(grep -o 'EVAL-ORACLE-COUNT: [0-9]*' docs/ASSUMPTIONS.md | grep -o '[0-9]*' || true)
+actual=$(python3 scripts/count_eval_oracle.py | sed -n 's/^TOTAL by-eval.*: //p')
+if [ -z "$declared" ]; then
+  bad "docs/ASSUMPTIONS.md declares no EVAL-ORACLE-COUNT, so the oracle surface is unrecorded"
+elif [ "$declared" != "$actual" ]; then
+  bad "by-eval count is $actual but docs/ASSUMPTIONS.md declares $declared: the oracle surface moved without being recorded"
+else
+  note "  by-eval uses: $actual, matching the declared count"
+fi
+
 note "== 4. every mutation figure in the docs agrees =="
 # The mutation count was stated four different ways across the tree once. Collect every "N of M ...
 # mutants" claim and fail if they disagree, so a re-measurement cannot update one file and leave three.

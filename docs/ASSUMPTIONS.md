@@ -816,3 +816,36 @@ hardest. Each is a real gap, not a formality.
   - Impact on Assay: the SAW leg asserts no output bound, so it is unaffected. The Isabelle
     `is_reduce32` spec uses the **true reachable** window `-6283009 <= r <= 6283008` (not the doc's
     `-6283008`), proven over the SAW domain `a <= 2^31-2^22-1`; see `spec/isabelle/MLDSA_NTT_Spec.thy`.
+
+## OF-4: the `by eval` oracle surface (recorded 2026-09-24)
+
+`by eval` discharges a goal by running code the code generator emits, and trusts that code rather
+than replaying the inference through the kernel. It is a standard Isabelle method and it is an
+oracle. This development uses it **88 times**, **85 of them in sessions `make verify` builds**:
+
+| file | uses |
+|---|---|
+| `spec/isabelle/tier2/invwork/Inv_Mont_Bridge.thy` | 34 |
+| `spec/isabelle/kem/work/Kyber_Route.thy` | 25 |
+| `spec/isabelle/tier2/work/Mont_Bridge.thy` | 18 |
+| `spec/isabelle/kem/work/Kyber_Residue.thy` | 3 |
+| `spec/isabelle/tier2/work/Negacyclic_Bridge.thy` | 3 |
+| `spec/isabelle/kem/Kyber_Barrett.thy` | 2 |
+| `spec/isabelle/Assay_Equivalence.thy`, `spec/isabelle/kem/Kyber_NTT_Route.thy`, `spec/isabelle/tier2/Bridge_Word.thy` | 1 each |
+
+`Mont_Bridge.thy` and `Inv_Mont_Bridge.thy` hold `ntt_bridge` and `invntt_bridge`, so the two
+headline transform theorems rest on the oracle 52 times between them. What the uses do is evaluate
+the two concrete 256-entry zeta tables and a few gcd facts, which is a low-risk use, but it is still
+outside the kernel and it was not disclosed anywhere before this entry.
+
+Why this is recorded as a finding rather than a footnote: the project advertises
+`Thm_Deps.all_oracles` freedom for `barrettBV_bridge_holds` and says "no `sorry`, `oops`, `smt`"
+about the chain. Both statements are true. Together they invite a reader to conclude the chain is
+kernel-checked, which it is not. The CI gate greps `sorry|oops|admit` only and is blind to this.
+
+Declared count, gated by `scripts/claim-lint.sh` so it cannot grow silently:
+<!-- EVAL-ORACLE-COUNT: 88 -->
+
+Open: extend the `Thm_Deps.all_oracles` check from `barrettBV_bridge_holds` to `ntt_bridge`,
+`invntt_bridge`, `ntt_signed_correct`, `invntt_signed_correct` and `ntt_residue`, and report what
+comes back. Until that runs, the oracle dependency of those five is recorded but not measured.
