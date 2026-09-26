@@ -22,7 +22,8 @@ GROUPS = [
     ("GSMA SGP.29 anchor (model, C, proof)",
      ["esim-eid/model/*.cry", "esim-eid/ref/*.c", "esim-eid/proof/*.saw"]),
     ("gates, runners and experiment harnesses",
-     ["scripts/claim-lint.sh", "qseal/verify_*.sh", "qseal/mutation/mutate.py",
+     ["scripts/claim-lint.sh", "scripts/saw_mutant_pairs.py", "scripts/count_eval_oracle.py",
+      "scripts/mutation_test.sh", "external-corpus/*.py", "qseal/verify_*.sh", "qseal/mutation/mutate.py",
       "esim-eid/spec_mutation.py", "cve-anchor/fidelity/*.py", "cve-anchor/fidelity/*.sh",
       "qseal/proof/proverif/gen_variants.py", "esim-eid/verify.sh"]),
 ]
