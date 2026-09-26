@@ -80,6 +80,9 @@ cryptol_definition ntt :: "([256][32]) \<Rightarrow> ([256][32])" where
     step = ((\<lambda>(a :: [256][32]) (i :: [16]). (nttLevel`{} i a)) : (([256][32]) \<Rightarrow> (([16]) \<Rightarrow> ([256][32]))))
   in (foldl`{8,[256][32],[16]} step a0 (list_to_seq [0x0 :: [16],0x1 :: [16],0x2 :: [16],0x3 :: [16],0x4 :: [16],0x5 :: [16],0x6 :: [16],0x7 :: [16]] :: [8][16]))"
 
+cryptol_definition pointwise :: "([256][32]) \<Rightarrow> (([256][32]) \<Rightarrow> ([256][32]))" where
+"pointwise a b \<equiv> seq_compr`{256,(([32])) \<times> (([32])),[32]} (\<lambda>((x :: [32]),(y :: [32])). (montgomery_reduce`{} ((sext64`{} x) *`{[64]} (sext64`{} y)))) (zip`{256,([32]),([32])} (seq_compr`{256,[32],([32])} (\<lambda>(x :: [32]). ((x))) a) (seq_compr`{256,[32],([32])} (\<lambda>(y :: [32]). ((y))) b))"
+
 cryptol_definition q :: "Integer" where
 "q  \<equiv> 8380417 :: Integer"
 
