@@ -1,0 +1,4 @@
+session AfpNttRepro = "HOL-Computational_Algebra" +
+  options [document = false]
+  sessions Number_Theoretic_Transform
+  theories Repro
