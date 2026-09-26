@@ -49,8 +49,8 @@ jobs:
 
       - name: Reject proof holes (no sorry/oops/admit)
         run: |
-          if grep -rnE --include='*.thy' '\b(sorry|oops|admit)\b' spec/; then
-            echo "::error::Found a proof hole (sorry/oops/admit) in spec/."; exit 1
+          if grep -rnE --include='*.thy' '\b(sorry|oops|admit)\b' spec/ afp/; then
+            echo "::error::Found a proof hole (sorry/oops/admit) in spec/ or afp/."; exit 1
           fi
       - name: Full pipeline — lift-check + SAW (C==Cryptol) + Isabelle (model==spec)
         run: make verify

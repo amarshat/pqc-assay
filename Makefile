@@ -33,9 +33,12 @@ verify: target-identity lift-check saw isabelle tier2 tier2-inv tier2-signed tie
 target-identity:
 	./scripts/check_target_identity.sh
 
-## Composition gate: committed Isabelle model == cryptol-to-isabelle(Cryptol model). Fast; SAW bundle only.
+## Composition gate: every committed Isabelle lift == cryptol-to-isabelle(its Cryptol source).
+## Covers all four lifts and fails on a lifted theory that is not in the manifest, so adding one
+## without gating it is an error rather than a silent hole. Fast; SAW bundle only.
 lift-check:
 	./scripts/lift_check.sh
+	./scripts/lift_check_all.sh
 
 ## Non-vacuity guard: assert SAW REJECTS a deliberately-wrong model.
 mutation-test:
