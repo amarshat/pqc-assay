@@ -43,7 +43,13 @@ form rather than a full split, because only `2^8` divides 3329 - 1. Different st
 
 ## What is still not proven, and it is the important row
 
-**There is no theorem that the transform computes a product.** Nothing here states
+**Updated 2026-09-26.** `NNTT_negconv` now states that the transform carries `negconv` to pointwise
+multiplication, and `mldsa_model` makes it non-vacuous at the ML-DSA parameters. What is still not
+proven is that `negconv` is multiplication in `R_q`: that needs
+`Poly (negconv xs ys) = (Poly xs * Poly ys) mod (X^n+1)`. And none of it is connected to the C yet.
+The original wording follows, which was accurate when written.
+
+Nothing here states
 
     invntt(ntt a ⊙ ntt b) = a ⋆ b   in Z_q[X]/(X^256+1)
 

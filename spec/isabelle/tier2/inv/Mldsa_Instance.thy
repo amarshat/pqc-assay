@@ -10,9 +10,8 @@
    from an eight-step squaring chain with explicit constants, so nothing here is an oracle, and the
    primality goes through Pratt rather than `by eval` for the same reason.
 
-   STATUS: the type, its instances and the squaring chain are proven. The order-minimality lemma
-   and the interpretation itself are not done yet, so O9 is NOT closed and Negacyclic_Conv's
-   results remain conditional. See docs/ROADMAP.md v4. *)
+   The model is `mldsa_model` below, and it closes the vacuity question for everything in
+   Negacyclic_Conv and for the pre-existing INNTT_NNTT / NNTT_INNTT. *)
 theory Mldsa_Instance
   imports Negacyclic_Conv "Pratt_Certificate.Pratt_Certificate"
 begin
@@ -239,11 +238,13 @@ theorem mldsa_model: "negacyclic_butterfly 8380417 256 32736 w mu ps 8"
      (auto simp: w_256 w_neq_one mu_w ps_sq intro: w_order_minimal)
 
 text \<open>With this, every theorem of \<open>negacyclic_butterfly\<close> is a theorem about something that
-exists, at the parameters ML-DSA uses. In particular \<open>NNTT_negconv\<close> and \<open>negconv_via_NNTT\<close> from
-\<^theory>\<open>Tier2_Inv.Negacyclic_Conv\<close>, and \<open>INNTT_NNTT\<close> / \<open>NNTT_INNTT\<close>, are non-vacuous.
+exists, at the parameters ML-DSA uses.
 
-Restating them with the locale parameters spelled out is deliberately not done here: \<open>NNTT\<close> lives
-in \<open>negacyclic\<close> and \<open>negconv\<close> in \<open>negacyclic_butterfly\<close>, so the qualified forms take different
-parameter lists and the result reads worse than the locale statements it duplicates.\<close>
+The instantiated forms. An earlier version of this file claimed spelling the parameters out "reads
+worse than the locale statements it duplicates"; that was wrong, and these are the only statements
+in the tree that are visibly about ML-DSA rather than about an arbitrary model.\<close>
+
+lemmas mldsa_NNTT_negconv     = negacyclic_butterfly.NNTT_negconv     [OF mldsa_model]
+lemmas mldsa_negconv_via_NNTT = negacyclic_butterfly.negconv_via_NNTT [OF mldsa_model]
 
 end

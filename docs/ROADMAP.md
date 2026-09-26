@@ -374,10 +374,27 @@ ML-DSA performs. Both external rejections so far (VSTTE, and the AFP editor's "v
 reactions to exactly that. This is also the one place where a single theorem converts the existing
 pile into a structure, which is why it goes before any new target.
 
-Not available off the shelf: the AFP `Number_Theoretic_Transform` entry we already depend on proves
-`FNTT_correct`, `IFNTT_correct`, `FNTT_inv_IFNTT`, `IFNTT_inv_FNTT` and has **no convolution
-theorem**. This is new work, and a self-contained one worth offering to the AFP on its own terms,
-unlike the four-routines-at-one-modulus entry that was rejected.
+**Prior art, corrected 2026-09-26 after a review found it.** The `Number_Theoretic_Transform` entry
+we depend on has no convolution theorem, which is what the earlier version of this paragraph said.
+That was true and misleading: the AFP `CRYSTALS-Kyber` entry proves the stronger statement.
+`NTT_Scheme.thy:466,737,1043` give `mult_negacycl`, `ntt_mult` and
+
+    convolution_thm_ntt_poly:  f*g = inv_ntt_poly (qr_mult_coeffs (ntt_poly f) (ntt_poly g))
+
+over the quotient type `'a qr` (`Kyber_spec.thy:178`), so there `f*g` is ring multiplication rather
+than an index formula, and there is no residual factor of `n` because the locale carries `ninv`.
+`module_spec` (`Kyber_spec.thy:359`) is generic in q and n and assumes exactly `n = 2^n'`,
+`prime q`, `qr_poly' = X^n + 1`, which ML-DSA satisfies. Our `Negacyclic_Conv` is the coordinate
+shadow of a theorem that already exists.
+
+What is genuinely ours and not in that entry: `psi_pow_n` derives `psi^n = -1` from the minimality
+of `ord omega`, where `NTT_Scheme.thy:28` assumes it; and `w_order_minimal` pins the order from two
+facts where `Powers3844.thy:13` checks 255 powers with `by eval`. Both are small strengthenings of
+an existing AFP entry, which is a patch, not a new entry.
+
+Also **not proven**: that `negconv` is multiplication in `R_q`. It is a coefficient formula with a
+numeric agreement check. The missing lemma is
+`Poly (negconv xs ys) = (Poly xs * Poly ys) mod (monom 1 n + 1)`.
 
 ### Where it goes
 
@@ -434,9 +451,15 @@ theorems about the definition we wrote.
   isolates the model: `k` occurs in no intermediate lemma, only in the `p = k*n + 1` obligation, and
   the proof then fails inside `mldsa_model` with goal `False`. So that obligation is load-bearing.
 
-  Stated as the locale predicate rather than an `interpretation`: `negacyclic` and `butterfly` both
-  extend `ntt`, so interpreting the merged locale activates `ntt`'s facts twice and Isabelle
-  rejects the duplicate. The predicate form is what non-vacuity needs anyway.
+  Stated as the locale predicate rather than an `interpretation`, for a reason this entry first got
+  wrong. It is **not** the `negacyclic`/`butterfly` diamond: interpreting `ntt` alone, with no
+  diamond, fails identically. The cause is a name clash inside the AFP entry, where
+  `Preliminary_Lemmas.thy:339,348` prove lemmas `omega_properties`/`mu_properties` in `preliminary`
+  and `NTT.thy:16,17` name `ntt`'s assumptions the same. On interpretation both must be noted under
+  one qualified name and Isabelle refuses, so **no locale in `Number_Theoretic_Transform` can be
+  interpreted at all**. Upstream bug, worth reporting. Proof-local `interpret` works, and the
+  instantiated theorems are now exported via `[OF mldsa_model]` as `mldsa_NNTT_negconv` and
+  `mldsa_negconv_via_NNTT`.
 
   The order argument came out as scoped. `w_order_minimal` proves `w^m = 1 and m != 0 ==> m >= 256`
   from two facts rather than the 255 power checks the AFP Kyber entry does by eval: the exponents

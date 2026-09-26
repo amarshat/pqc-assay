@@ -13,8 +13,16 @@
    first is psi^n = -1, i.e. that the evaluation points really are roots of X^n+1. It needs n
    even, so this lives in negacyclic_butterfly rather than plain negacyclic.
 
-   See docs/ROADMAP.md, v4. The AFP Number_Theoretic_Transform entry this development depends on
-   proves the transform and its inverse and has no convolution theorem. *)
+   See docs/ROADMAP.md, v4.
+
+   PRIOR ART, recorded after a review found it: the AFP Number_Theoretic_Transform entry this
+   development builds on has no convolution theorem, but the AFP CRYSTALS-Kyber entry does, in a
+   stronger form. NTT_Scheme.thy:466,737,1043 prove mult_negacycl, ntt_mult and
+   convolution_thm_ntt_poly over the quotient TYPE 'a qr, so there f*g is ring multiplication
+   rather than an index formula, and module_spec (Kyber_spec.thy:359) is generic in q and n with
+   exactly the shape ML-DSA satisfies. What is below is the coordinate version of a theorem that
+   already exists. What is not already there: psi^n = -1 derived from the minimality of ord omega
+   rather than assumed (NTT_Scheme.thy:28 assumes it). *)
 theory Negacyclic_Conv
   imports Negacyclic_Inv
 begin
@@ -216,24 +224,19 @@ definition pointwise :: "'a mod_ring list \<Rightarrow> 'a mod_ring list \<Right
 lemma length_pointwise [simp]: "length (pointwise us vs) = n"
   by (simp add: pointwise_def)
 
+text \<open>\<^bold>\<open>What this does and does not say.\<close> \<open>negconv\<close> is a coefficient formula. That it IS
+multiplication in \<open>R_q\<close> is not proven here: the missing lemma is
+\<open>Poly (negconv xs ys) = (Poly xs * Poly ys) mod (monom 1 n + 1)\<close>. Until that exists, read the
+theorem below as being about \<open>negconv\<close>, not about a product.\<close>
+
 theorem NNTT_negconv: "NNTT (negconv xs ys) = pointwise (NNTT xs) (NNTT ys)"
   by (simp add: NNTT_def pointwise_def nntt_negconv)
 
 text \<open>And the form an implementation uses: transform, multiply pointwise, transform back, and you
 have the product in \<open>R_q\<close>, up to the factor \<open>n\<close> that the unnormalised inverse leaves behind.\<close>
 
-text \<open>\<^bold>\<open>Non-vacuity, stated because it is not yet discharged.\<close> Everything above is proven inside
-\<open>negacyclic_butterfly\<close>, and nothing in this development, or in the AFP entry it builds on,
-exhibits a model of that locale: there is no \<open>interpretation\<close> of \<open>ntt\<close>, \<open>butterfly\<close>, \<open>negacyclic\<close>
-or \<open>negacyclic_butterfly\<close> at concrete parameters anywhere. A theorem proven in a locale with no
-model is vacuous, so until an interpretation exists these results are conditional on the locale
-being inhabited.
-
-The parameters that should inhabit it for ML-DSA are \<open>CARD('a) = 8380417\<close>, \<open>n = 256\<close>, \<open>N = 8\<close>,
-\<open>k = 32736\<close> (so \<open>p = k*n + 1\<close>), \<open>omega = 3073009\<close>, \<open>psi = 1753\<close>, \<open>mu = omega^-1\<close>. Those satisfy the
-assumptions by ordinary arithmetic: 8380417 is prime, 1753 has order exactly 512 and 3073009 order
-exactly 256. Discharging it in Isabelle needs a numeral type of cardinality 8380417, which is why it
-is a separate obligation rather than a line here. See \<^file>\<open>../../../../docs/ROADMAP.md\<close>, v4 O9.\<close>
+text \<open>Non-vacuity is discharged in \<open>Mldsa_Instance\<close> by \<open>mldsa_model\<close>, which exhibits a model of
+this locale at q = 8380417, n = 256, omega = 3073009, psi = 1753.\<close>
 
 theorem negconv_via_NNTT:
   "INNTT (pointwise (NNTT xs) (NNTT ys))

@@ -296,11 +296,19 @@ modular algorithms were already queued. Nothing was raised about the proofs or t
 
 ## The NTT computes a product (`make convolution`)
 
-Every other NTT theorem here says the transform is the transform and that it inverts. The one that
-says it **multiplies** is `NNTT_negconv` in `spec/isabelle/tier2/inv/Negacyclic_Conv.thy`: the
-negacyclic transform carries convolution in `R_q = Z_q[X]/(X^n+1)` to pointwise multiplication, so
-`INNTT (pointwise (NNTT xs) (NNTT ys))` is the product, up to the factor `n` the unnormalised
-inverse leaves. That is the theorem the NTT exists for, and it had been missing.
+Every other NTT theorem here says the transform is the transform and that it inverts.
+`NNTT_negconv` in `spec/isabelle/tier2/inv/Negacyclic_Conv.thy` says the transform carries
+`negconv` to pointwise multiplication, where `negconv` is the coefficient formula for
+multiplication in `R_q = Z_q[X]/(X^n+1)`.
+
+Stated precisely, because the difference matters: `negconv` is **not proven** to be multiplication
+in `R_q`. It agrees with an independent long-division implementation at five parameter sets
+including ML-DSA's, which is a test. The lemma that would close it is
+`Poly (negconv xs ys) = (Poly xs * Poly ys) mod (X^n+1)`, and it is not in the tree.
+
+Prior art, which an earlier version of this section did not acknowledge: the AFP `CRYSTALS-Kyber`
+entry proves the stronger statement over an actual quotient ring
+(`convolution_thm_ntt_poly`, `NTT_Scheme.thy:1043`), generic in q and n.
 
 Theorems proven inside a locale are vacuous if the locale has no model, and neither this development
 nor the AFP NTT entry it builds on exhibited one. `mldsa_model` now does, at q = 8380417, n = 256,
