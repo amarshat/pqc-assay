@@ -155,3 +155,10 @@ invntt a0 =
   where
     b = foldl step a0 ([0, 1, 2, 3, 4, 5, 6, 7] : [8][16])
     step a ell = invnttLevel ell a
+
+/* poly_pointwise_montgomery: coefficientwise product in the Montgomery domain.
+   c->coeffs[i] = montgomery_reduce((int64_t)a->coeffs[i] * b->coeffs[i]).
+   The int64 product of two int32 cannot overflow, so this is exact for all inputs; the
+   Montgomery factor R^-1 it leaves is what invntt_tomont's f = mont^2/256 tail cancels. */
+pointwise : [256][32] -> [256][32] -> [256][32]
+pointwise a b = [ montgomery_reduce (sext64 x * sext64 y) | x <- a | y <- b ]

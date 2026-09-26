@@ -32,28 +32,7 @@ for f in proof/saw/*.saw qseal/proof/*.saw cve-anchor/proof/*.saw esim-eid/proof
     [ "$nobl" -eq 0 ] && continue
     [ "$nguard" -ge 1 ] || bad "$f: $spec has $nobl obligation(s) and no 'fails (llvm_verify ... $spec ...)' paired to it"
   done <<EOF
-$(awk '
-  /^[[:space:]]*\/\// { next }
-  /llvm_verify/ {
-    spec = ""
-    n = split($0, toks, /[^A-Za-z0-9_]/)
-    for (i = 1; i <= n; i++) if (toks[i] ~ /_spec$/) spec = toks[i]
-    if (spec == "") next
-    # Two mutant conventions live in this tree. qseal/ keeps the spec and points it at a mutated C
-    # function; proof/saw/ keeps the function and mutates the spec, naming it X_mut_spec. Credit the
-    # second form to X_spec so a guard is recognised either way.
-    if ($0 ~ /fails[[:space:]]*\(/) {
-      base = spec
-      sub(/_mut_spec$/, "_spec", base)
-      guards[base]++
-      seen[base] = 1
-    } else {
-      obl[spec]++
-      seen[spec] = 1
-    }
-  }
-  END { for (s in seen) printf "%s %d %d\n", s, obl[s] + 0, guards[s] + 0 }
-' "$f")
+$(python3 scripts/saw_mutant_pairs.py "$f")
 EOF
 done
 

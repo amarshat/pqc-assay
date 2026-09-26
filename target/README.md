@@ -21,9 +21,13 @@ The natural v2 target (optimized ≡ reference) is **PQ Code Package `mldsa-nati
 
 ## ML-DSA target
 - Source: **PQClean** reference ML-DSA (ML-DSA-44), the `clean` C implementation.
-- Subsystem: the **modular-reduction primitives** in `reduce.c` and both transforms in `ntt.c`
-  (`ntt`, `invntt_tomont`). The reduce layer came first because the transforms depend on it.
-  `poly.c` is not vendored, so there is no pointwise multiplication here (see ROADMAP v4).
+- Subsystem: the **modular-reduction primitives** in `reduce.c`, both transforms in `ntt.c`
+  (`ntt`, `invntt_tomont`), and `poly_pointwise_montgomery` from `poly.c` (vendored 2026-09-26 for
+  ROADMAP v4 O7). The reduce layer came first because everything else depends on it.
+- `poly.c` pulls `rounding.h`, `symmetric.h` and `fips202.h` for **declarations only**. Those `.c`
+  files are not vendored and not compiled, so the bitcode carries undefined externals for functions
+  the proof never calls. Only `poly_pointwise_montgomery` and its callee `montgomery_reduce` are
+  verified out of that translation unit; the rest of `poly.c` is present but unproven.
 - The `reduce.c` translation unit defines four functions:
   | Function | Signature | What it does |
   |---|---|---|

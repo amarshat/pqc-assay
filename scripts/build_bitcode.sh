@@ -16,7 +16,13 @@ mkdir -p "$OUT_DIR"
 CLANG="${CLANG:-clang}"
 
 COMBINED="$OUT_DIR/_combined.c"
+# poly.c is included only when it is vendored (the ML-DSA target), for
+# poly_pointwise_montgomery. Its own includes pull rounding.h/symmetric.h/fips202.h for
+# DECLARATIONS only; the corresponding .c files are not compiled, so the bitcode carries undefined
+# externals for functions we never call. SAW only needs the body of the function under proof and of
+# its callees.
 printf '#include "reduce.c"\n#include "ntt.c"\n' > "$COMBINED"
+if [ -f "$TARGET_DIR/poly.c" ]; then printf '#include "poly.c"\n' >> "$COMBINED"; fi
 
 WRAPV="${OUT%.bc}_wrapv.bc"
 

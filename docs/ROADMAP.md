@@ -469,9 +469,13 @@ theorems about the definition we wrote.
 
 ### Bridge to the implementation
 
-- **O7 (SAW, small).** Vendor `poly.c` at the existing PQClean pin (`target/README.md`) and verify
-  `PQCLEAN_MLDSA44_CLEAN_poly_pointwise_montgomery` against a Cryptol `pointwise`, with the
-  already-proven `montgomery_reduce` as an uninterpreted override. Same recipe as `mlkem-ntt`.
+- **O7 (SAW). DONE 2026-09-26.** `poly.c` vendored at the pin with its header closure
+  (`rounding.h`, `symmetric.h`, `fips202.h`, declarations only), SHA-256 pinned in
+  `check_target_identity.sh`, and `PQCLEAN_MLDSA44_CLEAN_poly_pointwise_montgomery` verified equal
+  to the Cryptol `pointwise` on the `-fwrapv` module with `montgomery_reduce` as the proven
+  uninterpreted override, plus a rejected result[0]+1 mutant. `saw proof/saw/mldsa_ntt.saw` exits 0.
+  Scope recorded as A-POINTWISE: the three `struct.poly` arguments are disjoint allocations, so the
+  aliasing case the reference uses is not covered.
 - **O8 (the scale factor).** `poly_pointwise_montgomery` leaves `x*R^-1`, and `invntt_tomont`'s tail
   applies `f*R^-1` with `f = 41978 = mont^2/256` (`ntt.c:80`). Worked through: those two, together
   with the factor `n` from the unnormalised inverse, compose to **exactly 1**. So the composed

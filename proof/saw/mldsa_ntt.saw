@@ -180,3 +180,42 @@ let invntt_mut_spec = do {
 fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_invntt_tomont" [mr_ov_w] true invntt_mut_spec
                    (w4_unint_z3 ["montgomery_reduce"]));
 print "NON-VACUOUS: the result[0]+1 invntt spec is rejected with a counterexample";
+
+// --- poly_pointwise_montgomery: c[i] = montgomery_reduce(a[i]*b[i])  (ROADMAP v4, O7) ----------
+// The operation the NTT exists to make cheap. With ntt/invntt_tomont already proven equivalent to
+// the Cryptol model, this is the third leg of invntt_tomont(pointwise(ntt a, ntt b)) = a * b in
+// Z_q[X]/(X^256+1). Same recipe as the transforms: -fwrapv module, montgomery_reduce as the proven
+// uninterpreted override, so the obligation is the coefficientwise routing.
+//
+// SCOPE: llvm_alloc gives c, a and b disjoint allocations, so this is the non-aliasing case. The
+// reference calls it with c aliasing a in places; that case is NOT covered here (ASSUMPTIONS).
+let poly_to_fresh nm = do {
+    p <- llvm_alloc (llvm_alias "struct.poly");
+    x <- llvm_fresh_var nm (llvm_array 256 (llvm_int 32));
+    llvm_points_to (llvm_field p "coeffs") (llvm_term x);
+    return (x, p);
+};
+
+let pointwise_spec = do {
+    (a, pa) <- poly_to_fresh "a";
+    (b, pb) <- poly_to_fresh "b";
+    pc <- llvm_alloc (llvm_alias "struct.poly");
+    llvm_execute_func [pc, pa, pb];
+    llvm_points_to (llvm_field pc "coeffs") (llvm_term {{ pointwise a b }});
+};
+
+llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_poly_pointwise_montgomery" [mr_ov_w] true pointwise_spec
+            (w4_unint_z3 ["montgomery_reduce"]);
+print "VERIFIED: PQCLEAN_MLDSA44_CLEAN_poly_pointwise_montgomery == Cryptol pointwise";
+
+let pointwise_mut_spec = do {
+    (a, pa) <- poly_to_fresh "a";
+    (b, pb) <- poly_to_fresh "b";
+    pc <- llvm_alloc (llvm_alias "struct.poly");
+    llvm_execute_func [pc, pa, pb];
+    llvm_points_to (llvm_field pc "coeffs")
+                   (llvm_term {{ update (pointwise a b) 0 ((pointwise a b) @ 0 + 1) }});
+};
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_poly_pointwise_montgomery" [mr_ov_w] true
+                   pointwise_mut_spec (w4_unint_z3 ["montgomery_reduce"]));
+print "NON-VACUOUS: the result[0]+1 pointwise spec is rejected with a counterexample";

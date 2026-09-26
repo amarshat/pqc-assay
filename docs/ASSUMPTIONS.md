@@ -849,3 +849,17 @@ Declared count, gated by `scripts/claim-lint.sh` so it cannot grow silently:
 Open: extend the `Thm_Deps.all_oracles` check from `barrettBV_bridge_holds` to `ntt_bridge`,
 `invntt_bridge`, `ntt_signed_correct`, `invntt_signed_correct` and `ntt_residue`, and report what
 comes back. Until that runs, the oracle dependency of those five is recorded but not measured.
+
+## A-POINTWISE: `poly_pointwise_montgomery` is verified for non-aliasing arguments only
+
+`proof/saw/mldsa_ntt.saw` allocates `c`, `a` and `b` as three disjoint `struct.poly` objects, so the
+proof covers the case where the destination does not overlap either source. The reference
+implementation calls this function with `c` aliasing `a` in places. **That case is not covered.**
+
+It is not a soundness hole in what is claimed, it is a narrower claim than the function's contract:
+the loop reads `a->coeffs[i]` and `b->coeffs[i]` and writes `c->coeffs[i]` at the same index, so
+aliasing is in fact harmless here, but harmless-by-inspection is exactly the kind of step this
+project does not let itself count as proven. Recorded so the scope is not read wider than it is.
+
+The rest of `poly.c` is compiled into the same translation unit and is **not** verified. Only
+`poly_pointwise_montgomery` is, with `montgomery_reduce` as the already-proven override.

@@ -23,6 +23,11 @@ c9fd2b30ef1175f2c66b14c4385a68b22bf500e8349c16d0b5fe1fecf31e5470  target/pqclean
 c56a083ce9ea4da55a17e9c2f2da74e7277cdede5b2f8e758e441ff9e0813863  target/pqclean/reduce.h
 72e60747ac88f6e3dc9ea7b7b67aed3fa120633bb1e2acfc9a9db948069cecf1  target/pqclean/ntt.h
 0210251cea61d26e49b2dad16c4ed86d65474fbffa54c61af7a22c677ddd3cd2  target/pqclean/params.h
+9ae04a2bf234ee6fd380826f4cc9f5fe0c55b6a04e0d8818a52da1b68c10e6d2  target/pqclean/poly.c
+e6cbe386564946336452ef0694583bc9d8081ed2d81310622644bb9e36560f14  target/pqclean/poly.h
+2e258d4407da8cc1fa4ffafdeb2ef1796ffbbdec74d8524e5fa7827d95e533aa  target/pqclean/rounding.h
+a1b2b731875c0cf33b251e063917db54c4e251a4b84cc55be780d89cdf642139  target/pqclean/symmetric.h
+bf99a54bc1988380418054a18bd5a14d059770e70c1aac23b6d9c914539168e0  target/pqclean/fips202.h
 "
 
 SHA="shasum -a 256"; command -v sha256sum >/dev/null 2>&1 && SHA="sha256sum"
