@@ -24,6 +24,7 @@ session Tier2 in "work" = Tier2_Base +
     CT_Routing
     Negacyclic_Bridge
     Mont_Bridge
+    Pointwise_Bridge
 
 (* Inverse leg (fork 1, piece 4). Thin child on Tier2_Base so the bounded
    sub-step 1 (negacyclic invertibility) iterates without rebuilding the forward
