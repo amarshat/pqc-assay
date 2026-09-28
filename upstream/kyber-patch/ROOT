@@ -1,0 +1,4 @@
+session KyberPatch = "CRYSTALS-Kyber" +
+  options [document = false]
+  theories
+    Kyber_Psi_Derived
