@@ -456,8 +456,10 @@ theorems about the definition we wrote.
   diamond, fails identically. The cause is a name clash inside the AFP entry, where
   `Preliminary_Lemmas.thy:339,348` prove lemmas `omega_properties`/`mu_properties` in `preliminary`
   and `NTT.thy:16,17` name `ntt`'s assumptions the same. On interpretation both must be noted under
-  one qualified name and Isabelle refuses, so **no locale in `Number_Theoretic_Transform` can be
-  interpreted at all**. Upstream bug, worth reporting. Proof-local `interpret` works, and the
+  one qualified name and Isabelle refuses, so a **global** `interpretation` in a fresh theory
+  fails. Scope corrected 2026-09-28: in-context `interpretation` works, and AFP `CRYSTALS-Kyber`
+  uses exactly that at `NTT_Scheme.thy:176`, so an earlier claim here that the entry could not be
+  interpreted at all was wrong. Usability bug, reported upstream. Proof-local `interpret` works, and the
   instantiated theorems are now exported via `[OF mldsa_model]` as `mldsa_NNTT_negconv` and
   `mldsa_negconv_via_NNTT`.
 

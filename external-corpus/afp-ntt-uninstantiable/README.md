@@ -1,28 +1,23 @@
-# An AFP entry whose theorems cannot be delivered
+# AFP `Number_Theoretic_Transform`: global `interpretation` fails
 
-`Number_Theoretic_Transform` (AFP) proves the number-theoretic transform correct and invertible:
-`FNTT_correct`, `IFNTT_correct`, `FNTT_inv_IFNTT`, `IFNTT_inv_FNTT`. It is refereed, it builds, and
-it has no proof holes.
+**Scope corrected 2026-09-28.** An earlier version of this file claimed the entry's theorems
+"cannot be delivered" to any concrete object. That was wrong. AFP `CRYSTALS-Kyber` interprets this
+very locale at `NTT_Scheme.thy:176`, inside a locale context, and it works. What is actually broken
+is one of four usage routes.
 
-**No consumer can instantiate it.** Every one of those theorems is stated in locale `ntt` (or a
-descendant), and `interpretation` of `ntt` fails before any proof obligation is considered:
+| usage | result |
+|---|---|
+| global `interpretation` in a fresh theory | **fails**, duplicate fact declaration |
+| `interpretation` inside a locale context | works |
+| proof-local `interpret` | works |
+| `thm [OF locale_predicate]` | works |
+
+## The failure
 
 ```
 Duplicate fact declaration "q.omega_properties" vs. "q.omega_properties"
 The above error(s) occurred while activating facts of locale instance
 ```
-
-## Cause
-
-- `Preliminary_Lemmas.thy:339,348` prove *lemmas* named `omega_properties` and `mu_properties`
-  inside locale `preliminary`.
-- `NTT.thy:16,17` name locale `ntt`'s *assumptions* `omega_properties` and `mu_properties`.
-
-Inside the locale body the assumption shadows the inherited lemma harmlessly. On `interpretation`
-both must be noted under one qualified name, and Isabelle refuses the duplicate. The fix is a
-rename of the two assumptions, two lines.
-
-## Reproducing
 
 `Repro.thy` imports only the AFP entry and discharges the obligations with `sorry`, so the
 assumptions cannot be the cause. It still fails.
@@ -31,17 +26,24 @@ assumptions cannot be the cause. It still fails.
 isabelle build -d . -d <afp>/thys AfpNttRepro
 ```
 
-## Why this is in external-corpus
+## Cause
 
-This directory collects measurements of proofs we did not write. The point is not that the entry is
-wrong; the mathematics is fine and the locale is satisfiable (we exhibit a model at the ML-DSA
-parameters in `spec/isabelle/tier2/inv/Mldsa_Instance.thy`). The point is that a machine-checked,
-refereed development can be simultaneously correct and **undeliverable**: its results cannot be
-transported to any concrete object. Logical non-vacuity and usable non-vacuity are different
-properties, and only the first is what a green build reports.
+- `Preliminary_Lemmas.thy:339,348` prove *lemmas* `omega_properties` and `mu_properties` in locale
+  `preliminary`.
+- `NTT.thy:16,17` name locale `ntt`'s *assumptions* the same.
 
-We hit this ourselves. `Mldsa_Instance.thy` states the model as the locale predicate rather than an
-`interpretation`, and until a review pushed back we had recorded the wrong reason for that (a
-locale diamond). The real reason is this bug.
+Harmless inside the locale, where the assumption shadows the inherited lemma. Fatal on a global
+interpretation, where both must be recorded under one qualified name. Interpreting `preliminary`
+alone succeeds; `ntt` and `butterfly` fail. The fix is a rename, two lines.
 
-Status: to be reported upstream to the entry's author and the AFP editors.
+## Why it is kept here
+
+Not as a vacuity finding, which is what we first wrote. As a record of a claim of ours that was
+wrong twice: first we blamed an inheritance diamond (refuted by interpreting a child with no
+diamond), then we claimed undeliverability (refuted by a file in the same archive). The second
+survived into a paper section, an abstract and a commit.
+
+The check that would have caught it costs nothing: before asserting that something cannot be done,
+grep the corpus for somebody doing it.
+
+Reported upstream.
