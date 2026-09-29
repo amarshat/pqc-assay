@@ -9,8 +9,22 @@ and psi_properties: "\<psi>^2 = \<omega>" "\<psi>^n = -1"
 ```
 
 and the second conjunct follows from the first together with `omega_properties` and
-`n = 2^n'`, `n' > 0`. So `kyber_ntt` can drop it, and every instantiation of the locale has one
-fewer obligation to discharge.
+`n = 2^n'`, `n' > 0`.
+
+**What dropping it actually costs, measured rather than assumed.** It is not a one-line deletion.
+Removing the conjunct from the locale requires two further changes, which we found by doing it:
+
+1. `NTT_Scheme.thy:56` is the single place inside the entry that cites `psi_properties(2)`. It must
+   be redirected to the derived lemma. (The other nine `psi_properties` references are to
+   conjunct 1 or are unqualified.)
+2. `Kyber_NTT_Values.thy` discharges the locale's obligations **by goal number** (`case 7`, `9`,
+   `11`, `15`, `17`). Removing a conjunct shifts every later goal: `case 15`, which is
+   `psi^n = -1` discharged by `powr256'`, disappears, and `case 17` becomes `16`. Left unchanged,
+   the build fails with `powr256'` applied to `psi * psiinv = 1`.
+
+We verified 1 and 2 individually against a patched copy. We did **not** get a fully building
+CRYSTALS-Kyber with the conjunct removed end to end, so treat the integration as scoped rather than
+done. The derivation itself is verified, standalone, below.
 
 ## How it is stated, and why that matters
 
@@ -31,6 +45,11 @@ isabelle build -d <afp>/thys -d . KyberPatch
 
 Exits 0 against AFP 2026-06-05 / Isabelle2025-2, in about one second on a warm `CRYSTALS-Kyber`
 heap.
+
+## Honest status
+
+Verified: the derivation, standalone, with load-bearing hypotheses. Scoped and individually
+checked: the two integration changes above. Not done: a complete patched entry that builds.
 
 ## Still to do
 

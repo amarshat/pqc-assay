@@ -34,7 +34,12 @@ isabelle build -d . -d <afp>/thys AfpNttRepro
 
 Harmless inside the locale, where the assumption shadows the inherited lemma. Fatal on a global
 interpretation, where both must be recorded under one qualified name. Interpreting `preliminary`
-alone succeeds; `ntt` and `butterfly` fail. The fix is a rename, two lines.
+alone succeeds; `ntt` and `butterfly` fail.
+
+The fix is a rename of `ntt`'s two assumptions. Applied to a copy and measured: 2 declarations plus
+37 internal references. With it, the same reproducer succeeds and the renamed entry still builds.
+An earlier version of this file called it "two lines", which was a guess and understated it by an
+order of magnitude.
 
 ## Why it is kept here
 
