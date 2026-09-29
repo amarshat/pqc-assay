@@ -228,10 +228,20 @@ text \<open>This is the point of the file. Every theorem in \<^theory>\<open>Tie
 pre-existing \<open>INNTT_NNTT\<close> / \<open>NNTT_INNTT\<close> in \<^theory>\<open>Tier2_Inv.Negacyclic_Inv\<close>, is proven inside
 \<open>negacyclic_butterfly\<close>. Exhibiting a model is what stops all of them being vacuous.
 
-Stated as the locale predicate rather than as an \<open>interpretation\<close>. \<open>negacyclic\<close> and \<open>butterfly\<close>
-both extend \<open>ntt\<close>, so interpreting the merged locale activates \<open>ntt\<close>'s facts twice and Isabelle
-rejects the duplicate declaration. The predicate form is what non-vacuity actually needs: it says
-the assumptions are jointly satisfiable, witnessed at the parameters ML-DSA uses.\<close>
+Stated as the locale predicate rather than as an \<open>interpretation\<close>. \<^bold>\<open>Corrected
+2026-09-29:\<close> an earlier version of this comment blamed the \<open>negacyclic\<close>/\<open>butterfly\<close> diamond,
+claiming the merged locale activates \<open>ntt\<close>'s facts twice. That is wrong. Interpreting \<open>butterfly\<close>
+alone, which has single inheritance and no diamond, fails identically, and so does \<open>ntt\<close> itself.
+
+The actual cause is upstream and has nothing to do with our locales: \<open>Preliminary_Lemmas.thy:339,348\<close>
+prove \<^emph>\<open>lemmas\<close> named \<open>omega_properties\<close> and \<open>mu_properties\<close> in locale \<open>preliminary\<close>, and
+\<open>NTT.thy:16,17\<close> name \<open>ntt\<close>'s \<^emph>\<open>assumptions\<close> the same. Any global \<open>interpretation\<close> of
+\<open>ntt\<close> or a descendant must record both under one qualified name, and Isabelle refuses. In-context
+\<open>interpretation\<close>, proof-local \<open>interpret\<close> and \<open>[OF predicate]\<close> all work, and AFP
+\<open>CRYSTALS-Kyber\<close> uses the first of those at \<open>NTT_Scheme.thy:176\<close>.
+
+The predicate form is what non-vacuity needs in any case: it says the assumptions are jointly
+satisfiable, witnessed at the parameters ML-DSA uses.\<close>
 
 theorem mldsa_model: "negacyclic_butterfly 8380417 256 32736 w mu ps 8"
   by unfold_locales

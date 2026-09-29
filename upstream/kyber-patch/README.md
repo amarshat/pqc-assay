@@ -15,10 +15,10 @@ and the second conjunct follows from the first together with `omega_properties` 
 Removing the conjunct from the locale requires two further changes, which we found by doing it:
 
 1. `NTT_Scheme.thy:56` is the single place inside the entry that cites `psi_properties(2)`. It must
-   be redirected to the derived lemma. (The other nine `psi_properties` references are to
-   conjunct 1 or are unqualified.)
-2. `Kyber_NTT_Values.thy` discharges the locale's obligations **by goal number** (`case 7`, `9`,
-   `11`, `15`, `17`). Removing a conjunct shifts every later goal: `case 15`, which is
+   be redirected to the derived lemma. (`psi_properties` has 1 declaration and 9 references; the
+   other eight are to conjunct 1 or unqualified.)
+2. `Kyber_NTT_Values.thy` discharges the locale's obligations **by goal number** (`case 4`, `6`,
+   `7`, `9`, `11`, `15`, `17`). Removing a conjunct shifts every later goal: `case 15`, which is
    `psi^n = -1` discharged by `powr256'`, disappears, and `case 17` becomes `16`. Left unchanged,
    the build fails with `powr256'` applied to `psi * psiinv = 1`.
 
@@ -32,10 +32,12 @@ The derivation is a **standalone lemma over an arbitrary field**, not a lemma in
 Proved inside the locale it would establish nothing, because the locale assumes the conclusion, and
 a derivation permitted to use the fact it derives is not a derivation. The corollary
 `psi_pow_n_recovered` then instantiates the standalone lemma at the locale's parameters, citing
-only `psi_properties(1)`, `omega_properties(1)`, `omega_properties(3)` and evenness of `n`.
+only `psi_properties(1)`, `omega_properties(1)`, `omega_properties(3)`, `n_gt_1`, and evenness
+of `n` (the last two both from `n_powr_2` with `n'_gr_0`).
 
-Checked that the hypotheses are load-bearing: deleting the evenness hypothesis makes the build
-fail. No `sorry`, `oops` or `by eval`.
+Checked that the hypotheses are load-bearing. Evenness is not merely used but semantically
+necessary: with `\<omega> = 684` (order 3 mod 7681) and `\<psi> = 684^2`, every other hypothesis
+holds at m = 3 and `\<psi>^3 = 1`, not `-1`. No `sorry`, `oops` or `by eval`.
 
 ## Building
 
