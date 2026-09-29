@@ -37,9 +37,14 @@ interpretation, where both must be recorded under one qualified name. Interpreti
 alone succeeds; `ntt` and `butterfly` fail.
 
 The fix is a rename of `ntt`'s two assumptions. Applied to a copy and measured: 2 declarations plus
-37 internal references. With it, the same reproducer succeeds and the renamed entry still builds.
-An earlier version of this file called it "two lines", which was a guess and understated it by an
-order of magnitude.
+34 references inside the entry, **plus one in `CRYSTALS-Kyber` at `NTT_Scheme.thy:972`**, which
+otherwise fails on a goal that looks unrelated because the name still resolves, to the
+locale-predicate form. `NTT.thy:20`'s `mu_properties'` is a different lemma and must be left alone.
+With all of it applied both entries build clean.
+
+Two earlier versions of this paragraph were wrong: it called the fix "two lines" (a guess), and then
+"37 references" (double-counting the declarations and including `mu_properties'`). The downstream
+breakage was found only by an independent fact-check.
 
 ## Why it is kept here
 
