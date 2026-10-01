@@ -1,0 +1,225 @@
+--- a/Number_Theoretic_Transform/NTT.thy	2026-10-01 22:05:49
++++ b/Number_Theoretic_Transform/NTT.thy	2026-10-01 22:05:49
+@@ -13,12 +13,12 @@
+ locale ntt = preliminary "TYPE ('a ::prime_card)" +
+ fixes \<omega> :: "('a::prime_card mod_ring)"
+ fixes \<mu> :: "('a mod_ring)"
+-assumes omega_properties: "\<omega>^n = 1" "\<omega> \<noteq> 1" "(\<forall> m. \<omega>^m = 1 \<and> m\<noteq>0 \<longrightarrow> m \<ge> n)"
+-assumes mu_properties: "\<mu> * \<omega> = 1"
++assumes omega_props: "\<omega>^n = 1" "\<omega> \<noteq> 1" "(\<forall> m. \<omega>^m = 1 \<and> m\<noteq>0 \<longrightarrow> m \<ge> n)"
++assumes mu_props: "\<mu> * \<omega> = 1"
+ begin
+ 
+ lemma mu_properties': "\<mu> \<noteq> 1"
+-  using omega_properties mu_properties by auto
++  using omega_props mu_props by auto
+ 
+ subsection \<open>Definition of $NTT$ and $INTT$\<close>
+ text \<open>\label{NTTdef}\<close>
+@@ -196,7 +196,7 @@
+       fix j
+       assume "j=i"
+       hence "\<And> l. l < n \<Longrightarrow> (numbers ! j * \<omega> ^ (l * j) * \<mu> ^ (i * l))= (numbers ! j)"
+-        by (simp add: left_right_inverse_power mult.commute mu_properties(1))
++        by (simp add: left_right_inverse_power mult.commute mu_props(1))
+       moreover have "\<And> l. l < n  \<Longrightarrow> numbers ! j *  \<omega> ^ (l * j) * \<mu> ^ (i * l) = numbers ! j" 
+         using calculation by blast
+ 
+@@ -204,7 +204,7 @@
+ 
+       ultimately show "(\<Sum>l = 0..<n. (numbers ! j * \<omega> ^ (l * j) * \<mu> ^ (i * l))) = 
+         (numbers ! j)* (of_int_mod_ring n)" 
+-        using n_def sum_const[of "numbers ! j" n] exp_rule[of \<omega> \<mu>] mu_properties(1) 
++        using n_def sum_const[of "numbers ! j" n] exp_rule[of \<omega> \<mu>] mu_props(1) 
+         by (metis (no_types, lifting) atLeastLessThan_iff mult.commute sum.cong) 
+ 
+     qed
+@@ -224,7 +224,7 @@
+       have 01:" (\<Sum>l = 0..<n. (numbers ! j * \<omega> ^ (l * j) * \<mu> ^ (i * l))) = 
+                 (\<Sum>l = 0..<n. (numbers ! j *  (\<mu>^l)^(i-j)))" 
+            apply(rule sum_eq)
+-           using mu_properties(1) 00 algebra_simps(23)
++           using mu_props(1) 00 algebra_simps(23)
+            by (smt (z3) mult.commute mult.left_neutral power_mult power_one)
+       have 02:"\<dots> = numbers ! j *(\<Sum>l = 0..<n. ((\<mu>^l)^(i-j))) " 
+            using sum_in[of "\<lambda> l. numbers ! j * (\<mu> ^ l) ^ (i - j)" " numbers ! j" n] 
+@@ -238,11 +238,11 @@
+         hence "ord p (to_int_mod_ring \<mu>) \<le> i-j" 
+           by (simp add: j_assms not_le ord_max)
+         moreover hence "ord p (to_int_mod_ring \<omega>) \<le> i-j" 
+-          by (metis \<open>\<mu> ^ (i - j) = 1\<close> diff_is_0_eq exp_rule j_assms leD mult.comm_neutral mult.commute mu_properties(1) ord_max)
++          by (metis \<open>\<mu> ^ (i - j) = 1\<close> diff_is_0_eq exp_rule j_assms leD mult.comm_neutral mult.commute mu_props(1) ord_max)
+         moreover hence "i-j < n" 
+           using j_assms i_assms p_fact k_bound n_lst2 by linarith
+-        moreover have "ord p (to_int_mod_ring \<omega>) = n" using omega_properties n_lst2 unfolding ord_def          
+-          by (metis (no_types) \<open>\<mu> ^ (i - j) = 1\<close> calculation(3) diff_is_0_eq j_assms leD left_right_inverse_power mult.comm_neutral mult_cancel_left mu_properties(1) omega_properties(3) zero_neq_one)
++        moreover have "ord p (to_int_mod_ring \<omega>) = n" using omega_props n_lst2 unfolding ord_def          
++          by (metis (no_types) \<open>\<mu> ^ (i - j) = 1\<close> calculation(3) diff_is_0_eq j_assms leD left_right_inverse_power mult.comm_neutral mult_cancel_left mu_props(1) omega_props(3) zero_neq_one)
+         ultimately show False by simp
+       qed
+ 
+@@ -251,7 +251,7 @@
+       ultimately have "(1-\<mu>^(i-j))*(\<Sum>l = 0..<n. ((\<mu>^(i-j))^l)) = (1-(\<mu>^(i-j))^n)" 
+         using geo_sum[of "\<mu> ^ (i - j)" n] by simp
+       moreover have "(\<mu>^(i-j))^n = 1"
+-        by (metis (no_types) left_right_inverse_power mult.commute mult.right_neutral mu_properties(1) omega_properties(1) power_mult power_one)
++        by (metis (no_types) left_right_inverse_power mult.commute mult.right_neutral mu_props(1) omega_props(1) power_mult power_one)
+ 
+       text \<open>The sum for the current index is 0.\<close>
+       
+@@ -273,7 +273,7 @@
+       have 01:" (\<Sum>l = 0..<n. (numbers ! j * \<omega> ^ (l * j) * \<mu> ^ (i * l))) = 
+                 (\<Sum>l = 0..<n. (numbers ! j *  (\<omega>^l)^(j-i))) " 
+            apply(rule sum_eq) subgoal for l
+-           using mu_properties(1) 00[of "\<omega>^l" "\<mu>^l" "numbers ! j "] algebra_simps(23) 
++           using mu_props(1) 00[of "\<omega>^l" "\<mu>^l" "numbers ! j "] algebra_simps(23) 
+            by (smt (z3) "00" left_right_inverse_power mult.assoc mult.commute mult.right_neutral power_mult)
+          done
+       moreover have 02:"(\<Sum>l = 0..<n. (numbers ! j *   (\<omega>^l)^(j-i)))  = 
+@@ -287,9 +287,9 @@
+         assume " \<omega> ^ (j - i) = 1"
+         hence "ord p (to_int_mod_ring  \<omega>) \<le> j-i" using ord_max[of "j-i" \<omega>] ij_Assm by simp
+         moreover have "ord p (to_int_mod_ring \<omega>) =p-1" 
+-          by (meson \<open>\<omega> ^ (j - i) = 1\<close> diff_is_0_eq diff_le_self ij_Assm leD le_trans omega_properties(3))
++          by (meson \<open>\<omega> ^ (j - i) = 1\<close> diff_is_0_eq diff_le_self ij_Assm leD le_trans omega_props(3))
+         ultimately show False 
+-          by (meson \<open>\<omega> ^ (j - i) = 1\<close> diff_is_0_eq diff_le_self ij_Assm leD le_trans omega_properties(3))
++          by (meson \<open>\<omega> ^ (j - i) = 1\<close> diff_is_0_eq diff_le_self ij_Assm leD le_trans omega_props(3))
+       qed
+ 
+       text \<open>Geometric sum.\<close>
+@@ -297,7 +297,7 @@
+       ultimately have "(1-\<omega>^(j-i))* (\<Sum>l = 0..<n. ((\<omega>^(j-i))^l)) = (1-(\<omega>^(j-i))^n)" 
+         using geo_sum[of "\<omega> ^ (j-i)" n] by simp
+       moreover have "(\<omega>^(j-i))^n = 1"
+-        by (metis (no_types) mult.commute  omega_properties(1) power_mult power_one)
++        by (metis (no_types) mult.commute  omega_props(1) power_mult power_one)
+       ultimately have "(\<Sum>l = 0..<n. ((\<omega>^(j-i))^l)) = 0"
+         by (metis \<open>\<omega> ^ (j - i) \<noteq> 1\<close> eq_iff_diff_eq_0 no_zero_divisors)
+       thus "(\<Sum>l = 0..<n. numbers ! j * \<omega> ^ (l * j) * \<mu> ^ (i * l)) = 0" using  01 02 03 by simp
+@@ -363,11 +363,11 @@
+       fix j
+       assume "j=i"
+       hence "\<And> l. l < n \<Longrightarrow> (numbers ! j * \<mu> ^ (l * j) * \<omega> ^ (i * l))= (numbers ! j)"
+-        by (simp add: left_right_inverse_power mult.commute mu_properties(1))
++        by (simp add: left_right_inverse_power mult.commute mu_props(1))
+       moreover have "\<And> l. l < n  \<Longrightarrow> numbers ! j *  \<mu> ^ (l * j) * \<omega> ^ (i * l) = numbers ! j" 
+         using calculation by blast
+       ultimately show "(\<Sum>l = 0..<n. (numbers ! j * \<mu> ^ (l * j) * \<omega> ^ (i * l))) = (numbers ! j)* (of_int_mod_ring n)" 
+-        using n_def sum_const[of "numbers ! j" n] exp_rule[of \<omega> \<mu>] mu_properties(1) 
++        using n_def sum_const[of "numbers ! j" n] exp_rule[of \<omega> \<mu>] mu_props(1) 
+         by (metis (no_types, lifting) atLeastLessThan_iff mult.commute sum.cong) 
+     qed
+     have jlsi:"\<And> j. j < i \<Longrightarrow> (\<Sum>l = 0..<n. (numbers ! j * \<mu> ^ (l * j) * \<omega> ^ (i * l))) = 0"
+@@ -380,7 +380,7 @@
+       have 01:" (\<Sum>l = 0..<n. (numbers ! j * \<mu> ^ (l * j) * \<omega> ^ (i * l))) = 
+                 (\<Sum>l = 0..<n. (numbers ! j *  (\<omega>^l)^(i-j))) " 
+            apply(rule sum_eq)
+-           using mu_properties(1) 00 algebra_simps(23)
++           using mu_props(1) 00 algebra_simps(23)
+            by (smt (z3) mult.commute mult.left_neutral power_mult power_one)
+       moreover have 02: "\<dots>=  numbers ! j *(\<Sum>l = 0..<n. ((\<omega>^l)^(i-j))) "
+            using sum_in[of "\<lambda> l. numbers ! j * (\<mu> ^ l) ^ (i - j)" " numbers ! j" n] 
+@@ -393,7 +393,7 @@
+         assume "\<omega> ^ (i - j) = 1"
+         hence "ord p (to_int_mod_ring \<omega>) \<le> i-j" 
+           by (simp add: j_assms not_le ord_max)
+-         moreover have "ord p (to_int_mod_ring \<omega>) = n" using omega_properties n_lst2 unfolding ord_def
++         moreover have "ord p (to_int_mod_ring \<omega>) = n" using omega_props n_lst2 unfolding ord_def
+            by (meson \<open>\<omega> ^ (i - j) = 1\<close> diff_is_0_eq diff_le_self i_assms j_assms leD le_trans)
+          ultimately show False 
+            by (metis i_assms leD less_imp_diff_less)
+@@ -401,7 +401,7 @@
+       ultimately have "(1-\<omega>^(i-j))*(\<Sum>l = 0..<n. ((\<omega>^(i-j))^l)) = (1-(\<omega>^(i-j))^n)" 
+         using geo_sum[of "\<omega> ^ (i - j)" n] by simp
+       moreover have "(\<omega>^(i-j))^n = 1"
+-        by (metis (no_types)  mult.commute omega_properties(1) power_mult power_one)
++        by (metis (no_types)  mult.commute omega_props(1) power_mult power_one)
+       ultimately have "(\<Sum>l = 0..<n. ((\<omega>^(i-j))^l)) = 0" 
+         by (metis \<open>\<omega> ^ (i - j) \<noteq> 1\<close> divisors_zero eq_iff_diff_eq_0)
+       thus "(\<Sum>l = 0..<n. numbers ! j * \<mu> ^ (l * j) * \<omega> ^ (i * l)) = 0" using  01 02 03 by simp
+@@ -415,7 +415,7 @@
+       have 01:" (\<Sum>l = 0..<n. (numbers ! j * \<mu> ^ (l * j) * \<omega> ^ (i * l))) = 
+                 (\<Sum>l = 0..<n. (numbers ! j *  (\<mu>^l)^(j-i))) " 
+            apply(rule sum_eq) subgoal for l
+-           using mu_properties(1) 00[of "\<omega>^l" "\<mu>^l" "numbers ! j "] algebra_simps(23) 
++           using mu_props(1) 00[of "\<omega>^l" "\<mu>^l" "numbers ! j "] algebra_simps(23) 
+            by (smt (z3) "00" left_right_inverse_power mult.assoc mult.commute mult.right_neutral power_mult)
+          done
+       moreover have 02:"(\<Sum>l = 0..<n. (numbers ! j *   (\<mu>^l)^(j-i)))  = 
+@@ -430,16 +430,16 @@
+         hence "ord p (to_int_mod_ring \<mu>) \<le> j -i " 
+           by (simp add: ij_Assm not_le ord_max)
+         moreover hence "ord p (to_int_mod_ring \<omega>) \<le> j-i" 
+-          by (metis \<open>\<mu> ^ (j - i) = 1\<close> diff_is_0_eq exp_rule ij_Assm leD mult.comm_neutral mult.commute mu_properties(1) ord_max)
++          by (metis \<open>\<mu> ^ (j - i) = 1\<close> diff_is_0_eq exp_rule ij_Assm leD mult.comm_neutral mult.commute mu_props(1) ord_max)
+         moreover hence "j-i < n" using ij_Assm i_assms p_fact k_bound n_lst2 by linarith
+-        moreover have "ord p (to_int_mod_ring \<omega>) = n" using omega_properties n_lst2 unfolding ord_def
+-          by (metis (no_types) \<open>\<mu> ^ (j-i) = 1\<close> calculation(3) diff_is_0_eq ij_Assm leD left_right_inverse_power mult.comm_neutral mult_cancel_left mu_properties(1) omega_properties(3) zero_neq_one)
++        moreover have "ord p (to_int_mod_ring \<omega>) = n" using omega_props n_lst2 unfolding ord_def
++          by (metis (no_types) \<open>\<mu> ^ (j-i) = 1\<close> calculation(3) diff_is_0_eq ij_Assm leD left_right_inverse_power mult.comm_neutral mult_cancel_left mu_props(1) omega_props(3) zero_neq_one)
+         ultimately show False by simp
+       qed
+       ultimately have "(1-\<mu>^(j-i))* (\<Sum>l = 0..<n. ((\<mu>^(j-i))^l)) = (1-(\<mu>^(j-i))^n)" 
+         using geo_sum[of "\<mu> ^ (j-i)" n] by simp
+       moreover have "(\<mu>^(j-i))^n = 1"
+-        by (metis (no_types) left_right_inverse_power mult.commute mult.right_neutral mu_properties(1) omega_properties(1) power_mult power_one)
++        by (metis (no_types) left_right_inverse_power mult.commute mult.right_neutral mu_props(1) omega_props(1) power_mult power_one)
+       ultimately have "(\<Sum>l = 0..<n. ((\<mu>^(j-i))^l)) = 0"
+         by (metis \<open>\<mu> ^ (j - i) \<noteq> 1\<close> eq_iff_diff_eq_0 no_zero_divisors)
+       thus "(\<Sum>l = 0..<n. numbers ! j * \<mu> ^ (l * j) * \<omega> ^ (i * l)) = 0" using  01 02 03 by simp
+--- a/Number_Theoretic_Transform/Butterfly.thy	2026-10-01 22:05:49
++++ b/Number_Theoretic_Transform/Butterfly.thy	2026-10-01 22:05:49
+@@ -149,7 +149,7 @@
+ text \<open>\noindent ($-1$ denotes the additive inverse of $1$ in the finite field.)\<close>
+ 
+ lemma n_min1_2: "n = 2  \<Longrightarrow> \<omega>  = -1" 
+-  using omega_properties(1) omega_properties(2) power2_eq_1_iff by blast
++  using omega_props(1) omega_props(2) power2_eq_1_iff by blast
+ 
+ lemma n_min1_gr2:
+   assumes "n > 2"
+@@ -161,15 +161,15 @@
+   hence False
+   proof (cases \<open>\<omega> ^ (n div 2) = 1\<close>)
+     case True
+-    then show ?thesis using omega_properties(3) assms
++    then show ?thesis using omega_props(3) assms
+       by auto
+   next
+     case False
+     hence "(\<omega>^(n div 2)) ^ (2::nat) \<noteq> 1" 
+-      by (smt (verit, ccfv_threshold) n_two_pot One_nat_def \<open>\<omega> ^ (n div 2) \<noteq> - 1\<close> diff_zero leD n_lst2 not_less_eq omega_properties(1) one_less_numeral_iff one_power2 power2_eq_square power_mult power_one_right power_strict_increasing_iff semiring_norm(76) square_eq_iff two_powr_div two_powrs_div)
++      by (smt (verit, ccfv_threshold) n_two_pot One_nat_def \<open>\<omega> ^ (n div 2) \<noteq> - 1\<close> diff_zero leD n_lst2 not_less_eq omega_props(1) one_less_numeral_iff one_power2 power2_eq_square power_mult power_one_right power_strict_increasing_iff semiring_norm(76) square_eq_iff two_powr_div two_powrs_div)
+     moreover have "(n div 2) * 2  = n" using n_two_pot n_lst2  
+       by (metis One_nat_def Suc_lessD assms div_by_Suc_0 one_less_numeral_iff power_0 power_one_right power_strict_increasing_iff semiring_norm(76) two_powrs_div)
+-    ultimately show ?thesis  using omega_properties(1)
++    ultimately show ?thesis  using omega_props(1)
+       by (metis power_mult)
+   qed
+     thus False by simp
+@@ -528,10 +528,10 @@
+ lemma my_div_exp_min1:
+   assumes "2^(Suc l) \<le> n"
+   shows "(\<mu> ^(n div 2^(Suc l)))^(2^l) = -1" 
+-  by (metis assms divide_minus1 mult_zero_right mu_properties(1) nonzero_mult_div_cancel_right omega_div_exp_min1 power_one_over zero_neq_one)
++  by (metis assms divide_minus1 mult_zero_right mu_props(1) nonzero_mult_div_cancel_right omega_div_exp_min1 power_one_over zero_neq_one)
+ 
+ lemma my_n_2_min1:  "\<mu>^(n div 2) = -1" 
+-  by (metis divide_minus1 mult_zero_right mu_properties(1) nonzero_mult_div_cancel_right omg_n_2_min1 power_one_over zero_neq_one)
++  by (metis divide_minus1 mult_zero_right mu_props(1) nonzero_mult_div_cancel_right omg_n_2_min1 power_one_over zero_neq_one)
+ 
+ text \<open>Correctness proof by common induction technique. Same strategies as for $FNTT$.\<close>
+ 
+--- a/CRYSTALS-Kyber/NTT_Scheme.thy	2026-10-01 22:05:49
++++ b/CRYSTALS-Kyber/NTT_Scheme.thy	2026-10-01 22:06:02
+@@ -969,7 +969,7 @@
+           proof (cases "j'<i")
+             case True
+             have *: "\<mu>^j' * \<omega> ^i = \<omega>^(i-j')" using True
+-            by (smt (verit, best) add.commute kyber_ntt.omega_properties(1) 
++            by (smt (verit, best) add.commute kyber_ntt.omega_props(1) 
+               le_add_diff_inverse left_right_inverse_power less_or_eq_imp_le 
+               mu_properties(1) mult.left_commute mult_cancel_right1 power_add)
+             show ?thesis proof (unfold *, rule ccontr)
+\ No newline at end of file
