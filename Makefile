@@ -82,19 +82,19 @@ mlkem-ntt:
 ## changes. The no-sorry/oops/admit grep in verify.yml already covers spec/isabelle/kem.
 mlkem-isabelle:
 	@echo ">> Isabelle (Kem_Work): ML-KEM forward NTT model ≡ FIPS-203 residue spec (bricks a/b/c)"
-	$(ISABELLE) build -d spec/isabelle/kem -v Kem_Work
+	$(ISABELLE) build -b -d spec/isabelle/kem -v Kem_Work
 
 ## Run the Isabelle session: model ≡ FIPS-204 spec
 isabelle:
 	@echo ">> Isabelle: proving reduce.c model ≡ FIPS-204 spec"
-	$(ISABELLE) build -D spec/isabelle -v $(ISA_SESSION)
+	$(ISABELLE) build -b -D spec/isabelle -v $(ISA_SESSION)
 
 ## Tier2 Isabelle session: lifted forward NTT ≡ FIPS-204 negacyclic transform (fwd_ntt_correct)
 ## plus the model bridge (Mont_Bridge) tying the SAW-checked montgomery model to it; the bridge
 ## reuses the Assay session (montgomery_reduce_correct), so both -d dirs are needed.
 tier2:
 	@echo ">> Isabelle (Tier2): forward NTT ≡ FIPS-204 transform + montgomery-model bridge"
-	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -v Tier2
+	$(ISABELLE) build -b -d spec/isabelle -d spec/isabelle/tier2 -v Tier2
 
 ## Tier2_Inv: the convolution theorem (v4), plus the model that makes it non-vacuous.
 ## NNTT_negconv / negconv_via_NNTT say the negacyclic NTT diagonalises multiplication in
@@ -102,18 +102,18 @@ tier2:
 ## n = 256, omega = 3073009, psi = 1753, so those theorems are about something that exists.
 convolution:
 	@echo ">> Isabelle (Tier2_Inv): NTT diagonalises multiplication in R_q + a model at the ML-DSA parameters"
-	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -d $(shell ls -d $(CURDIR)/.tools/afp-*/thys) -v Tier2_Inv
+	$(ISABELLE) build -b -d spec/isabelle -d spec/isabelle/tier2 -d $(shell ls -d $(CURDIR)/.tools/afp-*/thys) -v Tier2_Inv
 	@echo ">> Isabelle (Tier2_Conv): invntt(pointwise(ntt a, ntt b)) == a*b in Z_q[X]/(X^256+1) on the lifted models (O8)"
-	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -d $(shell ls -d $(CURDIR)/.tools/afp-*/thys) -v Tier2_Conv
+	$(ISABELLE) build -b -d spec/isabelle -d spec/isabelle/tier2 -d $(shell ls -d $(CURDIR)/.tools/afp-*/thys) -v Tier2_Conv
 	@echo ">> Isabelle (Tier2_Acc): one row of A*y (acc, poly_reduce, invntt) == NTT^-1(A_hat o NTT(y)) and sum A_i*y_i in R_q"
-	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -d $(shell ls -d $(CURDIR)/.tools/afp-*/thys) -v Tier2_Acc
+	$(ISABELLE) build -b -d spec/isabelle -d spec/isabelle/tier2 -d $(shell ls -d $(CURDIR)/.tools/afp-*/thys) -v Tier2_Acc
 
 ## Tier2_InvWork Isabelle session: lifted inverse NTT ≡ FIPS-204 inverse negacyclic transform
 ## (inv_ntt_correct) plus the model bridge (invntt_bridge) tying the SAW-checked montgomery invntt
 ## to it, montgomery-scaled by mont/256. Child of Tier2 (reuses the forward chain + Assay heap).
 tier2-inv:
 	@echo ">> Isabelle (Tier2_InvWork): inverse NTT ≡ FIPS-204 inverse transform + montgomery-model bridge"
-	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -v Tier2_InvWork
+	$(ISABELLE) build -b -d spec/isabelle -d spec/isabelle/tier2 -v Tier2_InvWork
 
 ## Tier2_Signed Isabelle session: the forward transform theorem on the SIGNED centered window
 ## (ntt_signed_correct) — ntt_bridge extended from the non-negative [0,Q) input window to
@@ -121,7 +121,7 @@ tier2-inv:
 ## Child of Tier2; reuses mbfly0..7 / nttLevel_bounded / applyN_inv without reproving the chain.
 tier2-signed:
 	@echo ">> Isabelle (Tier2_Signed): forward NTT ≡ FIPS-204 transform on the signed |coeff| < Q window"
-	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -v Tier2_Signed
+	$(ISABELLE) build -b -d spec/isabelle -d spec/isabelle/tier2 -v Tier2_Signed
 
 ## Tier2_InvSigned Isabelle session: the inverse transform theorem on the SIGNED centered window
 ## (invntt_signed_correct) — invntt_bridge extended from [0,Q) to |coeff| < Q (ntt_bounded 8380416 w),
@@ -129,7 +129,7 @@ tier2-signed:
 ## mbfly_inv0..7 / invlevelN_bounded / applyG_inv / the invf-scale helpers.
 tier2-invsigned:
 	@echo ">> Isabelle (Tier2_InvSigned): inverse NTT ≡ FIPS-204 inverse transform on the signed |coeff| < Q window"
-	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -v Tier2_InvSigned
+	$(ISABELLE) build -b -d spec/isabelle -d spec/isabelle/tier2 -v Tier2_InvSigned
 
 ## Barrett Route Y session: the lifted BV Barrett model (barrettBV) == x mod q for x < 2^46,
 ## proven in Isabelle Word_Lib (barrettBV_bridge_holds). Mechanizes the escape-2 wide-Barrett
@@ -138,7 +138,7 @@ barrett:
 	@echo ">> barrett lift-check: Barrett_Lift.thy == cryptol-to-isabelle(barrett_bridge.cry)"
 	./scripts/lift_check_barrett.sh
 	@echo ">> Isabelle (Barrett): lifted BV Barrett model ≡ x mod q (Route Y, no smt/oracle)"
-	$(ISABELLE) build -d spec/isabelle/tier2/barrett -v Barrett
+	$(ISABELLE) build -b -d spec/isabelle/tier2/barrett -v Barrett
 
 ## Out-of-band (~33 min): prove the deployed barrett_reduce == x mod q for x < 2^46 directly on the
 ## RustCrypto MIR, via SAW's bitwuzla backend. This closes the escape-2 obligation that

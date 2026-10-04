@@ -22,16 +22,22 @@ on:
 jobs:
   verify:
     runs-on: macos-15
-    timeout-minutes: 180
+    # A cold run (no cached heaps) measured 2026-10-04: AFP + Cryptol ~75 min, Tier2_Base ~80 min,
+    # then the rest of the Tier2 chain. 180 was not enough; 360 is the hosted-runner maximum.
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
-      - name: Cache downloaded toolchain (.tools)
-        uses: actions/cache@v4
+      # restore/save are split so the caches are written as soon as their contents exist, even if a
+      # later step fails or the job times out (actions/cache saves only on success, so one timed-out
+      # cold run used to throw away ~75 min of AFP heaps and the next run started cold again).
+      - name: Restore downloaded toolchain (.tools)
+        uses: actions/cache/restore@v4
         with:
           path: .tools
           key: tools-full-${{ runner.os }}-${{ hashFiles('scripts/setup.sh', 'scripts/setup_isabelle_cryptol.sh') }}
-      - name: Cache Isabelle session heaps (AFP + Cryptol cone)
-        uses: actions/cache@v4
+      - name: Restore Isabelle session heaps (AFP + Cryptol cone)
+        id: heaps
+        uses: actions/cache/restore@v4
         with:
           # heaps + per-session build database (digests) — content/options addressed, so a fixed
           # key derived from the pinned setup is correct (changes only when the toolchain pins change)
@@ -39,8 +45,22 @@ jobs:
           key: isabelle-heaps-${{ runner.os }}-${{ hashFiles('scripts/setup.sh', 'scripts/setup_isabelle_cryptol.sh') }}
       - name: Set up toolchain (SAW, Cryptol, Isabelle, clang)
         run: ./scripts/setup.sh
+      - name: Save downloaded toolchain (.tools)
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: .tools
+          key: tools-full-${{ runner.os }}-${{ hashFiles('scripts/setup.sh', 'scripts/setup_isabelle_cryptol.sh') }}
       - name: Build AFP + SAW 'Cryptol' Isabelle session (reused from cache when warm)
         run: ./scripts/setup_isabelle_cryptol.sh
+      - name: Save Isabelle session heaps (AFP + Cryptol cone)
+        if: always() && steps.heaps.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.isabelle/Isabelle2025-2/heaps
+          key: isabelle-heaps-${{ runner.os }}-${{ hashFiles('scripts/setup.sh', 'scripts/setup_isabelle_cryptol.sh') }}
       - name: Report the by-eval oracle surface
         run: |
           python3 scripts/count_eval_oracle.py
