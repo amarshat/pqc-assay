@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc 3.10.1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="author" content="Amar Akshat" />
+  <title>The ML-DSA reference NTT multiplies polynomials, checked from
+the C</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      white-space: pre-wrap;
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: 1.5em;}
+    div.column{flex: auto;}
+    @media screen {
+    div.columns{gap: min(4vw, 1.5em);}
+    div.column{overflow-x: auto;}
+    }
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <meta name="description" content="PQClean's ML-DSA-44 reference C, machine-checked from the C through SAW and Isabelle: the NTT, pointwise multiply and inverse compose to multiplication in Z_q[X]/(X^256+1), for every product in key generation and signing." />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="The ML-DSA reference NTT multiplies polynomials, checked from the C" />
+  <meta property="og:description" content="Machine-checked from PQClean's ML-DSA-44 C to multiplication in Z_q[X]/(X^256+1), for every product in key generation and signing. Verification not yet covered." />
+  <meta property="og:url" content="https://amarshat.github.io/pqc-assay/writeup/ml-dsa-ntt-multiplies.html" />
+  <style>
+    table { border-collapse: collapse; margin: 1em 0; }
+    th, td { border-bottom: 1px solid #ddd; padding: 0.3em 0.9em 0.3em 0; text-align: left; }
+    @media (prefers-color-scheme: dark) {
+      html { color: #e6e6e6; background-color: #161616; }
+      a, a:visited { color: #e6e6e6; }
+      th, td { border-bottom-color: #444; }
+      code { color: #e6e6e6; }
+    }
+  </style>
+</head>
+<body>
+<h1
+id="the-ml-dsa-reference-ntt-multiplies-polynomials-checked-from-the-c">The
+ML-DSA reference NTT multiplies polynomials, checked from the C</h1>
+<p><em>Amar Akshat · <a
+href="https://github.com/amarshat">github.com/amarshat</a></em></p>
+<p>ML-DSA spends most of its arithmetic multiplying polynomials in
+Z_q[X]/(X^256+1), with q = 8380417. It does this the standard way:
+transform both operands with the NTT, multiply coefficient by
+coefficient, transform back. Earlier work in this repository proved that
+PQClean’s reference C computes the FIPS 204 forward and inverse NTT.
+That says the transform is the transform. It does not say that
+transform, pointwise multiply and inverse, as the C actually composes
+them, give you the product. This post is about closing that gap, and
+about where in the scheme the result applies.</p>
+<p>Everything here is in the <a
+href="https://github.com/amarshat/pqc-assay">repository</a> and
+reproduces from a <code>make</code> target. The target is PQClean’s
+ML-DSA-44 <code>clean</code> implementation at commit
+<code>202a8f9</code>, vendored unmodified with SHA-256 pinned.</p>
+<h2 id="what-is-proved">What is proved</h2>
+<p>For polynomials a and b whose coefficients all satisfy |c| &lt;
+q:</p>
+<pre><code>invntt_tomont(poly_pointwise_montgomery(ntt(a), ntt(b))) = a * b   in Z_q[X]/(X^256+1)</code></pre>
+<p>Here <code>*</code> and the reduction mod X^256+1 are the polynomial
+multiplication and remainder from Isabelle’s standard library, at a type
+of integers mod 8380417. They are not a convolution formula written for
+this project, so the right-hand side is not something the proof could
+have been tuned to. The theorem is <code>ntt_mult_ring</code> in <a
+href="https://github.com/amarshat/pqc-assay/blob/main/spec/isabelle/tier2/convwork/Conv_Bridge.thy"><code>Conv_Bridge.thy</code></a>.</p>
+<p>The matrix products need a second form, because ML-DSA samples the
+matrix A directly in NTT form. Its rows are never the output of
+<code>ntt</code>, so the theorem above does not apply to them. Each row
+of A<em>y is computed as four pointwise products summed with
+<code>poly_add</code>, then <code>poly_reduce</code>, then the inverse.
+The theorem <code>acc_mult_ring</code> in <a
+href="https://github.com/amarshat/pqc-assay/blob/main/spec/isabelle/tier2/accwork/Acc_Bridge.thy"><code>Acc_Bridge.thy</code></a>
+says: for any polynomials A_i whose transforms are the sampled rows, the
+C’s output for that row is A_1</em>y_1 + A_2<em>y_2 + A_3</em>y_3 +
+A_4*y_4 mod X^256+1. Every row has such A_i, because the transform is
+onto mod q, and that is proved too (<code>ntt_int_surj</code>). This is
+FIPS 204’s NTT^-1(A_hat o NTT(y)) read as polynomials.</p>
+<p>The Montgomery bookkeeping is proved rather than assumed.
+<code>poly_pointwise_montgomery</code> leaves a factor 2^-32.
+<code>invntt_tomont</code> multiplies by 41978 and leaves another 2^-32.
+The unnormalised inverse leaves a factor 256. Since 41978 * 256 = 2^64
+mod q, these cancel exactly, and the theorem has no leftover scale. The
+intermediate bounds are proved as well: forward outputs are not reduced
+and can reach 9q, and the proof checks that the products of two such
+values still fit <code>montgomery_reduce</code>’s input range, that four
+pointwise outputs added together cannot overflow a 32-bit int, and that
+the sum is inside <code>reduce32</code>’s precondition.</p>
+<h2 id="where-it-applies-in-ml-dsa">Where it applies in ML-DSA</h2>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Where</th>
+<th>Covered</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A*s1</td>
+<td>key generation</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>A*y</td>
+<td>signing</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>c<em>s1, c</em>s2, c*t0</td>
+<td>signing</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>A<em>z - c</em>t1*2^d</td>
+<td>verification</td>
+<td>no</td>
+</tr>
+</tbody>
+</table>
+<p>Covered means every function on the path, from the vector and matrix
+loops in <code>polyvec.c</code> down to <code>montgomery_reduce</code>,
+is proved equal to a Cryptol model, and the Isabelle theorems apply to
+the composition. The order in which <code>sign.c</code> calls those
+functions is read from the source, not proved.</p>
+<p>Verification is not covered yet. It subtracts c<em>t1</em>2^d before
+the inverse and calls the pointwise loop with its output overlapping an
+input, and neither case is proved.</p>
+<h2 id="how-the-chain-is-put-together">How the chain is put
+together</h2>
+<ol type="1">
+<li>SAW proves each C function equal to a Cryptol model:
+<code>ntt</code>, <code>invntt_tomont</code>,
+<code>poly_pointwise_montgomery</code>, <code>poly_add</code>,
+<code>poly_reduce</code>,
+<code>polyvecl_pointwise_acc_montgomery</code>, the
+<code>poly_ntt</code> and <code>poly_invntt_tomont</code> wrappers, and
+the loops over vector entries and matrix rows. Each proof has a mutant
+(the claimed result with 1 added to one coefficient) that SAW rejects
+with a counterexample. <code>make saw</code>.</li>
+<li>cryptol-to-isabelle lifts the Cryptol model into Isabelle. A check
+regenerates the lift and diffs it against the committed theory, so the
+Isabelle proofs are about the same model SAW checked.
+<code>make lift-check</code>.</li>
+<li>Isabelle proves the lifted models compose to the ring product, using
+the transform theorems from the earlier work, the convolution theorem
+instantiated at q = 8380417, and a lemma that the negacyclic convolution
+formula is polynomial multiplication mod X^n+1.
+<code>make convolution</code>.</li>
+</ol>
+<p><code>make verify</code> runs all of it.</p>
+<h2 id="what-it-does-not-cover">What it does not cover</h2>
+<ul>
+<li>Signature verification, as above.</li>
+<li>The C side is proved on bitcode compiled with
+<code>-O0 -fwrapv</code>. That no signed overflow happens on a normal
+build is mechanized for the forward NTT and argued from the proved
+bounds for the rest. The compiler is trusted.</li>
+<li>Isabelle’s code generator is trusted for some facts about the
+constant twiddle tables (the <code>by eval</code> method). A check in
+the build fails if the headline theorems pick up any other oracle.</li>
+<li>The bound on A’s coefficients (at most 9q) is read from
+<code>poly_uniform</code>, which masks every candidate to 23 bits.
+<code>poly_uniform</code> itself is not verified, and neither is the
+sampling against FIPS 204.</li>
+<li>ML-DSA-44 only. The vector length 4 is fixed in the models.</li>
+<li>Reference C only. Not the AVX2 code, and not constant-time
+properties.</li>
+</ul>
+<p>The full list, with file references, is in <a
+href="https://github.com/amarshat/pqc-assay/blob/main/docs/ASSUMPTIONS.md"><code>docs/ASSUMPTIONS.md</code></a>
+under A-ROW, A-POINTWISE and OF-4.</p>
+<h2 id="prior-art">Prior art</h2>
+<p>The AFP entry CRYSTALS-Kyber proves the convolution theorem for the
+NTT generically, over a quotient ring. The mathematics here is the same;
+the part that is new is connecting it to a C implementation, including
+the Montgomery factors and the bounds, and to the places the scheme
+calls it.</p>
+<h2 id="how-the-claims-were-checked">How the claims were checked</h2>
+<p>Before publishing, each milestone went to an adversarial review that
+re-ran the tools and checked every claim against the output. The first
+round found that an early draft overstated where the result applied,
+that a “no <code>by eval</code>” claim was true of the new files but not
+of the theorem, and that three of four Isabelle mutation tests only
+showed the proof script breaking when its statement changed. The second
+found unverified loops between <code>sign.c</code> and the proved
+functions. Those loops are now proved, and the rest is corrected in the
+text above.</p>
+<h2 id="reproducing">Reproducing</h2>
+<pre><code>git clone https://github.com/amarshat/pqc-assay &amp;&amp; cd pqc-assay
+./scripts/setup.sh           # pinned toolchain into .tools/ (macOS arm64 tested)
+make saw                     # C == Cryptol
+make lift-check              # Isabelle model == lift of the Cryptol SAW checked
+make convolution             # the Isabelle theorems in this post
+make verify                  # everything</code></pre>
+<p>The first Isabelle build compiles its library dependencies and takes
+a while; later builds take seconds.</p>
+</body>
+</html>

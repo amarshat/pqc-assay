@@ -342,6 +342,7 @@ cap-demo:
 writeup:
 	@echo "docs/writeup/verifying-third-party-pqc-with-saw-and-isabelle.md  (NTT primitive, technical)"
 	@echo "docs/writeup/verified-esim-attestation.md  (Q-SEAL eSIM post; .html is the servable page)"
+	@echo "docs/writeup/ml-dsa-ntt-multiplies.md  (v4: the NTT multiplies; .html is the servable page)"
 
 clean:
 	rm -rf build output heaps browser_info *.saw-cache saw-out
