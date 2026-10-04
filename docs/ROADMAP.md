@@ -501,15 +501,35 @@ theorems about the definition we wrote.
   uninterpreted override, plus a rejected result[0]+1 mutant. `saw proof/saw/mldsa_ntt.saw` exits 0.
   Scope recorded as A-POINTWISE: the three `struct.poly` arguments are disjoint allocations, so the
   aliasing case the reference uses is not covered.
-- **O8 (the scale factor).** `poly_pointwise_montgomery` leaves `x*R^-1`, and `invntt_tomont`'s tail
-  applies `f*R^-1` with `f = 41978 = mont^2/256` (`ntt.c:80`). Worked through: those two, together
-  with the factor `n` from the unnormalised inverse, compose to **exactly 1**. So the composed
-  statement carries no residual Montgomery factor:
+- **O8 (the scale factor). DONE 2026-10-04.** `poly_pointwise_montgomery` leaves `x*R^-1`, and
+  `invntt_tomont`'s tail applies `f*R^-1` with `f = 41978 = mont^2/256` (`ntt.c:80`). Together with
+  the factor `n` from the unnormalised inverse these compose to exactly 1, and that is now proven
+  rather than checked numerically. Theorem `ntt_mult_correct`
+  (`spec/isabelle/tier2/convwork/Conv_Bridge.thy`, session `Tier2_Conv`, build exit 0, no
+  `sorry`/`oops`/`smt`/`by eval`):
 
-      invntt_tomont(poly_pointwise_montgomery(ntt a, ntt b)) = a ⋆ b   in R_q
+      ntt_bounded 8380416 a ==> ntt_bounded 8380416 b ==> k < 256 ==>
+        sint_seq (nth_seq (invntt (pointwise (ntt a) (ntt b))) k) mod 8380417
+          = negconv_int (sf a) (sf b) k mod 8380417
 
-  Confirm this in Isabelle rather than inheriting it from the arithmetic check; `invntt_scale_bridge`
-  is the existing pattern for that bookkeeping.
+  `ntt`, `pointwise` and `invntt` are the lifted Cryptol models SAW checks `ntt`,
+  `poly_pointwise_montgomery` and `invntt_tomont` against. The hypothesis is the centered window
+  `|coeff| < q` on both inputs. The intermediate bounds are derived, not assumed: forward outputs
+  stay within `75423752` (9q, unreduced), so the pointwise products stay inside the montgomery
+  precondition (`75423752^2 < 2^31 q`), and the pointwise outputs land back inside `|coeff| < q`,
+  which is what `invntt_signed_correct` needs. The ring side is `conv_int`
+  (`spec/isabelle/tier2/inv/Conv_Ring.thy`, in `Tier2_Inv`): `negconv_via_NNTT` instantiated at
+  `mldsa_model` and pushed through `of_int`, so the word-level theory never touches the locale.
+  Cancellation uses `41978 * 256 == 2^64` and `7593442 * 2^64 == 1 (mod q)`.
+
+  Two mutants, both rejected: flipping the sign of the wrap-around term in `negconv_int` breaks
+  `conv_int`, and a factor-2 conclusion breaks the last step of `ntt_mult_correct`.
+
+  What this does not cover. (1) `negconv_int` is the coefficient formula; that it is multiplication in
+  `R_q` is still the missing `Poly` lemma above. (2) The C composition is three separate SAW
+  equivalences, each on the `-fwrapv` module, with the no-UB step argued as for the forward NTT, not
+  mechanized. (3) A-POINTWISE: non-aliasing arguments only. (4) Inputs outside `|coeff| < q` are
+  not covered, and nothing here checks which call sites in the reference stay inside it.
 
 ### What it unlocks
 

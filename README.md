@@ -316,9 +316,14 @@ omega = 3073009, psi = 1753. Primality goes through a Pratt certificate rather t
 generator, and the order of omega is pinned by two facts (omega^256 = 1, omega^128 = -1) rather than
 by checking 255 powers. Session `Tier2_Inv`, no `sorry`/`oops`/`smt`/`by eval`.
 
-Not yet connected to the C: `poly.c` is not vendored and `poly_pointwise_montgomery` is not
-verified, so this is a statement about the mathematics, not yet about the implementation. See
-`docs/ROADMAP.md` v4, obligations O7 and O8.
+Connected to the implementation models (O7, O8). SAW proves `poly_pointwise_montgomery` equal to
+the Cryptol `pointwise`, and `ntt_mult_correct` (`spec/isabelle/tier2/convwork/Conv_Bridge.thy`,
+session `Tier2_Conv`) proves that for inputs with `|coeff| < q`, `invntt(pointwise(ntt a, ntt b))`
+equals `negconv a b` mod q coefficient by coefficient, with the Montgomery factors cancelling
+exactly. That is a statement about the SAW-checked models, so it reaches the C through three
+separate `-fwrapv` equivalences and the non-aliasing scope in A-POINTWISE. It is still about
+`negconv`, not about multiplication in `R_q`, until the `Poly` lemma above exists. See
+`docs/ROADMAP.md` v4, O8.
 
 ## The checks, run on proofs we did not write (`make external-corpus`)
 

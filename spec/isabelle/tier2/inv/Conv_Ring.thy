@@ -1,0 +1,154 @@
+(* v4 O8, ring side: the convolution theorem as an integer congruence at q = 8380417.
+
+   Negacyclic_Conv proves negconv_via_NNTT inside the locale, over 'a mod_ring lists. The C-side
+   bridges (Signed_Bridge, Inv_Signed_Bridge, Pointwise_Bridge) speak integers mod 8380417 with the
+   inverse exponent kept in Z/512 by zpw. This theory instantiates the locale at the ML-DSA model
+   (mldsa_model) and pushes the result through of_int, so the conclusion mentions no locale
+   constant and no mod_ring: it can be consumed by a theory that also imports the Cryptol model.
+
+   The exponent 1753^(nat ((-(2t+1)k) mod 512)) is zpw (-(2t+1)k) unfolded; it is written out here
+   so this theory does not depend on Inv_Mont_Bridge. *)
+theory Conv_Ring
+  imports Mldsa_Instance
+begin
+
+text \<open>Negacyclic convolution on integer coefficient functions, the same shape as the locale's
+\<open>negconv\<close> at \<open>n = 256\<close>.\<close>
+
+definition negconv_int :: "(nat \<Rightarrow> int) \<Rightarrow> (nat \<Rightarrow> int) \<Rightarrow> nat \<Rightarrow> int" where
+  "negconv_int f g k =
+     (\<Sum>i<256. if i \<le> k then f i * g (k - i) else - (f i * g (k + 256 - i)))"
+
+context negacyclic_butterfly
+begin
+
+text \<open>The inverse transform written out at one index: the AFP \<open>intt\<close> sum, untwisted.\<close>
+
+lemma INNTT_nth:
+  assumes kk: "kk < n"
+  shows "INNTT ys ! kk = (\<Sum>t<n. ys ! t * ((\<psi>*\<mu>)^kk * \<mu>^(kk*t)))"
+proof -
+  have "INNTT ys ! kk = (\<psi>*\<mu>)^kk * (INTT ys ! kk)"
+    using kk by (simp add: INNTT_def)
+  also have "INTT ys ! kk = (\<Sum>t<n. ys ! t * \<mu>^(kk*t))"
+    using kk by (simp add: INTT_def intt_def atLeast0LessThan)
+  finally show ?thesis
+    by (simp add: sum_distrib_left mult.commute mult.left_commute)
+qed
+
+text \<open>\<open>negconv_via_NNTT\<close> read at index \<open>kk\<close>.\<close>
+
+lemma conv_sum:
+  assumes kk: "kk < n"
+  shows "(\<Sum>t<n. nntt xs t * nntt ys t * ((\<psi>*\<mu>)^kk * \<mu>^(kk*t)))
+           = of_int_mod_ring (int n) * negconv xs ys ! kk"
+proof -
+  have "INNTT (pointwise (NNTT xs) (NNTT ys)) ! kk
+          = map (\<lambda>c. of_int_mod_ring (int n) * c) (negconv xs ys) ! kk"
+    by (simp only: negconv_via_NNTT)
+  also have "\<dots> = of_int_mod_ring (int n) * negconv xs ys ! kk"
+    using kk by simp
+  finally have e: "INNTT (pointwise (NNTT xs) (NNTT ys)) ! kk
+                     = of_int_mod_ring (int n) * negconv xs ys ! kk" .
+  have "INNTT (pointwise (NNTT xs) (NNTT ys)) ! kk
+          = (\<Sum>t<n. pointwise (NNTT xs) (NNTT ys) ! t * ((\<psi>*\<mu>)^kk * \<mu>^(kk*t)))"
+    by (rule INNTT_nth[OF kk])
+  also have "\<dots> = (\<Sum>t<n. nntt xs t * nntt ys t * ((\<psi>*\<mu>)^kk * \<mu>^(kk*t)))"
+    by (rule sum.cong) (simp_all add: pointwise_def NNTT_def)
+  finally show ?thesis using e by simp
+qed
+
+end
+
+subsection \<open>Pushing the instance through \<open>of_int\<close>\<close>
+
+lemma ps_of_int: "ps = of_int 1753"
+  by (simp add: ps_def of_int_of_int_mod_ring)
+
+lemma ps_512: "ps ^ 512 = 1"
+proof -
+  have "ps ^ 512 = ps ^ (2 * 256)" by simp
+  also have "\<dots> = (ps * ps) ^ 256" by (simp only: power_mult power2_eq_square)
+  also have "\<dots> = 1" by (simp add: ps_sq w_256)
+  finally show ?thesis .
+qed
+
+lemma ps_pow_mod: "ps ^ a = ps ^ (a mod 512)"
+proof -
+  have "ps ^ a = ps ^ (512 * (a div 512) + a mod 512)" by simp
+  also have "\<dots> = (ps ^ 512) ^ (a div 512) * ps ^ (a mod 512)"
+    by (simp only: power_add power_mult)
+  finally show ?thesis by (simp add: ps_512)
+qed
+
+lemma mu_ps: "mu = ps ^ 510"
+proof -
+  have "mu = mu * ps ^ 512" by (simp add: ps_512)
+  also have "\<dots> = (mu * (ps * ps)) * ps ^ 510"
+    by (simp add: power_add[symmetric] mult.assoc power2_eq_square[symmetric])
+  also have "\<dots> = ps ^ 510" by (simp add: ps_sq mu_w)
+  finally show ?thesis .
+qed
+
+text \<open>The inverse twiddle \<open>(\<psi>\<mu>)^k \<mu>^(kt) = \<psi>^(-(2t+1)k)\<close>, with the exponent kept in \<open>Z/512\<close>.\<close>
+
+lemma inv_twiddle:
+  "(ps * mu) ^ k * mu ^ (k * t) = of_int (1753 ^ nat ((- (2 * int t + 1) * int k) mod 512))"
+proof -
+  have p511: "ps * ps ^ 510 = ps ^ 511" using power_add[of ps 1 510] by simp
+  have "(ps * mu) ^ k * mu ^ (k * t) = (ps ^ 511) ^ k * (ps ^ 510) ^ (k * t)"
+    by (simp only: mu_ps p511)
+  also have "\<dots> = ps ^ (511 * k + 510 * (k * t))"
+    by (simp only: power_add power_mult)
+  also have "\<dots> = ps ^ ((511 * k + 510 * (k * t)) mod 512)" by (rule ps_pow_mod)
+  also have "(511 * k + 510 * (k * t)) mod 512 = nat ((- (2 * int t + 1) * int k) mod 512)"
+  proof -
+    have i: "int (511 * k + 510 * (k * t))
+               = (- (2 * int t + 1) * int k) + 512 * (int k + int k * int t)"
+      by (simp add: algebra_simps)
+    have "int ((511 * k + 510 * (k * t)) mod 512) = int (511 * k + 510 * (k * t)) mod 512"
+      by (simp only: of_nat_mod) simp
+    also have "\<dots> = (- (2 * int t + 1) * int k) mod 512"
+      by (simp only: i mod_mult_self2)
+    finally show ?thesis by simp
+  qed
+  finally show ?thesis by (simp add: ps_of_int)
+qed
+
+lemma omr_eq_mod:
+  assumes "(of_int a :: fin8380417 mod_ring) = of_int b"
+  shows "a mod 8380417 = b mod 8380417"
+  using arg_cong[OF assms, of to_int_mod_ring] by (simp add: of_int_of_int_mod_ring to_int_omr)
+
+theorem conv_int:
+  fixes f g :: "nat \<Rightarrow> int"
+  assumes k: "k < 256"
+  shows "(\<Sum>t<256. (\<Sum>j<256. f j * 1753 ^ ((2 * t + 1) * j))
+                  * (\<Sum>j<256. g j * 1753 ^ ((2 * t + 1) * j))
+                  * 1753 ^ nat ((- (2 * int t + 1) * int k) mod 512)) mod 8380417
+       = (256 * negconv_int f g k) mod 8380417"
+proof -
+  interpret M: negacyclic_butterfly 8380417 256 32736 w mu ps 8 by (rule mldsa_model)
+  define F :: "fin8380417 mod_ring list" where "F = map (\<lambda>j. of_int (f j)) [0..<256]"
+  define G :: "fin8380417 mod_ring list" where "G = map (\<lambda>j. of_int (g j)) [0..<256]"
+  have fwd: "M.nntt (map (\<lambda>j. of_int (h j)) [0..<256]) t
+               = (of_int (\<Sum>j<256. h j * 1753 ^ ((2 * t + 1) * j)) :: fin8380417 mod_ring)"
+    for h :: "nat \<Rightarrow> int" and t
+    unfolding M.nntt_def atLeast0LessThan
+    by (simp add: ps_of_int)
+  have nc: "M.negconv F G ! k = (of_int (negconv_int f g k) :: fin8380417 mod_ring)"
+    unfolding negconv_int_def F_def G_def using k
+    by (auto simp: M.negconv_nth intro!: sum.cong)
+  have "(\<Sum>t<256. M.nntt F t * M.nntt G t * ((ps * mu) ^ k * mu ^ (k * t)))
+          = of_int_mod_ring (int 256) * M.negconv F G ! k"
+    using M.conv_sum[of k F G] k by simp
+  hence "(of_int (\<Sum>t<256. (\<Sum>j<256. f j * 1753 ^ ((2 * t + 1) * j))
+                  * (\<Sum>j<256. g j * 1753 ^ ((2 * t + 1) * j))
+                  * 1753 ^ nat ((- (2 * int t + 1) * int k) mod 512)) :: fin8380417 mod_ring)
+        = of_int (256 * negconv_int f g k)"
+    unfolding F_def G_def fwd inv_twiddle
+    by (simp add: nc[unfolded F_def G_def] of_int_of_int_mod_ring[symmetric])
+  thus ?thesis by (rule omr_eq_mod)
+qed
+
+end
