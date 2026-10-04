@@ -1,7 +1,7 @@
 (* v4, matrix-vector step: one row of A*y.
 
-   ML-DSA computes w = NTT^-1(A_hat o NTT(y)) (FIPS 204 Alg 7 line 5 / Alg 8 line 9), where A_hat is
-   sampled directly in NTT form. The reference does one row as
+   ML-DSA computes NTT^-1(A_hat o NTT(y)) in key generation (FIPS 204 Alg 6, with s1) and signing
+   (Alg 7, with y), where A_hat is sampled directly in NTT form. The reference does one row as
      polyvecl_pointwise_acc_montgomery   (acc: four pointwise products summed with poly_add)
      poly_reduce                         (preduce: reduce32 on every coefficient)
      poly_invntt_tomont                  (invntt)
@@ -211,17 +211,6 @@ qed
 
 subsection \<open>The row theorem, ring form\<close>
 
-lemma ntt_bounded_mono:
-  assumes "ntt_bounded B a" and "B \<le> C"
-  shows "ntt_bounded C a"
-  unfolding ntt_bounded_def
-proof
-  fix n
-  have "- B \<le> sint_seq (nth_seq a n)" "sint_seq (nth_seq a n) \<le> B"
-    using assms(1) unfolding ntt_bounded_def by auto
-  thus "- C \<le> sint_seq (nth_seq a n) \<and> sint_seq (nth_seq a n) \<le> C" using assms(2) by linarith
-qed
-
 lemma inv_256: "[8347681 * 256 = (1::int)] (mod 8380417)"
   by (simp add: cong_def)
 
@@ -229,7 +218,7 @@ text \<open>If row \<open>i\<close> of the NTT-domain operand is the transform o
 other operand is \<open>ntt\<close> of \<open>y_i\<close>, then each output coefficient is \<open>\<Sum>i<4. negconv (f i) y_i\<close> mod q.\<close>
 
 theorem acc_mult_coeff:
-  assumes bu: "\<And>i. i < 4 \<Longrightarrow> ntt_bounded 8380416 (nth_seq u i)"
+  assumes bu: "\<And>i. i < 4 \<Longrightarrow> ntt_bounded 75423752 (nth_seq u i)"
     and hv: "\<And>i. i < 4 \<Longrightarrow> nth_seq v i = ntt (nth_seq y i)"
     and by': "\<And>i. i < 4 \<Longrightarrow> ntt_bounded 8380416 (nth_seq y i)"
     and tf: "\<And>i m. i < 4 \<Longrightarrow> m < 256 \<Longrightarrow>
@@ -243,7 +232,7 @@ proof -
   define Y where "Y i t = (\<Sum>j<256. sf (nth_seq y i) j * 1753 ^ ((2 * t + 1) * j))" for i t
   define z where "z t = zpw (- (2 * int t + 1) * int k)" for t
   have bu9: "ntt_bounded 75423752 (nth_seq u i)" if "i < 4" for i
-    using ntt_bounded_mono[OF bu[OF that]] by simp
+    by (rule bu[OF that])
   have bv9: "ntt_bounded 75423752 (nth_seq v i)" if "i < 4" for i
     using ntt_out_bounded[OF by'[OF that]] by (simp add: hv[OF that])
   have main: "[256 * sf ?C k = (\<Sum>i<4. \<Sum>m<256. sf (nth_seq u i) m * sf (nth_seq v i) m * z (brv 8 m))]
@@ -296,13 +285,33 @@ proof -
   finally show ?thesis unfolding cong_def sf_def .
 qed
 
-text \<open>The row in \<open>R_q\<close>. For every NTT-domain row \<open>u\<close> with \<open>|coeff| < q\<close> (as \<open>poly_uniform\<close>'s
-\<open>[0, q)\<close> output is) and every \<open>y\<close> with \<open>|coeff| < q\<close>, there are integer polynomials \<open>A_i\<close> whose
-transforms are the rows of \<open>u\<close>, and the C model's output is \<open>\<Sum>i<4. A_i * y_i\<close> mod \<open>X^256 + 1\<close>.
-This is FIPS 204's \<open>NTT^-1(A_hat o NTT(y))\<close> for one row, read as polynomials.\<close>
+text \<open>The row in \<open>R_q\<close>, universal form. For NTT-domain rows \<open>u\<close> within \<open>9q\<close> (\<open>poly_uniform\<close>
+stores 23-bit values, so \<open>|A coeff| < 2^23 < 9q\<close>), every \<open>y\<close> with \<open>|coeff| < q\<close>, and EVERY choice of
+integer polynomials \<open>f i\<close> whose transforms are the rows of \<open>u\<close> mod q, the C model's output is
+\<open>\<Sum>i<4. f_i * y_i\<close> mod \<open>X^256 + 1\<close>. This is FIPS 204's \<open>NTT^-1(A_hat o NTT(y))\<close> for one row, read
+as polynomials. \<open>acc_mult_ring_ex\<close> below shows such \<open>f\<close> always exist.\<close>
 
 theorem acc_mult_ring:
-  assumes bu: "\<And>i. i < 4 \<Longrightarrow> ntt_bounded 8380416 (nth_seq u i)"
+  assumes bu: "\<And>i. i < 4 \<Longrightarrow> ntt_bounded 75423752 (nth_seq u i)"
+    and hv: "\<And>i. i < 4 \<Longrightarrow> nth_seq v i = ntt (nth_seq y i)"
+    and by': "\<And>i. i < 4 \<Longrightarrow> ntt_bounded 8380416 (nth_seq y i)"
+    and tf: "\<And>i m. i < 4 \<Longrightarrow> m < 256 \<Longrightarrow>
+               sf (nth_seq u i) m mod 8380417 = (\<Sum>j<256. f i j * 1753 ^ ((2 * brv 8 m + 1) * j)) mod 8380417"
+  shows "Poly (map (\<lambda>k. of_int (sf (invntt (preduce (acc u v))) k) :: fin8380417 mod_ring) [0..<256])
+       = (\<Sum>i<4. Poly (map (\<lambda>j. of_int (f i j)) [0..<256])
+                 * Poly (map (\<lambda>j. of_int (sf (nth_seq y i) j)) [0..<256])) mod (monom 1 256 + 1)"
+proof (rule negconv_sum_ring)
+  fix k :: nat assume k: "k < 256"
+  show "sf (invntt (preduce (acc u v))) k mod 8380417
+          = (\<Sum>i<4. negconv_int (f i) (sf (nth_seq y i)) k) mod 8380417"
+    using acc_mult_coeff[OF bu hv by' tf k] by (simp only: sf_def)
+qed
+
+text \<open>Such \<open>f\<close> exist for every row (the transform is onto mod q, \<open>ntt_int_surj\<close>), so the hypothesis
+\<open>tf\<close> of \<open>acc_mult_ring\<close> can always be met.\<close>
+
+theorem acc_mult_ring_ex:
+  assumes bu: "\<And>i. i < 4 \<Longrightarrow> ntt_bounded 75423752 (nth_seq u i)"
     and hv: "\<And>i. i < 4 \<Longrightarrow> nth_seq v i = ntt (nth_seq y i)"
     and by': "\<And>i. i < 4 \<Longrightarrow> ntt_bounded 8380416 (nth_seq y i)"
   shows "\<exists>f :: nat \<Rightarrow> nat \<Rightarrow> int.
@@ -342,5 +351,37 @@ proof -
 qed
 
 end
+
+
+subsection \<open>Oracle gate\<close>
+
+text \<open>Checked by the kernel at build time, so the docs' oracle statements cannot drift. The headline
+theorems depend on exactly one oracle, the code generator's \<open>holds_by_evaluation\<close>, inherited from
+the twiddle-table facts behind the transform bridges, and on no proof hole. The ring-side and
+accumulator lemmas depend on no oracle at all.\<close>
+
+ML \<open>
+  let
+    fun names th = sort_strings (map (fn ((n, _), _) => n) (Thm_Deps.all_oracles [th]))
+    fun no_skip nm th =
+      if Thm_Deps.has_skip_proof [th] then error ("ORACLE GATE: " ^ nm ^ " depends on a proof hole") else ()
+    fun exactly nm want th =
+      (no_skip nm th;
+       if names th = want then ()
+       else error ("ORACLE GATE: " ^ nm ^ " depends on [" ^ commas (names th) ^ "], expected [" ^
+                   commas want ^ "]"))
+    val ev = ["Code_Generator.holds_by_evaluation"]
+    val _ = exactly "acc_mult_ring" ev @{thm acc_mult_ring}
+    val _ = exactly "acc_mult_fips" ev @{thm acc_mult_fips}
+    val _ = exactly "ntt_mult_ring" ev @{thm ntt_mult_ring}
+    val _ = exactly "ntt_mult_correct" ev @{thm ntt_mult_correct}
+    val _ = exactly "acc_exact" [] @{thm acc_exact}
+    val _ = exactly "ntt_int_surj" [] @{thm ntt_int_surj}
+    val _ = exactly "negconv_sum_ring" [] @{thm negconv_sum_ring}
+    val _ = exactly "negconv_int_ring" [] @{thm negconv_int_ring}
+    val _ = exactly "conv_int" [] @{thm conv_int}
+    val _ = exactly "negconv_is_mult" [] @{thm negacyclic_butterfly.negconv_is_mult}
+  in () end
+\<close>
 
 end

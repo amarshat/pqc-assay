@@ -846,24 +846,29 @@ kernel-checked, which it is not. The CI gate greps `sorry|oops|admit` only and i
 Declared count, gated by `scripts/claim-lint.sh` so it cannot grow silently:
 <!-- EVAL-ORACLE-COUNT: 88 -->
 
-Open: extend the `Thm_Deps.all_oracles` check from `barrettBV_bridge_holds` to `ntt_bridge`,
-`invntt_bridge`, `ntt_signed_correct`, `invntt_signed_correct` and `ntt_residue`, and report what
-comes back. Until that runs, the oracle dependency of those five is recorded but not measured.
+Measured 2026-10-04 with `Thm_Deps.all_oracles`: `ntt_signed_correct`, `invntt_signed_correct` and
+every v4 theorem built on them (`ntt_mult_correct`, `ntt_mult_ring`, `acc_mult_fips`,
+`acc_mult_ring`) depend on exactly `Code_Generator.holds_by_evaluation`. A build-time gate in
+`spec/isabelle/tier2/accwork/Acc_Bridge.thy` now asserts that set, and asserts that the ring-side
+lemmas (`negconv_is_mult`, `conv_int`, `ntt_int_surj`, `negconv_sum_ring`) have no oracle. Still not
+measured: `ntt_bridge`, `invntt_bridge` and the ML-KEM `ntt_residue`.
 
-## A-ROW: the A*y row theorem, what it rests on beyond the proofs
+## A-ROW: the keygen and signing products, what they rest on beyond the proofs
 
-`acc_mult_ring` (`spec/isabelle/tier2/accwork/Acc_Bridge.thy`) is about one row. Four things it
-does not prove, recorded so the claim is not read wider:
+`acc_mult_ring` and `ntt_mult_ring` (`spec/isabelle/tier2/`), with the SAW proofs of the per-polynomial
+functions and the loops in `polyvec.c`, cover the multiplications in keygen and signing. Four things
+they do not prove:
 
-1. The matrix and vector loops (`polyvec_matrix_pointwise_montgomery` over K = 4 rows,
-   `polyveck_reduce`, `polyveck_invntt_tomont`, `polyvecl_ntt`) are not verified. Each is a loop that
-   calls a verified per-polynomial function on `vec[i]`; that is read from `polyvec.c`, not proven.
-2. The hypothesis `|A coeff| < q` is discharged by reading `rej_uniform` in `poly.c` (it stores `t`
-   only when `t < Q`, with `t` a 23-bit value), not by a proof. `poly_uniform` is not verified.
-3. `poly_add` and the accumulator are proven on the `-fwrapv` bitcode. That no int32 add overflows is
-   proven on the model (the four-term sum stays below 4q), and the step from there to "the default
-   bitcode has no signed-overflow UB" is argued, as for the inverse NTT, not mechanized.
-4. ML-DSA-44 only: L = 4 is fixed in the Cryptol model and the theorem.
+1. The order in which `sign.c` calls them (ntt, then the pointwise or matrix loop, then reduce, then
+   the inverse) is read from `sign.c` at the pin, which is not vendored. The loops themselves and
+   the `poly_ntt` / `poly_invntt_tomont` wrappers are verified.
+2. The theorem needs `|A coeff| <= 9q`. That holds because `rej_uniform` in `poly.c` masks each
+   candidate to 23 bits (`t &= 0x7FFFFF`), so any stored value is below 2^23 < 9q, whether or not the
+   `t < Q` test is right. This is read from the source; `poly_uniform` is not verified.
+3. `poly_add`, the accumulator and the loops are proven on the `-fwrapv` bitcode. That no int32 add
+   overflows is proven on the model (the four-term sum stays below 4q), and the step from there to
+   "the default bitcode has no signed-overflow UB" is argued, as for the inverse NTT, not mechanized.
+4. ML-DSA-44 only: L = K = 4 are fixed in the models and the theorems.
 
 ## A-POINTWISE: `poly_pointwise_montgomery` is verified for non-aliasing arguments only
 

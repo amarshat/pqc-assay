@@ -545,8 +545,8 @@ theorems about the definition we wrote.
   rejects a true, equivalent edit in the same way. Those three are not refutations and are not
   counted as evidence. None of these runs is scripted or gated.
 
-  Where ML-DSA uses this composition (checked against `sign.c` / `polyvec.c` at the pin `202a8f9`,
-  which are not vendored). Covered: the signer's `c*s1`, `c*s2` and `c*t0`, where both operands are
+  Where ML-DSA uses this composition (checked against `sign.c` / `polyvec.c` at the pin `202a8f9`;
+  `polyvec.c` has since been vendored, `sign.c` has not). Covered: the signer's `c*s1`, `c*s2` and `c*t0`, where both operands are
   raw `ntt` outputs of centered inputs and the output does not alias an input. Not covered: keygen's
   `A*s1` and the signer's `A*y` (A is sampled directly in NTT form, so it is not an `ntt` output, and
   the four products are summed and passed through `reduce32` before `invntt_tomont`), and
@@ -560,42 +560,59 @@ theorems about the definition we wrote.
   forward NTT on its input window (`ntt_nsw.saw`, see ASSUMPTIONS) and argued, not mechanized, for
   the inverse. (3) A-POINTWISE: non-aliasing arguments only. (4) Inputs outside `|coeff| < q`.
 
-- **A*y, one row. DONE 2026-10-04.** The matrix products in keygen (`A*s1`) and signing (`A*y`)
-  are not `ntt` outputs times `ntt` outputs: A is sampled directly in NTT form, and each row is four
-  pointwise products summed with `poly_add`, then `poly_reduce`, then `invntt_tomont`.
+- **A*y, and the loops around it. DONE 2026-10-04.** The matrix products in keygen (`A*s1`) and
+  signing (`A*y`) are not `ntt` outputs times `ntt` outputs: A is sampled directly in NTT form, and
+  each row is four pointwise products summed with `poly_add`, then `poly_reduce`, then
+  `invntt_tomont`.
 
-  C side (`make saw`, exit 0, each with a rejected result[0]+1 mutant that fails at the postcondition):
-  `poly_add` in the aliasing form `c == a` the accumulator uses, `reduce32` on the `-fwrapv` module
-  for all inputs, `poly_reduce`, and `polyvecl_pointwise_acc_montgomery` (L = 4) against new Cryptol
-  models `padd`, `preduce`, `acc` in `model/cryptol/MLDSA_NTT.cry`. The accumulator proof uses the
-  proven pointwise and poly_add specs as overrides. `polyvec.c`/`polyvec.h` were vendored at the
-  pin for this (`target/README.md`).
+  C side (`make saw`, exit 0). Each obligation below has a mutant (the claimed postcondition with 1
+  added to coefficient 0) that SAW refutes with a counterexample at the postcondition.
+  - Per polynomial: `poly_add` in the aliasing form `c == a` the accumulator uses, `reduce32` on the
+    `-fwrapv` module for all inputs, `poly_reduce`, `polyvecl_pointwise_acc_montgomery` (L = 4),
+    and the one-line wrappers `poly_ntt` and `poly_invntt_tomont`. New Cryptol models `padd`,
+    `preduce`, `acc` in `model/cryptol/MLDSA_NTT.cry`.
+  - Loops: `polyvec_matrix_pointwise_montgomery` (K = 4 rows of `acc`), `polyvecl_ntt`,
+    `polyveck_ntt`, `polyvecl_invntt_tomont`, `polyveck_invntt_tomont`, `polyveck_reduce`, and
+    `polyvecl/polyveck_pointwise_poly_montgomery` (the `c*s1`, `c*s2`, `c*t0` loops, non-aliasing as
+    the signer calls them). Models are Cryptol comprehensions over the lifted per-polynomial
+    functions, so the per-polynomial Isabelle theorems apply entry by entry.
+  These SAW proofs use the already-proven callee specs as overrides with the callee uninterpreted,
+  so they establish routing: call order, which entry goes where, aliasing, and that inputs are left
+  unchanged. The arithmetic content is on the Isabelle side. `polyvec.c`/`polyvec.h` were vendored at
+  the pin for this (`target/README.md`).
 
   Isabelle side (`spec/isabelle/tier2/accwork/Acc_Bridge.thy`, session `Tier2_Acc`, exit 0):
-  - `acc_mult_fips`: for any NTT-domain rows `u` and `v` with every coefficient within 9q,
+  - `acc_mult_fips`: for NTT-domain rows `u` and `v` with every coefficient within 9q,
     `256 * invntt(preduce(acc u v))_k == sum_i sum_m u_i[m] * v_i[m] * zeta^(-(2 brv(m) + 1) k)`
-    mod q, which is FIPS 204's unnormalised `NTT^-1(sum_i A_hat_i o y_hat_i)`.
-  - `acc_mult_ring`: for rows `u` with `|coeff| < q` and `v_i = ntt(y_i)` with `|y_i coeff| < q`,
-    there are integer polynomials `A_i` whose transforms are the rows of `u`, and the output, as a
-    polynomial over `Z_q`, equals `(sum_i A_i * y_i) mod (X^256 + 1)`. The existence comes from
-    `ntt_int_surj` (`Conv_Ring.thy`): the transform is onto mod q.
+    mod q, FIPS 204's unnormalised `NTT^-1(sum_i A_hat_i o y_hat_i)`.
+  - `acc_mult_ring`: for rows `u` within 9q, `v_i = ntt(y_i)` with `|y_i coeff| < q`, and every
+    choice of integer polynomials `f_i` whose transforms are the rows of `u` mod q, the output as a
+    polynomial over `Z_q` equals `(sum_i f_i * y_i) mod (X^256 + 1)`. `acc_mult_ring_ex` shows such
+    `f_i` always exist (`ntt_int_surj`: the transform is onto mod q).
   Bounds are derived: each product is below q, the four-term sum is below 4q (no int32 wrap in
   `poly_add`), that meets `reduce32`'s precondition, and `reduce32`'s output window meets the
-  inverse transform's. `acc_exact`, `ntt_int_surj` and `negconv_sum_ring` have no oracle;
-  `acc_mult_fips`, `acc_mult_coeff` and `acc_mult_ring` inherit `Code_Generator.holds_by_evaluation`
-  through `invntt_signed_correct`, as the O8 theorems do. No new Isabelle mutation evidence: the SAW
-  mutants are property failures, and no Isabelle definition was mutated for this step.
+  inverse transform's. The A bound is 9q, which holds for any 23-bit value; `poly_uniform` masks to
+  23 bits.
 
-  Scope. (1) One row: `polyvec_matrix_pointwise_montgomery`, `polyveck_reduce` and
-  `polyveck_invntt_tomont` loop the verified per-row functions over K = 4 rows; those loops are not
-  verified. (2) ML-DSA-44 only (L = 4 is in the model). (3) The hypothesis `|A coeff| < q` holds
-  because `rej_uniform` only accepts `t < Q`, which is read from the source, not proven (see
-  A-ROW in ASSUMPTIONS). (4) The `-fwrapv` to standard-C step for `poly_add` and the accumulator is
-  argued from the derived bounds, not mechanized. (5) Verification's `A*z - c*t1*2^d` is still not
-  covered: it adds a subtraction and an aliasing pointwise call.
+  Oracles, gated: an ML block at the end of `Acc_Bridge.thy` makes the build fail unless
+  `acc_mult_ring`, `acc_mult_fips`, `ntt_mult_ring` and `ntt_mult_correct` depend on exactly
+  `Code_Generator.holds_by_evaluation` (inherited from the twiddle-table facts) and on no proof hole,
+  and `acc_exact`, `ntt_int_surj`, `negconv_sum_ring`, `negconv_int_ring`, `conv_int` and
+  `negconv_is_mult` on no oracle. Flipping one expectation makes the build fail with the measured set.
 
-  Call sites now covered, at the pin: the signer's `c*s1`, `c*s2`, `c*t0` (O8) and, per row, keygen's
-  `A*s1` and the signer's `A*y`. Not covered: verification.
+  Mutation on the Isabelle side: none scripted. An unscripted check by the reviewer replaced the last
+  term of `acc` with `pointwise (u@3) (v@2)`; the build then fails at one command, the closing step
+  of `acc_exact`. That shows the definition is used; it is a broken proof, not a refuted statement.
+
+  Scope. (1) The order in which `sign.c` calls these functions is read from `sign.c`, which is not
+  vendored, not proven. (2) ML-DSA-44 only (L = K = 4 in the models). (3) The 9q bound on A is read
+  from `poly_uniform`'s 23-bit mask, not proven. (4) The `-fwrapv` to standard-C step for `poly_add`,
+  the accumulator and the inverse NTT is argued from the derived bounds, not mechanized. (5)
+  Verification's `A*z - c*t1*2^d` is not covered: it adds a subtraction and an aliasing pointwise
+  call. See A-ROW in ASSUMPTIONS.
+
+  With that scope: every polynomial multiplication in keygen and signing at the pin (`A*s1`, `A*y`,
+  `c*s1`, `c*s2`, `c*t0`) runs through functions verified here, down to the loops `sign.c` calls.
 
 ### What it unlocks
 

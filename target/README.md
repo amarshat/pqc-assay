@@ -34,7 +34,11 @@ The natural v2 target (optimized ≡ reference) is **PQ Code Package `mldsa-nati
   `scripts/build_bitcode.sh`. SHA-256: `polyvec.c`
   `461a4b048c84c27e73daa7b9aaec94942cdcead3ea55dca5cac63bcf4f443d96`, `polyvec.h`
   `7fc533b6536819f5d52b31c7a4fa29d15d1f0804138b4ea82ff42bd6a8aaffdf` (also pinned in
-  `scripts/check_target_identity.sh`). Only `polyvecl_pointwise_acc_montgomery` is verified.
+  `scripts/check_target_identity.sh`). Verified from it: `polyvecl_pointwise_acc_montgomery`,
+  `polyvec_matrix_pointwise_montgomery`, `polyvecl_ntt`, `polyveck_ntt`, `polyvecl_invntt_tomont`,
+  `polyveck_invntt_tomont`, `polyveck_reduce`, `polyvecl_pointwise_poly_montgomery` and
+  `polyveck_pointwise_poly_montgomery` (non-aliasing). From `poly.c`, also `poly_ntt` and
+  `poly_invntt_tomont`.
 - The `reduce.c` translation unit defines four functions:
   | Function | Signature | What it does |
   |---|---|---|

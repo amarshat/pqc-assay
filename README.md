@@ -327,13 +327,15 @@ the SAW-checked models, so it reaches the C through three separate `-O0 -fwrapv`
 non-aliasing scope in A-POINTWISE. It inherits the code-generator oracle from the twiddle-table
 facts the transform bridges use. In the scheme it covers the signer's `c*s1`, `c*s2` and `c*t0`.
 
-The matrix products are covered per row. SAW proves `polyvecl_pointwise_acc_montgomery`, `poly_add`
-and `poly_reduce` equal to their Cryptol models, and `acc_mult_ring`
-(`spec/isabelle/tier2/accwork/Acc_Bridge.thy`) proves that one row of keygen's `A*s1` or the
-signer's `A*y` computes `sum_i A_i * y_i` in `R_q`, where `A_i` is the polynomial whose transform is
-the sampled row. The loops over rows, and the bound on A's coefficients, are read from the source
-rather than proven (A-ROW in `docs/ASSUMPTIONS.md`). Verification's `A*z - c*t1*2^d` is not covered.
-See `docs/ROADMAP.md` v4.
+The matrix products are covered too. SAW proves `polyvecl_pointwise_acc_montgomery`, `poly_add` (in
+the aliasing form `c == a` it is called with), `poly_reduce`, the `poly_ntt` / `poly_invntt_tomont`
+wrappers and the vector and matrix loops in `polyvec.c` equal to their Cryptol models.
+`acc_mult_ring` (`spec/isabelle/tier2/accwork/Acc_Bridge.thy`) proves, about those models, that a row
+of keygen's `A*s1` or the signer's `A*y` computes `sum_i f_i * y_i` in `R_q` for any polynomials `f_i`
+whose transforms are the sampled rows. Not proven: the order `sign.c` calls these in (read from
+the source), the bound on A's coefficients (read from `poly_uniform`'s 23-bit mask), and the absence
+of signed overflow on the default build for `poly_add` and the accumulator (argued). See A-ROW in
+`docs/ASSUMPTIONS.md`. Verification's `A*z - c*t1*2^d` is not covered. See `docs/ROADMAP.md` v4.
 
 ## The checks, run on proofs we did not write (`make external-corpus`)
 
