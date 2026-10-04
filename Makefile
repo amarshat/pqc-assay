@@ -103,7 +103,7 @@ tier2:
 convolution:
 	@echo ">> Isabelle (Tier2_Inv): NTT diagonalises multiplication in R_q + a model at the ML-DSA parameters"
 	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -d $(shell ls -d $(CURDIR)/.tools/afp-*/thys) -v Tier2_Inv
-	@echo ">> Isabelle (Tier2_Conv): invntt(pointwise(ntt a, ntt b)) == negconv a b mod q on the lifted models (O8)"
+	@echo ">> Isabelle (Tier2_Conv): invntt(pointwise(ntt a, ntt b)) == a*b in Z_q[X]/(X^256+1) on the lifted models (O8)"
 	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -d $(shell ls -d $(CURDIR)/.tools/afp-*/thys) -v Tier2_Conv
 
 ## Tier2_InvWork Isabelle session: lifted inverse NTT ≡ FIPS-204 inverse negacyclic transform

@@ -301,10 +301,11 @@ Every other NTT theorem here says the transform is the transform and that it inv
 `negconv` to pointwise multiplication, where `negconv` is the coefficient formula for
 multiplication in `R_q = Z_q[X]/(X^n+1)`.
 
-Stated precisely, because the difference matters: `negconv` is **not proven** to be multiplication
-in `R_q`. It agrees with an independent long-division implementation at five parameter sets
-including ML-DSA's, which is a test. The lemma that would close it is
-`Poly (negconv xs ys) = (Poly xs * Poly ys) mod (X^n+1)`, and it is not in the tree.
+`negconv` is proven to be multiplication in `R_q`: `negconv_is_mult`
+(`spec/isabelle/tier2/inv/Negacyclic_Poly.thy`) states
+`Poly (negconv xs ys) = (Poly xs * Poly ys) mod (X^n+1)` for length-`n` lists. Before that lemma
+existed the only evidence was agreement with an independent long-division implementation at five
+parameter sets, which is a test; that check is still in the tree.
 
 Prior art, which an earlier version of this section did not acknowledge: the AFP `CRYSTALS-Kyber`
 entry proves the stronger statement over an actual quotient ring
@@ -320,10 +321,10 @@ Connected to the implementation models (O7, O8). SAW proves `poly_pointwise_mont
 the Cryptol `pointwise`, and `ntt_mult_correct` (`spec/isabelle/tier2/convwork/Conv_Bridge.thy`,
 session `Tier2_Conv`) proves that for inputs with `|coeff| < q`, `invntt(pointwise(ntt a, ntt b))`
 equals `negconv a b` mod q coefficient by coefficient, with the Montgomery factors cancelling
-exactly. That is a statement about the SAW-checked models, so it reaches the C through three
-separate `-fwrapv` equivalences and the non-aliasing scope in A-POINTWISE. It is still about
-`negconv`, not about multiplication in `R_q`, until the `Poly` lemma above exists. See
-`docs/ROADMAP.md` v4, O8.
+exactly. `ntt_mult_ring` restates it in `Z_q[X]/(X^256+1)`: the output, as a polynomial over
+`Z_q`, is the product of the two input polynomials reduced mod `X^256+1`. That is a statement about
+the SAW-checked models, so it reaches the C through three separate `-fwrapv` equivalences and the
+non-aliasing scope in A-POINTWISE. See `docs/ROADMAP.md` v4, O8.
 
 ## The checks, run on proofs we did not write (`make external-corpus`)
 

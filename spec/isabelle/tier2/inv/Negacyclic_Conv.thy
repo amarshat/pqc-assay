@@ -225,9 +225,8 @@ lemma length_pointwise [simp]: "length (pointwise us vs) = n"
   by (simp add: pointwise_def)
 
 text \<open>\<^bold>\<open>What this does and does not say.\<close> \<open>negconv\<close> is a coefficient formula. That it IS
-multiplication in \<open>R_q\<close> is not proven here: the missing lemma is
-\<open>Poly (negconv xs ys) = (Poly xs * Poly ys) mod (monom 1 n + 1)\<close>. Until that exists, read the
-theorem below as being about \<open>negconv\<close>, not about a product.\<close>
+multiplication in \<open>R_q\<close>, \<open>Poly (negconv xs ys) = (Poly xs * Poly ys) mod (monom 1 n + 1)\<close>, is
+proven separately as \<open>negconv_is_mult\<close> in \<open>Negacyclic_Poly\<close>.\<close>
 
 theorem NNTT_negconv: "NNTT (negconv xs ys) = pointwise (NNTT xs) (NNTT ys)"
   by (simp add: NNTT_def pointwise_def nntt_negconv)

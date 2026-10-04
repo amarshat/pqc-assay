@@ -36,6 +36,7 @@ session Tier2_Inv in "inv" = Tier2_Base +
   theories
     Negacyclic_Inv
     Negacyclic_Conv
+    Negacyclic_Poly
     Mldsa_Instance
     Conv_Ring
 

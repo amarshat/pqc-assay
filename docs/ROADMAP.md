@@ -392,9 +392,13 @@ of `ord omega`, where `NTT_Scheme.thy:28` assumes it; and `w_order_minimal` pins
 facts where `Powers3844.thy:13` checks 255 powers with `by eval`. Both are small strengthenings of
 an existing AFP entry, which is a patch, not a new entry.
 
-Also **not proven**: that `negconv` is multiplication in `R_q`. It is a coefficient formula with a
-numeric agreement check. The missing lemma is
-`Poly (negconv xs ys) = (Poly xs * Poly ys) mod (monom 1 n + 1)`.
+That `negconv` is multiplication in `R_q` was missing until 2026-10-04 and is now proven:
+`negconv_is_mult` (`spec/isabelle/tier2/inv/Negacyclic_Poly.thy`, `Tier2_Inv`, no holes) states
+`Poly (negconv xs ys) = (Poly xs * Poly ys) mod (monom 1 n + 1)` for lists of length `n`. The proof
+is `conv_row`'s rearrangement run at `X` with monomials: the wrap-around terms give
+`X^(a+n) = (X^n + 1) X^a - X^a`, the `(X^n + 1)` parts are collected into an explicit quotient, and
+`degree (Poly (negconv xs ys)) < n` pins `negconv` as the remainder. Mutant: replacing `X^n + 1` with
+the cyclic `X^n - 1` is rejected at the remainder step.
 
 ### Where it goes
 
@@ -525,8 +529,12 @@ theorems about the definition we wrote.
   Two mutants, both rejected: flipping the sign of the wrap-around term in `negconv_int` breaks
   `conv_int`, and a factor-2 conclusion breaks the last step of `ntt_mult_correct`.
 
-  What this does not cover. (1) `negconv_int` is the coefficient formula; that it is multiplication in
-  `R_q` is still the missing `Poly` lemma above. (2) The C composition is three separate SAW
+  Ring reading, same day: `ntt_mult_ring` (same file) composes this with `negconv_is_mult` through
+  `negconv_int_ring` (`Conv_Ring.thy`) and states that the output coefficients, as a polynomial over
+  `Z_q` (type `fin8380417 mod_ring poly`), equal `(Poly a * Poly b) mod (X^256 + 1)`. Mutant: a
+  wrong modulus `X^128 + 1` in the corollary is rejected.
+
+  What this does not cover. (1) Superseded: the `Poly` lemma is now proven, see above. (2) The C composition is three separate SAW
   equivalences, each on the `-fwrapv` module, with the no-UB step argued as for the forward NTT, not
   mechanized. (3) A-POINTWISE: non-aliasing arguments only. (4) Inputs outside `|coeff| < q` are
   not covered, and nothing here checks which call sites in the reference stay inside it.

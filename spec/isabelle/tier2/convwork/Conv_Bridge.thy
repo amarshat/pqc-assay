@@ -203,6 +203,24 @@ proof -
   finally show ?thesis unfolding cong_def sf_def .
 qed
 
+
+text \<open>The same theorem read in \<open>R_q = Z_q[X]/(X^256 + 1)\<close>: the output coefficients of
+\<open>invntt (pointwise (ntt a) (ntt b))\<close>, as a polynomial over \<open>Z_q\<close>, are the product of the input
+polynomials reduced mod \<open>X^256 + 1\<close>.\<close>
+
+corollary ntt_mult_ring:
+  assumes ba: "ntt_bounded 8380416 a" and bb: "ntt_bounded 8380416 b"
+  shows "Poly (map (\<lambda>k. of_int (sf (invntt (pointwise (ntt a) (ntt b))) k) :: fin8380417 mod_ring)
+                   [0..<256])
+       = (Poly (map (\<lambda>j. of_int (sf a j)) [0..<256]) * Poly (map (\<lambda>j. of_int (sf b j)) [0..<256]))
+           mod (monom 1 256 + 1)"
+proof (rule negconv_int_ring)
+  fix k :: nat assume k: "k < 256"
+  show "sf (invntt (pointwise (ntt a) (ntt b))) k mod 8380417
+          = negconv_int (sf a) (sf b) k mod 8380417"
+    using ntt_mult_correct[OF ba bb k] by (simp only: sf_def)
+qed
+
 end
 
 end

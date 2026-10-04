@@ -9,7 +9,7 @@
    The exponent 1753^(nat ((-(2t+1)k) mod 512)) is zpw (-(2t+1)k) unfolded; it is written out here
    so this theory does not depend on Inv_Mont_Bridge. *)
 theory Conv_Ring
-  imports Mldsa_Instance
+  imports Mldsa_Instance Negacyclic_Poly
 begin
 
 text \<open>Negacyclic convolution on integer coefficient functions, the same shape as the locale's
@@ -149,6 +149,41 @@ proof -
     unfolding F_def G_def fwd inv_twiddle
     by (simp add: nc[unfolded F_def G_def] of_int_of_int_mod_ring[symmetric])
   thus ?thesis by (rule omr_eq_mod)
+qed
+
+
+text \<open>The ring reading. Any integer coefficient function that agrees with \<open>negconv_int f g\<close> mod q
+on \<open>[0,256)\<close> is, as a polynomial over \<open>Z_q\<close>, the product of \<open>f\<close> and \<open>g\<close> reduced mod
+\<open>X^256 + 1\<close>. This is \<open>negconv_is_mult\<close> at \<open>mldsa_model\<close>, pushed through \<open>of_int\<close>.\<close>
+
+theorem negconv_int_ring:
+  fixes f g h :: "nat \<Rightarrow> int"
+  assumes agree: "\<And>k. k < 256 \<Longrightarrow> h k mod 8380417 = negconv_int f g k mod 8380417"
+  shows "Poly (map (\<lambda>k. of_int (h k) :: fin8380417 mod_ring) [0..<256])
+       = (Poly (map (\<lambda>j. of_int (f j)) [0..<256]) * Poly (map (\<lambda>j. of_int (g j)) [0..<256]))
+           mod (monom 1 256 + 1)"
+proof -
+  interpret M: negacyclic_butterfly 8380417 256 32736 w mu ps 8 by (rule mldsa_model)
+  define F :: "fin8380417 mod_ring list" where "F = map (\<lambda>j. of_int (f j)) [0..<256]"
+  define G :: "fin8380417 mod_ring list" where "G = map (\<lambda>j. of_int (g j)) [0..<256]"
+  have nc: "M.negconv F G ! k = (of_int (negconv_int f g k) :: fin8380417 mod_ring)"
+    if k: "k < 256" for k
+    using k by (auto simp: M.negconv_nth negconv_int_def F_def G_def intro!: sum.cong)
+  have hk: "(of_int (h k) :: fin8380417 mod_ring) = of_int (negconv_int f g k)"
+    if k: "k < 256" for k
+  proof -
+    have "(of_int (h k) :: fin8380417 mod_ring) = of_int_mod_ring (h k mod Q)"
+      by (simp add: of_int_of_int_mod_ring omr_modQ[symmetric])
+    also have "\<dots> = of_int_mod_ring (negconv_int f g k mod Q)" using agree[OF k] by simp
+    also have "\<dots> = of_int (negconv_int f g k)"
+      by (simp add: of_int_of_int_mod_ring omr_modQ[symmetric])
+    finally show ?thesis .
+  qed
+  have eq: "map (\<lambda>k. of_int (h k) :: fin8380417 mod_ring) [0..<256] = M.negconv F G"
+    by (rule nth_equalityI) (simp_all add: hk nc del: M.negconv_nth)
+  show ?thesis
+    unfolding eq F_def[symmetric] G_def[symmetric]
+    by (rule M.negconv_is_mult) (simp_all add: F_def G_def)
 qed
 
 end
