@@ -186,4 +186,99 @@ proof -
     by (rule M.negconv_is_mult) (simp_all add: F_def G_def)
 qed
 
+
+text \<open>Every NTT-domain vector is the transform of some integer polynomial (the transform is onto mod
+q). This is what lets a statement about an operand sampled directly in NTT form, like ML-DSA's
+\<open>A_hat\<close>, be read as a statement about polynomials. Witness: \<open>INNTT\<close> of the vector scaled by
+\<open>256^-1 = 8347681\<close>, then \<open>NNTT_INNTT\<close>.\<close>
+
+theorem ntt_int_surj:
+  fixes x :: "nat \<Rightarrow> int"
+  shows "\<exists>f :: nat \<Rightarrow> int. \<forall>t<256.
+           (\<Sum>j<256. f j * 1753 ^ ((2 * t + 1) * j)) mod 8380417 = x t mod 8380417"
+proof -
+  interpret M: negacyclic_butterfly 8380417 256 32736 w mu ps 8 by (rule mldsa_model)
+  define ys :: "fin8380417 mod_ring list" where "ys = map (\<lambda>t. of_int (8347681 * x t)) [0..<256]"
+  define fl where "fl = M.INNTT ys"
+  define f where "f j = to_int_mod_ring (fl ! j)" for j
+  have nn: "M.NNTT fl = map (\<lambda>c. of_int_mod_ring (int 256) * c) ys"
+    unfolding fl_def by (rule M.NNTT_INNTT) (simp add: ys_def)
+  have e: "(of_int (to_int_mod_ring c) :: fin8380417 mod_ring) = c" for c
+    by (simp add: of_int_of_int_mod_ring)
+  have inv: "(of_int (2137006336 * a) :: fin8380417 mod_ring) = of_int a" for a :: int
+  proof -
+    have "(2137006336 * a) mod Q = (a + Q * (255 * a)) mod Q" by (simp add: algebra_simps)
+    also have "\<dots> = a mod Q" by (rule mod_mult_self2)
+    finally show ?thesis by (simp add: of_int_of_int_mod_ring omr_modQ[of "2137006336 * a"] omr_modQ[of a])
+  qed
+  have "(of_int (\<Sum>j<256. f j * 1753 ^ ((2 * t + 1) * j)) :: fin8380417 mod_ring) = of_int (x t)"
+    if t: "t < 256" for t
+  proof -
+    have "(of_int (\<Sum>j<256. f j * 1753 ^ ((2 * t + 1) * j)) :: fin8380417 mod_ring)
+            = (\<Sum>j<256. fl ! j * ps ^ ((2 * t + 1) * j))"
+      by (simp add: f_def ps_of_int e)
+    also have "\<dots> = M.nntt fl t" by (simp add: M.nntt_def atLeast0LessThan)
+    also have "\<dots> = M.NNTT fl ! t" using t by (simp add: M.NNTT_def)
+    also have "\<dots> = of_int_mod_ring (int 256) * of_int (8347681 * x t)" using t by (simp add: nn ys_def)
+    also have "\<dots> = of_int (2137006336 * x t)" by (simp add: of_int_of_int_mod_ring[symmetric])
+    also have "\<dots> = of_int (x t)" by (rule inv)
+    finally show ?thesis .
+  qed
+  thus ?thesis by (intro exI[of _ f] allI impI omr_eq_mod) blast
+qed
+
+text \<open>The sum form of the ring reading, for a matrix row: an integer coefficient function that agrees
+with \<open>\<Sum>i<L. negconv_int (f i) (g i)\<close> mod q is \<open>\<Sum>i<L. f_i * g_i\<close> reduced mod \<open>X^256 + 1\<close>.\<close>
+
+theorem negconv_sum_ring:
+  fixes f g :: "nat \<Rightarrow> nat \<Rightarrow> int" and h :: "nat \<Rightarrow> int"
+  assumes agree: "\<And>k. k < 256 \<Longrightarrow> h k mod 8380417 = (\<Sum>i<L. negconv_int (f i) (g i) k) mod 8380417"
+  shows "Poly (map (\<lambda>k. of_int (h k) :: fin8380417 mod_ring) [0..<256])
+       = (\<Sum>i<L. Poly (map (\<lambda>j. of_int (f i j)) [0..<256]) * Poly (map (\<lambda>j. of_int (g i j)) [0..<256]))
+           mod (monom 1 256 + 1)"
+proof -
+  interpret M: negacyclic_butterfly 8380417 256 32736 w mu ps 8 by (rule mldsa_model)
+  define F where "F i = (map (\<lambda>j. of_int (f i j)) [0..<256] :: fin8380417 mod_ring list)" for i
+  define G where "G i = (map (\<lambda>j. of_int (g i j)) [0..<256] :: fin8380417 mod_ring list)" for i
+  let ?D = "monom 1 256 + 1 :: fin8380417 mod_ring poly"
+  have nc: "M.negconv (F i) (G i) ! k = (of_int (negconv_int (f i) (g i) k) :: fin8380417 mod_ring)"
+    if k: "k < 256" for i k
+    using k by (auto simp: M.negconv_nth negconv_int_def F_def G_def intro!: sum.cong)
+  have hk: "(of_int (h k) :: fin8380417 mod_ring) = (\<Sum>i<L. M.negconv (F i) (G i) ! k)"
+    if k: "k < 256" for k
+  proof -
+    have "(of_int (h k) :: fin8380417 mod_ring) = of_int_mod_ring (h k mod Q)"
+      by (simp add: of_int_of_int_mod_ring omr_modQ[symmetric])
+    also have "\<dots> = of_int_mod_ring ((\<Sum>i<L. negconv_int (f i) (g i) k) mod Q)" using agree[OF k] by simp
+    also have "\<dots> = of_int (\<Sum>i<L. negconv_int (f i) (g i) k)"
+      by (simp add: of_int_of_int_mod_ring omr_modQ[symmetric])
+    also have "\<dots> = (\<Sum>i<L. M.negconv (F i) (G i) ! k)" by (simp add: nc[OF k])
+    finally show ?thesis .
+  qed
+  have lhs: "Poly (map (\<lambda>k. of_int (h k) :: fin8380417 mod_ring) [0..<256])
+               = (\<Sum>i<L. Poly (M.negconv (F i) (G i)))"
+  proof -
+    have "Poly (map (\<lambda>k. of_int (h k) :: fin8380417 mod_ring) [0..<256])
+            = (\<Sum>k<256. monom (of_int (h k)) k)"
+      by (subst M.Poly_as_sum) simp_all
+    also have "\<dots> = (\<Sum>k<256. \<Sum>i<L. monom (M.negconv (F i) (G i) ! k) k)"
+      by (rule sum.cong[OF refl]) (simp add: hk monom_sum)
+    also have "\<dots> = (\<Sum>i<L. \<Sum>k<256. monom (M.negconv (F i) (G i) ! k) k)" by (rule sum.swap)
+    also have "\<dots> = (\<Sum>i<L. Poly (M.negconv (F i) (G i)))"
+      by (rule sum.cong[OF refl]) (subst M.Poly_as_sum, simp_all)
+    finally show ?thesis .
+  qed
+  have each: "Poly (M.negconv (F i) (G i)) = (Poly (F i) * Poly (G i)) mod ?D" for i
+    by (rule M.negconv_is_mult) (simp_all add: F_def G_def)
+  have dlt: "degree (Poly (map (\<lambda>k. of_int (h k) :: fin8380417 mod_ring) [0..<256])) < degree ?D"
+    using M.degree_Poly_lt[of "map (\<lambda>k. of_int (h k)) [0..<256]"] M.degree_Dn by simp
+  have "(\<Sum>i<L. Poly (F i) * Poly (G i)) mod ?D = (\<Sum>i<L. (Poly (F i) * Poly (G i)) mod ?D) mod ?D"
+    by (rule mod_sum_eq[symmetric])
+  also have "\<dots> = Poly (map (\<lambda>k. of_int (h k) :: fin8380417 mod_ring) [0..<256]) mod ?D"
+    by (simp add: lhs each)
+  also have "\<dots> = Poly (map (\<lambda>k. of_int (h k) :: fin8380417 mod_ring) [0..<256])"
+    by (rule mod_poly_less[OF dlt])
+  finally show ?thesis by (simp add: F_def G_def)
+qed
+
 end

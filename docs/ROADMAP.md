@@ -560,6 +560,43 @@ theorems about the definition we wrote.
   forward NTT on its input window (`ntt_nsw.saw`, see ASSUMPTIONS) and argued, not mechanized, for
   the inverse. (3) A-POINTWISE: non-aliasing arguments only. (4) Inputs outside `|coeff| < q`.
 
+- **A*y, one row. DONE 2026-10-04.** The matrix products in keygen (`A*s1`) and signing (`A*y`)
+  are not `ntt` outputs times `ntt` outputs: A is sampled directly in NTT form, and each row is four
+  pointwise products summed with `poly_add`, then `poly_reduce`, then `invntt_tomont`.
+
+  C side (`make saw`, exit 0, each with a rejected result[0]+1 mutant that fails at the postcondition):
+  `poly_add` in the aliasing form `c == a` the accumulator uses, `reduce32` on the `-fwrapv` module
+  for all inputs, `poly_reduce`, and `polyvecl_pointwise_acc_montgomery` (L = 4) against new Cryptol
+  models `padd`, `preduce`, `acc` in `model/cryptol/MLDSA_NTT.cry`. The accumulator proof uses the
+  proven pointwise and poly_add specs as overrides. `polyvec.c`/`polyvec.h` were vendored at the
+  pin for this (`target/README.md`).
+
+  Isabelle side (`spec/isabelle/tier2/accwork/Acc_Bridge.thy`, session `Tier2_Acc`, exit 0):
+  - `acc_mult_fips`: for any NTT-domain rows `u` and `v` with every coefficient within 9q,
+    `256 * invntt(preduce(acc u v))_k == sum_i sum_m u_i[m] * v_i[m] * zeta^(-(2 brv(m) + 1) k)`
+    mod q, which is FIPS 204's unnormalised `NTT^-1(sum_i A_hat_i o y_hat_i)`.
+  - `acc_mult_ring`: for rows `u` with `|coeff| < q` and `v_i = ntt(y_i)` with `|y_i coeff| < q`,
+    there are integer polynomials `A_i` whose transforms are the rows of `u`, and the output, as a
+    polynomial over `Z_q`, equals `(sum_i A_i * y_i) mod (X^256 + 1)`. The existence comes from
+    `ntt_int_surj` (`Conv_Ring.thy`): the transform is onto mod q.
+  Bounds are derived: each product is below q, the four-term sum is below 4q (no int32 wrap in
+  `poly_add`), that meets `reduce32`'s precondition, and `reduce32`'s output window meets the
+  inverse transform's. `acc_exact`, `ntt_int_surj` and `negconv_sum_ring` have no oracle;
+  `acc_mult_fips`, `acc_mult_coeff` and `acc_mult_ring` inherit `Code_Generator.holds_by_evaluation`
+  through `invntt_signed_correct`, as the O8 theorems do. No new Isabelle mutation evidence: the SAW
+  mutants are property failures, and no Isabelle definition was mutated for this step.
+
+  Scope. (1) One row: `polyvec_matrix_pointwise_montgomery`, `polyveck_reduce` and
+  `polyveck_invntt_tomont` loop the verified per-row functions over K = 4 rows; those loops are not
+  verified. (2) ML-DSA-44 only (L = 4 is in the model). (3) The hypothesis `|A coeff| < q` holds
+  because `rej_uniform` only accepts `t < Q`, which is read from the source, not proven (see
+  A-ROW in ASSUMPTIONS). (4) The `-fwrapv` to standard-C step for `poly_add` and the accumulator is
+  argued from the derived bounds, not mechanized. (5) Verification's `A*z - c*t1*2^d` is still not
+  covered: it adds a subtraction and an aliasing pointwise call.
+
+  Call sites now covered, at the pin: the signer's `c*s1`, `c*s2`, `c*t0` (O8) and, per row, keygen's
+  `A*s1` and the signer's `A*y`. Not covered: verification.
+
 ### What it unlocks
 
 The matrix-vector product `Az`, and after that the real destination: **ML-DSA signature verification

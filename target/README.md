@@ -26,8 +26,15 @@ The natural v2 target (optimized ≡ reference) is **PQ Code Package `mldsa-nati
   ROADMAP v4 O7). The reduce layer came first because everything else depends on it.
 - `poly.c` pulls `rounding.h`, `symmetric.h` and `fips202.h` for **declarations only**. Those `.c`
   files are not vendored and not compiled, so the bitcode carries undefined externals for functions
-  the proof never calls. Only `poly_pointwise_montgomery` and its callee `montgomery_reduce` are
-  verified out of that translation unit; the rest of `poly.c` is present but unproven.
+  the proof never calls. From `poly.c`, `poly_pointwise_montgomery`, `poly_add` (in the aliasing
+  form `c == a` the accumulator uses) and `poly_reduce` are verified; the rest is present but
+  unproven.
+- `polyvec.c` and `polyvec.h` vendored 2026-10-04 for ROADMAP v4 (one row of `A*y`), verbatim from
+  raw.githubusercontent.com at the pinned commit, `#include`d into the same translation unit by
+  `scripts/build_bitcode.sh`. SHA-256: `polyvec.c`
+  `461a4b048c84c27e73daa7b9aaec94942cdcead3ea55dca5cac63bcf4f443d96`, `polyvec.h`
+  `7fc533b6536819f5d52b31c7a4fa29d15d1f0804138b4ea82ff42bd6a8aaffdf` (also pinned in
+  `scripts/check_target_identity.sh`). Only `polyvecl_pointwise_acc_montgomery` is verified.
 - The `reduce.c` translation unit defines four functions:
   | Function | Signature | What it does |
   |---|---|---|

@@ -80,3 +80,11 @@ session Tier2_Conv in "convwork" = Tier2_InvSigned +
     Tier2_Inv
   theories
     Conv_Bridge
+
+(* v4, matrix-vector step: one row of A*y (polyvecl_pointwise_acc_montgomery, poly_reduce,
+   invntt_tomont) for an arbitrary NTT-domain operand. The models (padd, preduce, acc) are in
+   model/cryptol/MLDSA_NTT.cry and its lift, gated by lift-check. *)
+session Tier2_Acc in "accwork" = Tier2_Conv +
+  options [document = false]
+  theories
+    Acc_Bridge

@@ -5,7 +5,8 @@
 // equivalence, and these algorithms depend on two's-complement truncation and the signed shift.
 // Typechecking this module proves nothing on its own — the SAW run is what ties it to the C.
 //
-// Target: PQClean ml-dsa-44/clean @ 202a8f9 (reduce.c, ntt.c). Q = 8380417, N = 256. Montgomery
+// Target: PQClean ml-dsa-44/clean @ 202a8f9 (reduce.c, ntt.c; poly.c and polyvec.c for pointwise,
+// padd, preduce, acc). Q = 8380417, N = 256. Montgomery
 // reduction is an implementation device, not a FIPS-204 object.
 
 module MLDSA_NTT where
@@ -162,3 +163,23 @@ invntt a0 =
    Montgomery factor R^-1 it leaves is what invntt_tomont's f = mont^2/256 tail cancels. */
 pointwise : [256][32] -> [256][32] -> [256][32]
 pointwise a b = [ montgomery_reduce (sext64 x * sext64 y) | x <- a | y <- b ]
+
+// Matrix-row accumulation (v4, A*y): polyvecl_pointwise_acc_montgomery (polyvec.c), poly_add and
+// poly_reduce (poly.c). L = 4 for ML-DSA-44.
+
+/* poly_add: c->coeffs[i] = a->coeffs[i] + b->coeffs[i], no reduction (int32 wrapping here; the
+   Isabelle side shows no wrap occurs on the inputs it is applied to). */
+padd : [256][32] -> [256][32] -> [256][32]
+padd a b = [ x + y | x <- a | y <- b ]
+
+/* poly_reduce: reduce32 on every coefficient. */
+preduce : [256][32] -> [256][32]
+preduce a = [ reduce32 x | x <- a ]
+
+/* polyvecl_pointwise_acc_montgomery, L = 4, unrolled in the order the C loop runs:
+   w = u0*v0; w = w + u1*v1; w = w + u2*v2; w = w + u3*v3. */
+acc : [4][256][32] -> [4][256][32] -> [256][32]
+acc u v = padd (padd (padd (pointwise (u@0) (v@0))
+                           (pointwise (u@1) (v@1)))
+                     (pointwise (u@2) (v@2)))
+               (pointwise (u@3) (v@3))

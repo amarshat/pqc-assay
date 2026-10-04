@@ -23,6 +23,8 @@ COMBINED="$OUT_DIR/_combined.c"
 # its callees.
 printf '#include "reduce.c"\n#include "ntt.c"\n' > "$COMBINED"
 if [ -f "$TARGET_DIR/poly.c" ]; then printf '#include "poly.c"\n' >> "$COMBINED"; fi
+# polyvec.c (ML-DSA only) for polyvecl_pointwise_acc_montgomery, the matrix-row accumulation.
+if [ -f "$TARGET_DIR/polyvec.c" ]; then printf '#include "polyvec.c"\n' >> "$COMBINED"; fi
 
 WRAPV="${OUT%.bc}_wrapv.bc"
 

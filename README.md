@@ -325,8 +325,15 @@ exactly. `ntt_mult_ring` restates it in `Z_q[X]/(X^256+1)`: the output, as a pol
 `Z_q`, is the product of the two input polynomials reduced mod `X^256+1`. That is a statement about
 the SAW-checked models, so it reaches the C through three separate `-O0 -fwrapv` equivalences and the
 non-aliasing scope in A-POINTWISE. It inherits the code-generator oracle from the twiddle-table
-facts the transform bridges use. In the scheme it covers the signer's `c*s1`, `c*s2` and `c*t0`; the
-matrix products and verification's `A*z - c*t1*2^d` are not covered. See `docs/ROADMAP.md` v4, O8.
+facts the transform bridges use. In the scheme it covers the signer's `c*s1`, `c*s2` and `c*t0`.
+
+The matrix products are covered per row. SAW proves `polyvecl_pointwise_acc_montgomery`, `poly_add`
+and `poly_reduce` equal to their Cryptol models, and `acc_mult_ring`
+(`spec/isabelle/tier2/accwork/Acc_Bridge.thy`) proves that one row of keygen's `A*s1` or the
+signer's `A*y` computes `sum_i A_i * y_i` in `R_q`, where `A_i` is the polynomial whose transform is
+the sampled row. The loops over rows, and the bound on A's coefficients, are read from the source
+rather than proven (A-ROW in `docs/ASSUMPTIONS.md`). Verification's `A*z - c*t1*2^d` is not covered.
+See `docs/ROADMAP.md` v4.
 
 ## The checks, run on proofs we did not write (`make external-corpus`)
 

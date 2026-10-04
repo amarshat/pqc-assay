@@ -28,6 +28,8 @@ e6cbe386564946336452ef0694583bc9d8081ed2d81310622644bb9e36560f14  target/pqclean
 2e258d4407da8cc1fa4ffafdeb2ef1796ffbbdec74d8524e5fa7827d95e533aa  target/pqclean/rounding.h
 a1b2b731875c0cf33b251e063917db54c4e251a4b84cc55be780d89cdf642139  target/pqclean/symmetric.h
 bf99a54bc1988380418054a18bd5a14d059770e70c1aac23b6d9c914539168e0  target/pqclean/fips202.h
+461a4b048c84c27e73daa7b9aaec94942cdcead3ea55dca5cac63bcf4f443d96  target/pqclean/polyvec.c
+7fc533b6536819f5d52b31c7a4fa29d15d1f0804138b4ea82ff42bd6a8aaffdf  target/pqclean/polyvec.h
 "
 
 SHA="shasum -a 256"; command -v sha256sum >/dev/null 2>&1 && SHA="sha256sum"

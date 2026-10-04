@@ -850,6 +850,21 @@ Open: extend the `Thm_Deps.all_oracles` check from `barrettBV_bridge_holds` to `
 `invntt_bridge`, `ntt_signed_correct`, `invntt_signed_correct` and `ntt_residue`, and report what
 comes back. Until that runs, the oracle dependency of those five is recorded but not measured.
 
+## A-ROW: the A*y row theorem, what it rests on beyond the proofs
+
+`acc_mult_ring` (`spec/isabelle/tier2/accwork/Acc_Bridge.thy`) is about one row. Four things it
+does not prove, recorded so the claim is not read wider:
+
+1. The matrix and vector loops (`polyvec_matrix_pointwise_montgomery` over K = 4 rows,
+   `polyveck_reduce`, `polyveck_invntt_tomont`, `polyvecl_ntt`) are not verified. Each is a loop that
+   calls a verified per-polynomial function on `vec[i]`; that is read from `polyvec.c`, not proven.
+2. The hypothesis `|A coeff| < q` is discharged by reading `rej_uniform` in `poly.c` (it stores `t`
+   only when `t < Q`, with `t` a 23-bit value), not by a proof. `poly_uniform` is not verified.
+3. `poly_add` and the accumulator are proven on the `-fwrapv` bitcode. That no int32 add overflows is
+   proven on the model (the four-term sum stays below 4q), and the step from there to "the default
+   bitcode has no signed-overflow UB" is argued, as for the inverse NTT, not mechanized.
+4. ML-DSA-44 only: L = 4 is fixed in the Cryptol model and the theorem.
+
 ## A-POINTWISE: `poly_pointwise_montgomery` is verified for non-aliasing arguments only
 
 `proof/saw/mldsa_ntt.saw` allocates `c`, `a` and `b` as three disjoint `struct.poly` objects, so the

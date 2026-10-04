@@ -105,6 +105,8 @@ convolution:
 	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -d $(shell ls -d $(CURDIR)/.tools/afp-*/thys) -v Tier2_Inv
 	@echo ">> Isabelle (Tier2_Conv): invntt(pointwise(ntt a, ntt b)) == a*b in Z_q[X]/(X^256+1) on the lifted models (O8)"
 	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -d $(shell ls -d $(CURDIR)/.tools/afp-*/thys) -v Tier2_Conv
+	@echo ">> Isabelle (Tier2_Acc): one row of A*y (acc, poly_reduce, invntt) == NTT^-1(A_hat o NTT(y)) and sum A_i*y_i in R_q"
+	$(ISABELLE) build -d spec/isabelle -d spec/isabelle/tier2 -d $(shell ls -d $(CURDIR)/.tools/afp-*/thys) -v Tier2_Acc
 
 ## Tier2_InvWork Isabelle session: lifted inverse NTT ≡ FIPS-204 inverse negacyclic transform
 ## (inv_ntt_correct) plus the model bridge (invntt_bridge) tying the SAW-checked montgomery invntt
