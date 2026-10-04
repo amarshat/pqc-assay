@@ -32,10 +32,12 @@ case "$UNAME_S/$UNAME_M" in
   Darwin/arm64)
     SAW_ASSET="saw-${SAW_VERSION}-macos-15-ARM64-with-solvers.tar.gz"
     ISA_ASSET="Isabelle${ISABELLE_VERSION}_macos.tar.gz"
+    ISA_SHA256="8f187496e295f169952e944745af9e4ae00c9c1cd2ed4cadbcf7d898e444913e"
     BITWUZLA_ASSET="Bitwuzla-macOS-arm64-static.zip" ;;
   Darwin/x86_64)
     SAW_ASSET="saw-${SAW_VERSION}-macos-15-intel-X64-with-solvers.tar.gz"
     ISA_ASSET="Isabelle${ISABELLE_VERSION}_macos.tar.gz"
+    ISA_SHA256="8f187496e295f169952e944745af9e4ae00c9c1cd2ed4cadbcf7d898e444913e"
     BITWUZLA_ASSET="" ;;                         # no macOS x86_64 bitwuzla asset upstream
   Linux/x86_64)
     SAW_ASSET="saw-${SAW_VERSION}-ubuntu-24.04-X64-with-solvers.tar.gz"
@@ -51,6 +53,9 @@ case "$UNAME_S/$UNAME_M" in
 esac
 SAW_URL="https://github.com/GaloisInc/saw-script/releases/download/v${SAW_VERSION}/${SAW_ASSET}"
 ISA_URL="https://isabelle.in.tum.de/dist/${ISA_ASSET}"
+# Official Cambridge mirror, used when the TUM server is unreachable (it was down for hours on
+# 2026-10-04 and failed a CI run). Either source is checked against ISA_SHA256 where one is pinned.
+ISA_MIRROR="https://www.cl.cam.ac.uk/research/hvg/Isabelle/dist/${ISA_ASSET}"
 
 # Bitwuzla: the abstraction-refinement SMT solver that discharges wide-domain Barrett reduction
 # where eager bit-blasters (z3/cvc5/yices/abc, all bundled with SAW) stall. SAW calls it via the
@@ -76,7 +81,7 @@ fetch() {  # fetch <url> <dest-file>
   # Robust against flaky mirrors (large Isabelle/AFP tarballs): retry all transient errors and
   # resume partial transfers (-C -) rather than restarting the whole download on a reset.
   curl -fL --retry 8 --retry-all-errors --retry-delay 5 --connect-timeout 30 \
-       -C - -o "$dest.partial" "$url"
+       -C - -o "$dest.partial" "$url" || return 1   # explicit: callers may run fetch under `if`, where set -e is off
   mv "$dest.partial" "$dest"
 }
 
@@ -181,7 +186,18 @@ fi
 if [[ -z "${SKIP_ISABELLE:-}" && -z "${ONLY_PROVERIF:-}" ]]; then
   ISA_HOME="$TOOLS_DIR/Isabelle${ISABELLE_VERSION}"
   if [[ ! -x "$ISA_HOME/bin/isabelle" ]] && [[ -z "$(find "$ISA_HOME" -name isabelle -path '*/bin/*' 2>/dev/null | head -1)" ]]; then
-    fetch "$ISA_URL" "$DL_DIR/$ISA_ASSET"
+    if ! fetch "$ISA_URL" "$DL_DIR/$ISA_ASSET"; then
+      echo ">> primary Isabelle mirror failed; trying $ISA_MIRROR"
+      fetch "$ISA_MIRROR" "$DL_DIR/$ISA_ASSET"
+    fi
+    if [[ -n "${ISA_SHA256:-}" ]]; then
+      got="$(shasum -a 256 "$DL_DIR/$ISA_ASSET" | awk '{print $1}')"
+      if [[ "$got" != "$ISA_SHA256" ]]; then
+        echo "!! Isabelle tarball sha256 mismatch: got $got, expected $ISA_SHA256" >&2
+        rm -f "$DL_DIR/$ISA_ASSET"; exit 1
+      fi
+      echo ">> Isabelle tarball sha256 OK"
+    fi
     echo ">> extracting Isabelle ${ISABELLE_VERSION}"
     rm -rf "$ISA_HOME" && mkdir -p "$ISA_HOME"
     # The macOS tarball unpacks to an .app bundle and the Linux one to a plain directory;
