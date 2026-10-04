@@ -393,12 +393,13 @@ facts where `Powers3844.thy:13` checks 255 powers with `by eval`. Both are small
 an existing AFP entry, which is a patch, not a new entry.
 
 That `negconv` is multiplication in `R_q` was missing until 2026-10-04 and is now proven:
-`negconv_is_mult` (`spec/isabelle/tier2/inv/Negacyclic_Poly.thy`, `Tier2_Inv`, no holes) states
+`negconv_is_mult` (`spec/isabelle/tier2/inv/Negacyclic_Poly.thy`, `Tier2_Inv`, no `sorry`/`oops`,
+and `Thm_Deps.all_oracles` reports no oracle) states
 `Poly (negconv xs ys) = (Poly xs * Poly ys) mod (monom 1 n + 1)` for lists of length `n`. The proof
 is `conv_row`'s rearrangement run at `X` with monomials: the wrap-around terms give
 `X^(a+n) = (X^n + 1) X^a - X^a`, the `(X^n + 1)` parts are collected into an explicit quotient, and
-`degree (Poly (negconv xs ys)) < n` pins `negconv` as the remainder. Mutant: replacing `X^n + 1` with
-the cyclic `X^n - 1` is rejected at the remainder step.
+`degree (Poly (negconv xs ys)) < n` pins `negconv` as the remainder. This is a known fact (the AFP
+`CRYSTALS-Kyber` entry has it generically); it is re-proved here to connect it to our `negconv`.
 
 ### Where it goes
 
@@ -510,7 +511,12 @@ theorems about the definition we wrote.
   the factor `n` from the unnormalised inverse these compose to exactly 1, and that is now proven
   rather than checked numerically. Theorem `ntt_mult_correct`
   (`spec/isabelle/tier2/convwork/Conv_Bridge.thy`, session `Tier2_Conv`, build exit 0, no
-  `sorry`/`oops`/`smt`/`by eval`):
+  `sorry`/`oops`/`smt` anywhere in its dependencies). It does depend on the code-generator oracle:
+  `Thm_Deps.all_oracles` reports `Code_Generator.holds_by_evaluation` for `ntt_mult_correct` and
+  `ntt_mult_ring`, inherited through `ntt_signed_correct`, `invntt_signed_correct` and
+  `ntt_out_bounded` from the `by eval` facts about the twiddle tables (they tie the C `zetas` table to
+  powers of 1753, so they matter to this result). The new theories themselves contain no `by eval`,
+  and `negconv_is_mult`, `conv_int` and `negconv_int_ring` are oracle-free. Statement:
 
       ntt_bounded 8380416 a ==> ntt_bounded 8380416 b ==> k < 256 ==>
         sint_seq (nth_seq (invntt (pointwise (ntt a) (ntt b))) k) mod 8380417
@@ -523,21 +529,36 @@ theorems about the definition we wrote.
   precondition (`75423752^2 < 2^31 q`), and the pointwise outputs land back inside `|coeff| < q`,
   which is what `invntt_signed_correct` needs. The ring side is `conv_int`
   (`spec/isabelle/tier2/inv/Conv_Ring.thy`, in `Tier2_Inv`): `negconv_via_NNTT` instantiated at
-  `mldsa_model` and pushed through `of_int`, so the word-level theory never touches the locale.
+  `mldsa_model` and converted to integers, so the conclusion mentions no locale constant.
   Cancellation uses `41978 * 256 == 2^64` and `7593442 * 2^64 == 1 (mod q)`.
 
-  Two mutants, both rejected: flipping the sign of the wrap-around term in `negconv_int` breaks
-  `conv_int`, and a factor-2 conclusion breaks the last step of `ntt_mult_correct`.
+  `ntt_mult_ring` (same file) composes this with `negconv_is_mult` through `negconv_int_ring`
+  (`Conv_Ring.thy`): the output coefficients, as a polynomial over `Z_q` (type
+  `fin8380417 mod_ring poly`), equal `(Poly a * Poly b) mod (X^256 + 1)`, with `Poly`, `*` and `mod`
+  from HOL-Library.
 
-  Ring reading, same day: `ntt_mult_ring` (same file) composes this with `negconv_is_mult` through
-  `negconv_int_ring` (`Conv_Ring.thy`) and states that the output coefficients, as a polynomial over
-  `Z_q` (type `fin8380417 mod_ring poly`), equal `(Poly a * Poly b) mod (X^256 + 1)`. Mutant: a
-  wrong modulus `X^128 + 1` in the corollary is rejected.
+  Mutation evidence, stated for what it is worth. Flipping the sign of the wrap-around term in
+  `negconv_int` breaks a substantive step (`Conv_Ring.thy`, the goal left is `of_int (f x) = 0`), so
+  that definition is load-bearing. The other edits tried (a factor 2 in the conclusion of
+  `ntt_mult_correct`, `X^n - 1` in `negconv_is_mult`, `X^128 + 1` in `ntt_mult_ring`) are rejected,
+  but only because the proof script stops matching the edited statement: an audit showed the script
+  rejects a true, equivalent edit in the same way. Those three are not refutations and are not
+  counted as evidence. None of these runs is scripted or gated.
 
-  What this does not cover. (1) Superseded: the `Poly` lemma is now proven, see above. (2) The C composition is three separate SAW
-  equivalences, each on the `-fwrapv` module, with the no-UB step argued as for the forward NTT, not
-  mechanized. (3) A-POINTWISE: non-aliasing arguments only. (4) Inputs outside `|coeff| < q` are
-  not covered, and nothing here checks which call sites in the reference stay inside it.
+  Where ML-DSA uses this composition (checked against `sign.c` / `polyvec.c` at the pin `202a8f9`,
+  which are not vendored). Covered: the signer's `c*s1`, `c*s2` and `c*t0`, where both operands are
+  raw `ntt` outputs of centered inputs and the output does not alias an input. Not covered: keygen's
+  `A*s1` and the signer's `A*y` (A is sampled directly in NTT form, so it is not an `ntt` output, and
+  the four products are summed and passed through `reduce32` before `invntt_tomont`), and
+  verification's `invntt(A*z - c*(t1 << 13))` (subtraction and reduction sit between pointwise and
+  inverse, and the pointwise call there aliases its output with the second operand). Covering these
+  needs a linearity/accumulation lemma for an arbitrary NTT-domain operand with `|coeff| < q`, plus
+  the `reduce32` step.
+
+  What this does not cover. (1) The call sites above. (2) The C link is three separate SAW
+  equivalences on the `-O0 -fwrapv` bitcode. The `-fwrapv` to standard-C step is mechanized for the
+  forward NTT on its input window (`ntt_nsw.saw`, see ASSUMPTIONS) and argued, not mechanized, for
+  the inverse. (3) A-POINTWISE: non-aliasing arguments only. (4) Inputs outside `|coeff| < q`.
 
 ### What it unlocks
 

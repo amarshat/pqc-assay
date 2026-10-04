@@ -854,7 +854,9 @@ comes back. Until that runs, the oracle dependency of those five is recorded but
 
 `proof/saw/mldsa_ntt.saw` allocates `c`, `a` and `b` as three disjoint `struct.poly` objects, so the
 proof covers the case where the destination does not overlap either source. The reference
-implementation calls this function with `c` aliasing `a` in places. **That case is not covered.**
+implementation calls this function with `c` aliasing `b` in verification
+(`polyveck_pointwise_poly_montgomery(&t1, &cp, &t1)`, `sign.c` at the pin; corrected 2026-10-04 from
+"aliasing `a`", which was wrong). **That case is not covered.**
 
 It is not a soundness hole in what is claimed, it is a narrower claim than the function's contract:
 the loop reads `a->coeffs[i]` and `b->coeffs[i]` and writes `c->coeffs[i]` at the same index, so
