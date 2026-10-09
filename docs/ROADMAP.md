@@ -558,7 +558,7 @@ theorems about the definition we wrote.
   What this does not cover. (1) The call sites above. (2) The C link is three separate SAW
   equivalences on the `-O0 -fwrapv` bitcode. The `-fwrapv` to standard-C step is mechanized for the
   forward NTT on its input window (`ntt_nsw.saw`, see ASSUMPTIONS) and argued, not mechanized, for
-  the inverse. (3) A-POINTWISE: non-aliasing arguments only. (4) Inputs outside `|coeff| < q`.
+  the inverse. (3) A-POINTWISE: the aliasing form verification uses was added later (see below). (4) Inputs outside `|coeff| < q`.
 
 - **A*y, and the loops around it. DONE 2026-10-04.** The matrix products in keygen (`A*s1`) and
   signing (`A*y`) are not `ntt` outputs times `ntt` outputs: A is sampled directly in NTT form, and
@@ -626,8 +626,9 @@ theorems about the definition we wrote.
 
   Isabelle side (`spec/isabelle/tier2/verwork/Ver_Bridge.thy`, session `Tier2_Ver`, exit 0):
   - `ver_row_fips`: for NTT-domain rows within 9q,
-    `256 * invntt(preduce(psub(acc u v, pointwise ch th)))_k` equals FIPS 204's unnormalised inverse
-    transform of `sum_i u_i o v_i - ch o th`, mod q.
+    `256 * invntt(preduce(psub(acc u v, pointwise ch th)))_k` equals the closed-form unnormalised
+    inverse transform of `sum_i u_i o v_i - ch o th`, mod q. That closed form is FIPS 204's
+    `NTT^-1` (times 256) through the earlier `inv_ntt_correct`.
   - `ver_row_ring`: with `v_i = ntt(z_i)`, `ch = ntt(c)`, `th = ntt(pshiftl t1)`, `|z|, |c| < q`,
     `t1` coefficients in [0, 1023], and any `f_i` transforming to the rows of `u`, the output as a
     polynomial over `Z_q` is `(sum_i f_i * z_i - c * (2^13 * t1)) mod (X^256 + 1)`.
@@ -637,23 +638,35 @@ theorems about the definition we wrote.
   reduce-then-inverse tail for any input whose coefficients meet `reduce32`'s precondition. The
   oracle gate in `Ver_Bridge.thy` asserts `ver_row_ring`, `ver_row_fips` and `invntt_preduce_cong`
   depend on exactly `holds_by_evaluation`, and the new arithmetic lemmas (`sint_shl13`,
-  `negconv_int_neg`, `Poly_of_int_neg`) on none. No Isabelle mutation evidence for this step.
+  `negconv_int_neg`, `Poly_of_int_neg`) on none (`row_term`, also new, depends on
+  `holds_by_evaluation` through the forward transform). Mutation, unscripted, by the reviewer:
+  `psub` with `+` breaks the `poly_sub` step of `ver_row_fips`, and `pshiftl` by 12 breaks
+  `pshiftl_val`; both definitions are used, and both are broken proofs rather than refuted
+  statements.
 
-  Scope, beyond A-ROW: the input ranges (`t1` 10-bit from `unpack_pk`, `|z| < gamma1 - beta`
-  enforced by `chknorm` before the product, `c` in {-1, 0, 1} from `poly_challenge`) are read from
-  `sign.c` / `poly.c`, not proven. `poly_shiftl` is defined C only for non-negative inputs whose
-  result fits; that holds for `t1`, and the SAW proof is on the `-fwrapv` module.
+  The aliased `poly_sub` form proven here is also what the signer uses
+  (`polyveck_sub(&w0, &w0, &h)`), so that call is now covered as well.
 
-  With that: every polynomial multiplication ML-DSA-44's reference C performs, in key generation,
-  signing and verification, runs through functions verified here and is proven to compute the
-  corresponding product in `R_q`.
+  After a review (2026-10-09), the loop specs also state that their inputs come out unchanged:
+  `polyvec{l,k}_pointwise_poly_montgomery` (the transformed challenge and secrets, which the signer
+  reuses for three calls and across rejection iterations), the matrix loop (A and the vector), and
+  the aliased forms. Before that fix, reusing those operands was not covered by any proof.
+
+  Scope: A-ROW in ASSUMPTIONS, items 1-5.
+
+  With that: each of the seven polynomial products ML-DSA-44's reference C computes (keygen `A*s1`;
+  signing `A*y`, `c*s1`, `c*s2`, `c*t0`; verification `A*z`, `c*(2^13*t1)`) runs through C functions
+  SAW proves equal to Cryptol models on the `-O0 -fwrapv` bitcode, and Isabelle proves those models
+  compute the corresponding product in `R_q`, trusting the code generator for the twiddle tables.
+  The order of the calls in `sign.c`, the input ranges, and the absence of C undefined behaviour on
+  the default build are read from the source, not proven.
 
 ### What it unlocks
 
-Done as of 2026-10-09: the matrix-vector product and verification's `A*z - c*t1*2^d` (above). The
-remaining destination is **ML-DSA signature verification end to end**. Verify is the tractable half of the scheme, deterministic with no rejection-sampling
-loop on the hot path, and `make_hint`/`use_hint` are already verified on the Rust side. The honest
-boundary is SHAKE, assumed at a documented interface or imported. That would support a claim nothing
+Done as of 2026-10-09: the matrix-vector product and verification's `A*z - c*t1*2^d` (above).
+The remaining destination is **ML-DSA signature verification end to end**. Verify is the tractable
+half of the scheme, deterministic with no rejection-sampling loop on the hot path, and
+`make_hint`/`use_hint` are already verified on the Rust side. The boundary is SHAKE, assumed at a documented interface or imported. That would support a claim nothing
 else in this tree supports: the deployed C for ML-DSA verification is machine-checked equivalent to
 FIPS 204 Algorithm 8, modulo an assumed Keccak.
 

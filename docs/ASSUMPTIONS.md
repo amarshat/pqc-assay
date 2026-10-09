@@ -873,15 +873,20 @@ signing and verification. Things they do not prove:
 2. The theorem needs `|A coeff| <= 9q`. That holds because `rej_uniform` in `poly.c` masks each
    candidate to 23 bits (`t &= 0x7FFFFF`), so any stored value is below 2^23 < 9q, whether or not the
    `t < Q` test is right. This is read from the source; `poly_uniform` is not verified.
-3. `poly_add`, the accumulator and the loops are proven on the `-fwrapv` bitcode. That no int32 add
-   overflows is proven on the model (the four-term sum stays below 4q), and the step from there to
-   "the default bitcode has no signed-overflow UB" is argued, as for the inverse NTT, not mechanized.
+3. `poly_add`, `poly_sub`, the accumulator and the loops are proven on the `-fwrapv` bitcode. That
+   no int32 add or subtract overflows is proven on the model (the four-term sum stays below 4q, the
+   difference below 5q), and the step from there to "the default bitcode has no signed-overflow UB"
+   is argued, as for the inverse NTT, not mechanized.
 4. ML-DSA-44 only: L = K = 4 are fixed in the models and the theorems.
-5. Verification's input ranges are read from the source, not proven: `t1` is 10-bit (`polyt1_unpack`),
-   `z` is rejected by `chknorm` unless `|z| < gamma1 - beta` (before the product is computed), and
-   `c` has coefficients in {-1, 0, 1} (`poly_challenge`). The theorem needs only `|z|, |c| < q` and
-   `t1` in [0, 1023]. `poly_shiftl` shifts a signed int, which C defines only for non-negative values
-   whose result fits; `t1` satisfies that, and the SAW proof is on the `-fwrapv` module.
+5. Verification's input ranges are read from the source, not proven: `t1` is 10-bit
+   (`polyt1_unpack` masks with `0x3FF`), `z` is at most 2^17 in magnitude from `polyz_unpack` (and
+   `chknorm` rejects `|z| >= gamma1 - beta` before the product), and `c` has coefficients in
+   {-1, 0, 1} from `poly_challenge` (via an implementation-defined `uint64` to `int32` conversion).
+   The theorem needs only `|z|, |c| < q` and `t1` in [0, 1023].
+   `poly_shiftl` shifts a signed int, which C defines only for non-negative values whose result
+   fits. SAW does not see that undefined behaviour on either bitcode: clang emits a plain `shl`, and
+   a review probe showed `poly_shiftl` verifies with no precondition on the default module too. So
+   its definedness rests entirely on the `t1` range read from `polyt1_unpack`, not on `-fwrapv`.
 
 ## A-POINTWISE: `poly_pointwise_montgomery` is verified for the two forms the reference uses
 

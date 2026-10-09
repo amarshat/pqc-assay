@@ -324,7 +324,7 @@ equals `negconv a b` mod q coefficient by coefficient, with the Montgomery facto
 exactly. `ntt_mult_ring` restates it in `Z_q[X]/(X^256+1)`: the output, as a polynomial over
 `Z_q`, is the product of the two input polynomials reduced mod `X^256+1`. That is a statement about
 the SAW-checked models, so it reaches the C through three separate `-O0 -fwrapv` equivalences and the
-non-aliasing scope in A-POINTWISE. It inherits the code-generator oracle from the twiddle-table
+aliasing scope in A-POINTWISE (both forms the reference uses are proven). It inherits the code-generator oracle from the twiddle-table
 facts the transform bridges use. In the scheme it covers the signer's `c*s1`, `c*s2` and `c*t0`.
 
 The matrix products are covered too. SAW proves `polyvecl_pointwise_acc_montgomery`, `poly_add` (in
