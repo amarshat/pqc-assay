@@ -486,3 +486,92 @@ llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyvec_matrix_pointwise_montgomery" [acc_
 print "VERIFIED: PQCLEAN_MLDSA44_CLEAN_polyvec_matrix_pointwise_montgomery == map (\\row -> acc row v)";
 fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyvec_matrix_pointwise_montgomery" [acc_ov] true matrix_mut_spec (w4_unint_z3 ["acc"]));
 print "NON-VACUOUS: the perturbed polyvec_matrix_pointwise_montgomery spec is rejected";
+
+// ---------------------------------------------------------------------------------------------
+// Verification: w1 = invntt(reduce(A*z - c*(t1 << 13))). The new pieces are poly_shiftl, poly_sub
+// in the form polyveck_sub(w1, w1, t1) uses (c == a), and poly_pointwise_montgomery in the form
+// polyveck_pointwise_poly_montgomery(t1, cp, t1) uses (output aliasing the SECOND operand), plus
+// the vector loops over them. Same pattern as above: per-polynomial specs proven, then used as
+// overrides for the loops; each spec has a perturbed-postcondition mutant.
+
+// poly_pointwise_montgomery with c == b.
+let pointwise_alias_b_d d = do {
+    (a, pa) <- poly_to_fresh "a";
+    (b, pb) <- poly_to_fresh "b";
+    llvm_execute_func [pb, pa, pb];
+    llvm_points_to (llvm_field pb "coeffs") (llvm_term (bump1 {{ pointwise a b }} d));
+    llvm_points_to (llvm_field pa "coeffs") (llvm_term a);
+};
+let pointwise_alias_b_spec = pointwise_alias_b_d {{ 0 : [32] }};
+let pointwise_alias_b_mut_spec = pointwise_alias_b_d {{ 1 : [32] }};
+pointwise_alias_b_ov <- llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_poly_pointwise_montgomery" [mr_ov_w] true
+                                    pointwise_alias_b_spec (w4_unint_z3 ["montgomery_reduce"]);
+print "VERIFIED: PQCLEAN_MLDSA44_CLEAN_poly_pointwise_montgomery (c aliasing b) == Cryptol pointwise";
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_poly_pointwise_montgomery" [mr_ov_w] true
+                   pointwise_alias_b_mut_spec (w4_unint_z3 ["montgomery_reduce"]));
+print "NON-VACUOUS: the perturbed pointwise (c aliasing b) spec is rejected";
+
+// poly_sub with c == a.
+let poly_sub_alias_d d = do {
+    (a, pa) <- poly_to_fresh "a";
+    (b, pb) <- poly_to_fresh "b";
+    llvm_execute_func [pa, pa, pb];
+    llvm_points_to (llvm_field pa "coeffs") (llvm_term (bump1 {{ psub a b }} d));
+    llvm_points_to (llvm_field pb "coeffs") (llvm_term b);
+};
+let poly_sub_alias_spec = poly_sub_alias_d {{ 0 : [32] }};
+let poly_sub_alias_mut_spec = poly_sub_alias_d {{ 1 : [32] }};
+poly_sub_alias_ov <- llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_poly_sub" [] true poly_sub_alias_spec z3;
+print "VERIFIED: PQCLEAN_MLDSA44_CLEAN_poly_sub (c aliasing a) == Cryptol psub";
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_poly_sub" [] true poly_sub_alias_mut_spec z3);
+print "NON-VACUOUS: the perturbed poly_sub spec is rejected";
+
+// poly_shiftl, in place.
+let poly_shiftl_d d = do {
+    (a, pa) <- poly_to_fresh "a";
+    llvm_execute_func [pa];
+    llvm_points_to (llvm_field pa "coeffs") (llvm_term (bump1 {{ pshiftl a }} d));
+};
+let poly_shiftl_spec = poly_shiftl_d {{ 0 : [32] }};
+let poly_shiftl_mut_spec = poly_shiftl_d {{ 1 : [32] }};
+poly_shiftl_ov <- llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_poly_shiftl" [] true poly_shiftl_spec z3;
+print "VERIFIED: PQCLEAN_MLDSA44_CLEAN_poly_shiftl == Cryptol pshiftl";
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_poly_shiftl" [] true poly_shiftl_mut_spec z3);
+print "NON-VACUOUS: the perturbed poly_shiftl spec is rejected";
+
+// polyveck_shiftl(t1), in place.
+let polyveck_shiftl_spec = vmap_d "struct.polyveck" {{ pshiftl }} {{ 0 : [32] }};
+let polyveck_shiftl_mut_spec = vmap_d "struct.polyveck" {{ pshiftl }} {{ 1 : [32] }};
+llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_shiftl" [poly_shiftl_ov] true polyveck_shiftl_spec (w4_unint_z3 ["pshiftl"]);
+print "VERIFIED: PQCLEAN_MLDSA44_CLEAN_polyveck_shiftl == map pshiftl";
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_shiftl" [poly_shiftl_ov] true polyveck_shiftl_mut_spec (w4_unint_z3 ["pshiftl"]));
+print "NON-VACUOUS: the perturbed polyveck_shiftl spec is rejected";
+
+// polyveck_sub(w1, w1, t1): output aliases the first operand vector.
+let vsub_alias_d d = do {
+    (u, pu) <- vec4_fresh "struct.polyveck" "u";
+    (v, pv) <- vec4_fresh "struct.polyveck" "v";
+    llvm_execute_func [pu, pu, pv];
+    vec4_post pu (bump4 {{ [ psub x y | x <- u | y <- v ] }} d);
+    vec4_post pv v;
+};
+let polyveck_sub_alias_spec = vsub_alias_d {{ 0 : [32] }};
+let polyveck_sub_alias_mut_spec = vsub_alias_d {{ 1 : [32] }};
+llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_sub" [poly_sub_alias_ov] true polyveck_sub_alias_spec (w4_unint_z3 ["psub"]);
+print "VERIFIED: PQCLEAN_MLDSA44_CLEAN_polyveck_sub (w aliasing u) == zipWith psub";
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_sub" [poly_sub_alias_ov] true polyveck_sub_alias_mut_spec (w4_unint_z3 ["psub"]));
+print "NON-VACUOUS: the perturbed polyveck_sub spec is rejected";
+
+// polyveck_pointwise_poly_montgomery(t1, cp, t1): output aliases the vector operand.
+let vpw_alias_d d = do {
+    (a, pa) <- poly_to_fresh "a";
+    (v, pv) <- vec4_fresh "struct.polyveck" "v";
+    llvm_execute_func [pv, pa, pv];
+    vec4_post pv (bump4 {{ [ pointwise a r | r <- v ] }} d);
+};
+let polyveck_pwpoly_alias_spec = vpw_alias_d {{ 0 : [32] }};
+let polyveck_pwpoly_alias_mut_spec = vpw_alias_d {{ 1 : [32] }};
+llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_pointwise_poly_montgomery" [pointwise_alias_b_ov] true polyveck_pwpoly_alias_spec (w4_unint_z3 ["pointwise"]);
+print "VERIFIED: PQCLEAN_MLDSA44_CLEAN_polyveck_pointwise_poly_montgomery (r aliasing v) == map (pointwise a)";
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_pointwise_poly_montgomery" [pointwise_alias_b_ov] true polyveck_pwpoly_alias_mut_spec (w4_unint_z3 ["pointwise"]));
+print "NON-VACUOUS: the perturbed polyveck_pointwise_poly_montgomery (aliased) spec is rejected";

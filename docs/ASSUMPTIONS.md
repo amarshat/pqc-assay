@@ -861,11 +861,11 @@ every v4 theorem built on them (`ntt_mult_correct`, `ntt_mult_ring`, `acc_mult_f
 lemmas (`negconv_is_mult`, `conv_int`, `ntt_int_surj`, `negconv_sum_ring`) have no oracle. Still not
 measured: `ntt_bridge`, `invntt_bridge` and the ML-KEM `ntt_residue`.
 
-## A-ROW: the keygen and signing products, what they rest on beyond the proofs
+## A-ROW: the polynomial products, what they rest on beyond the proofs
 
-`acc_mult_ring` and `ntt_mult_ring` (`spec/isabelle/tier2/`), with the SAW proofs of the per-polynomial
-functions and the loops in `polyvec.c`, cover the multiplications in keygen and signing. Four things
-they do not prove:
+`ntt_mult_ring`, `acc_mult_ring` and `ver_row_ring` (`spec/isabelle/tier2/`), with the SAW proofs of
+the per-polynomial functions and the loops in `polyvec.c`, cover the multiplications in keygen,
+signing and verification. Things they do not prove:
 
 1. The order in which `sign.c` calls them (ntt, then the pointwise or matrix loop, then reduce, then
    the inverse) is read from `sign.c` at the pin, which is not vendored. The loops themselves and
@@ -877,19 +877,25 @@ they do not prove:
    overflows is proven on the model (the four-term sum stays below 4q), and the step from there to
    "the default bitcode has no signed-overflow UB" is argued, as for the inverse NTT, not mechanized.
 4. ML-DSA-44 only: L = K = 4 are fixed in the models and the theorems.
+5. Verification's input ranges are read from the source, not proven: `t1` is 10-bit (`polyt1_unpack`),
+   `z` is rejected by `chknorm` unless `|z| < gamma1 - beta` (before the product is computed), and
+   `c` has coefficients in {-1, 0, 1} (`poly_challenge`). The theorem needs only `|z|, |c| < q` and
+   `t1` in [0, 1023]. `poly_shiftl` shifts a signed int, which C defines only for non-negative values
+   whose result fits; `t1` satisfies that, and the SAW proof is on the `-fwrapv` module.
 
-## A-POINTWISE: `poly_pointwise_montgomery` is verified for non-aliasing arguments only
+## A-POINTWISE: `poly_pointwise_montgomery` is verified for the two forms the reference uses
 
-`proof/saw/mldsa_ntt.saw` allocates `c`, `a` and `b` as three disjoint `struct.poly` objects, so the
-proof covers the case where the destination does not overlap either source. The reference
-implementation calls this function with `c` aliasing `b` in verification
-(`polyveck_pointwise_poly_montgomery(&t1, &cp, &t1)`, `sign.c` at the pin; corrected 2026-10-04 from
-"aliasing `a`", which was wrong). **That case is not covered.**
+`proof/saw/mldsa_ntt.saw` proves it with `c`, `a` and `b` disjoint (the signing and keygen calls)
+and, since 2026-10-09, with `c` aliasing `b` (verification's
+`polyveck_pointwise_poly_montgomery(&t1, &cp, &t1)`, `sign.c` at the pin). The form with `c` aliasing
+`a` is not proven; the reference does not call it that way at the pin. (Before 2026-10-09 this entry
+said the aliasing case was not covered; earlier still it named the wrong argument, `a`.)
 
-It is not a soundness hole in what is claimed, it is a narrower claim than the function's contract:
-the loop reads `a->coeffs[i]` and `b->coeffs[i]` and writes `c->coeffs[i]` at the same index, so
-aliasing is in fact harmless here, but harmless-by-inspection is exactly the kind of step this
-project does not let itself count as proven. Recorded so the scope is not read wider than it is.
+The unproven `c == a` form is a narrower claim than the function's contract, not a gap in any call
+the reference makes. The loop reads and writes the same index, so that aliasing is harmless by
+inspection, but this project does not count harmless-by-inspection as proven.
 
-The rest of `poly.c` is compiled into the same translation unit and is **not** verified. Only
-`poly_pointwise_montgomery` is, with `montgomery_reduce` as the already-proven override.
+The rest of `poly.c` is compiled into the same translation unit. Verified from it:
+`poly_pointwise_montgomery` (the two forms above), `poly_add` (`c == a`), `poly_sub` (`c == a`),
+`poly_reduce`, `poly_shiftl`, `poly_ntt` and `poly_invntt_tomont`. Everything else in `poly.c`
+(sampling, packing, rounding, hints, `chknorm`) is not.

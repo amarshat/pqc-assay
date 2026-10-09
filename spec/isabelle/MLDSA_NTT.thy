@@ -92,6 +92,12 @@ cryptol_definition ntt :: "([256][32]) \<Rightarrow> ([256][32])" where
 cryptol_definition preduce :: "([256][32]) \<Rightarrow> ([256][32])" where
 "preduce a \<equiv> seq_compr`{256,[32],[32]} (\<lambda>(x :: [32]). (reduce32`{} x)) a"
 
+cryptol_definition pshiftl :: "([256][32]) \<Rightarrow> ([256][32])" where
+"pshiftl a \<equiv> seq_compr`{256,[32],[32]} (\<lambda>(x :: [32]). (x <<`{32,Integer,Bit} (13 :: Integer))) a"
+
+cryptol_definition psub :: "([256][32]) \<Rightarrow> (([256][32]) \<Rightarrow> ([256][32]))" where
+"psub a b \<equiv> seq_compr`{256,(([32])) \<times> (([32])),[32]} (\<lambda>((x :: [32]),(y :: [32])). (x -`{[32]} y)) (zip`{256,([32]),([32])} (seq_compr`{256,[32],([32])} (\<lambda>(x :: [32]). ((x))) a) (seq_compr`{256,[32],([32])} (\<lambda>(y :: [32]). ((y))) b))"
+
 cryptol_definition q :: "Integer" where
 "q  \<equiv> 8380417 :: Integer"
 

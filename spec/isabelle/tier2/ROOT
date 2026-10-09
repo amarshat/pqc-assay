@@ -88,3 +88,10 @@ session Tier2_Acc in "accwork" = Tier2_Conv +
   options [document = false]
   theories
     Acc_Bridge
+
+(* v4, verification: one row of NTT^-1(A_hat o NTT(z) - NTT(c) o NTT(t1 * 2^13)) on the models
+   (acc, pshiftl, pointwise, psub, preduce, invntt), FIPS form and ring form. *)
+session Tier2_Ver in "verwork" = Tier2_Acc +
+  options [document = false]
+  theories
+    Ver_Bridge

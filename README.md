@@ -335,7 +335,9 @@ of keygen's `A*s1` or the signer's `A*y` computes `sum_i f_i * y_i` in `R_q` for
 whose transforms are the sampled rows. Not proven: the order `sign.c` calls these in (read from
 the source), the bound on A's coefficients (read from `poly_uniform`'s 23-bit mask), and the absence
 of signed overflow on the default build for `poly_add` and the accumulator (argued). See A-ROW in
-`docs/ASSUMPTIONS.md`. Verification's `A*z - c*t1*2^d` is not covered. See `docs/ROADMAP.md` v4. These results are claimed for the pinned checkers: SAW 1.5.1, cryptol-to-isabelle from the same
+`docs/ASSUMPTIONS.md`. Verification's `A*z - c*t1*2^d` is covered the same way (`ver_row_ring`,
+`spec/isabelle/tier2/verwork/Ver_Bridge.thy`), including the two aliasing calls it makes. See
+`docs/ROADMAP.md` v4. These results are claimed for the pinned checkers: SAW 1.5.1, cryptol-to-isabelle from the same
 release, Isabelle2025-2 and AFP 2026-06-05.
 
 ## The checks, run on proofs we did not write (`make external-corpus`)

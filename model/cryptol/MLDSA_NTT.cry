@@ -183,3 +183,14 @@ acc u v = padd (padd (padd (pointwise (u@0) (v@0))
                            (pointwise (u@1) (v@1)))
                      (pointwise (u@2) (v@2)))
                (pointwise (u@3) (v@3))
+
+// Verification's extra steps (v4, A*z - c*t1*2^d): poly_sub and poly_shiftl (poly.c). D = 13.
+
+/* poly_sub: c->coeffs[i] = a->coeffs[i] - b->coeffs[i], no reduction. */
+psub : [256][32] -> [256][32] -> [256][32]
+psub a b = [ x - y | x <- a | y <- b ]
+
+/* poly_shiftl: a->coeffs[i] <<= D. On int32 this is defined C only for non-negative values whose
+   result fits; verification applies it to t1, whose coefficients are 10-bit. */
+pshiftl : [256][32] -> [256][32]
+pshiftl a = [ x << 13 | x <- a ]

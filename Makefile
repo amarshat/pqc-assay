@@ -107,6 +107,8 @@ convolution:
 	$(ISABELLE) build -b -d spec/isabelle -d spec/isabelle/tier2 -d $(shell ls -d $(CURDIR)/.tools/afp-*/thys) -v Tier2_Conv
 	@echo ">> Isabelle (Tier2_Acc): one row of A*y (acc, poly_reduce, invntt) == NTT^-1(A_hat o NTT(y)) and sum A_i*y_i in R_q"
 	$(ISABELLE) build -b -d spec/isabelle -d spec/isabelle/tier2 -d $(shell ls -d $(CURDIR)/.tools/afp-*/thys) -v Tier2_Acc
+	@echo ">> Isabelle (Tier2_Ver): one row of verification's A*z - c*t1*2^13, FIPS form and in R_q"
+	$(ISABELLE) build -b -d spec/isabelle -d spec/isabelle/tier2 -d $(shell ls -d $(CURDIR)/.tools/afp-*/thys) -v Tier2_Ver
 
 ## Tier2_InvWork Isabelle session: lifted inverse NTT ≡ FIPS-204 inverse negacyclic transform
 ## (inv_ntt_correct) plus the model bridge (invntt_bridge) tying the SAW-checked montgomery invntt
