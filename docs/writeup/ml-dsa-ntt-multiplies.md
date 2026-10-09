@@ -50,20 +50,26 @@ reach 9q, and the proof checks that the products of two such values still fit
 | A*s1 | key generation | yes |
 | A*y | signing | yes |
 | c*s1, c*s2, c*t0 | signing | yes |
-| A*z - c*t1*2^d | verification | no |
+| A*z - c*t1*2^d | verification | yes |
 
 Covered means every function on the path, from the vector and matrix loops in `polyvec.c` down to
-`montgomery_reduce`, is proved equal to a Cryptol model, and the Isabelle theorems apply to the
+`montgomery_reduce`, is proved equal to a Cryptol model in the form it is called (including the
+calls where the output overlaps an input), the loops are proved to leave their inputs unchanged
+(the signer reuses the challenge and A across calls), and the Isabelle theorems apply to the
 composition. The order in which `sign.c` calls those functions is read from the source, not proved.
 
-Verification is not covered yet. It subtracts c*t1*2^d before the inverse and calls the pointwise
-loop with its output overlapping an input, and neither case is proved.
+Verification needed three more pieces: the shift by 2^13, a subtraction, and a pointwise call whose
+output overwrites one of its inputs. The theorem `ver_row_ring` in
+[`Ver_Bridge.thy`](https://github.com/amarshat/pqc-assay/blob/main/spec/isabelle/tier2/verwork/Ver_Bridge.thy)
+says each row of verification's computation is A_1*z_1 + ... + A_4*z_4 - c*(2^13*t1) mod X^256+1,
+which is FIPS 204 Algorithm 8's NTT^-1(A_hat o NTT(z) - NTT(c) o NTT(t1*2^d)) read as polynomials.
 
 ## How the chain is put together
 
 1. SAW proves each C function equal to a Cryptol model: `ntt`, `invntt_tomont`,
-   `poly_pointwise_montgomery`, `poly_add`, `poly_reduce`, `polyvecl_pointwise_acc_montgomery`, the
-   `poly_ntt` and `poly_invntt_tomont` wrappers, and the loops over vector entries and matrix rows.
+   `poly_pointwise_montgomery`, `poly_add`, `poly_sub`, `poly_shiftl`, `poly_reduce`,
+   `polyvecl_pointwise_acc_montgomery`, the `poly_ntt` and `poly_invntt_tomont` wrappers, and the
+   loops over vector entries and matrix rows.
    Each proof has a mutant (the claimed result with 1 added to one coefficient) that SAW rejects with
    a counterexample. `make saw`.
 2. cryptol-to-isabelle lifts the Cryptol model into Isabelle. A check regenerates the lift and diffs
@@ -79,7 +85,10 @@ results are claimed for those versions.
 
 ## What it does not cover
 
-- Signature verification, as above.
+- The rest of signature verification (hashing, decoding, hints) and of signing (sampling, rejection,
+  rounding). This is about the polynomial products only.
+- The input ranges the theorems assume (t1 is 10-bit, z and c are small, A's coefficients fit in 23
+  bits) are read from the decoding and sampling code, not proved.
 - The C side is proved on bitcode compiled with `-O0 -fwrapv`. That no signed overflow happens on a
   normal build is mechanized for the forward NTT and argued from the proved bounds for the rest.
   The compiler is trusted.
@@ -87,6 +96,9 @@ results are claimed for those versions.
   `by eval` method). A check in the build fails if the headline theorems pick up any other oracle.
 - The bound on A's coefficients (at most 9q) is read from `poly_uniform`, which masks every candidate
   to 23 bits. `poly_uniform` itself is not verified, and neither is the sampling against FIPS 204.
+- `poly_shiftl` shifts a signed int, which C defines only for non-negative values that do not
+  overflow. That holds because t1 is 10-bit, which is read from the source; SAW does not see that
+  kind of undefined behaviour.
 - ML-DSA-44 only. The vector length 4 is fixed in the models.
 - Reference C only. Not the AVX2 code, and not constant-time properties.
 
@@ -107,7 +119,8 @@ every claim against the output. The first round found that an early draft overst
 result applied, that a "no `by eval`" claim was true of the new files but not of the theorem, and
 that three of four Isabelle mutation tests only showed the proof script breaking when its statement
 changed. The second found unverified loops between `sign.c` and the proved functions. Those loops
-are now proved, and the rest is corrected in the text above.
+are now proved, and the rest is corrected in the text above. The third, on verification, found that
+the loops reused by the signer were not proved to leave their inputs unchanged; they now are.
 
 ## Reproducing
 

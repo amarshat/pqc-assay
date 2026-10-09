@@ -175,10 +175,10 @@ the C</title>
     }
     .display.math{display: block; text-align: center; margin: 0.5rem auto;}
   </style>
-  <meta name="description" content="PQClean's ML-DSA-44 reference C, machine-checked from the C through SAW and Isabelle: the NTT, pointwise multiply and inverse compose to multiplication in Z_q[X]/(X^256+1), for every product in key generation and signing." />
+  <meta name="description" content="PQClean's ML-DSA-44 reference C, machine-checked from the C through SAW and Isabelle: the NTT, pointwise multiply and inverse compose to multiplication in Z_q[X]/(X^256+1), for every polynomial product in key generation, signing and verification." />
   <meta property="og:type" content="article" />
   <meta property="og:title" content="The ML-DSA reference NTT multiplies polynomials, checked from the C" />
-  <meta property="og:description" content="Machine-checked from PQClean's ML-DSA-44 C to multiplication in Z_q[X]/(X^256+1), for every product in key generation and signing. Verification not yet covered." />
+  <meta property="og:description" content="Machine-checked from PQClean's ML-DSA-44 C to multiplication in Z_q[X]/(X^256+1), for every polynomial product in key generation, signing and verification." />
   <meta property="og:url" content="https://amarshat.github.io/pqc-assay/writeup/ml-dsa-ntt-multiplies.html" />
   <style>
     table { border-collapse: collapse; margin: 1em 0; }
@@ -271,24 +271,33 @@ the sum is inside <code>reduce32</code>’s precondition.</p>
 <tr>
 <td>A<em>z - c</em>t1*2^d</td>
 <td>verification</td>
-<td>no</td>
+<td>yes</td>
 </tr>
 </tbody>
 </table>
 <p>Covered means every function on the path, from the vector and matrix
 loops in <code>polyvec.c</code> down to <code>montgomery_reduce</code>,
-is proved equal to a Cryptol model, and the Isabelle theorems apply to
-the composition. The order in which <code>sign.c</code> calls those
-functions is read from the source, not proved.</p>
-<p>Verification is not covered yet. It subtracts c<em>t1</em>2^d before
-the inverse and calls the pointwise loop with its output overlapping an
-input, and neither case is proved.</p>
+is proved equal to a Cryptol model in the form it is called (including
+the calls where the output overlaps an input), the loops are proved to
+leave their inputs unchanged (the signer reuses the challenge and A
+across calls), and the Isabelle theorems apply to the composition. The
+order in which <code>sign.c</code> calls those functions is read from
+the source, not proved.</p>
+<p>Verification needed three more pieces: the shift by 2^13, a
+subtraction, and a pointwise call whose output overwrites one of its
+inputs. The theorem <code>ver_row_ring</code> in <a
+href="https://github.com/amarshat/pqc-assay/blob/main/spec/isabelle/tier2/verwork/Ver_Bridge.thy"><code>Ver_Bridge.thy</code></a>
+says each row of verification’s computation is A_1<em>z_1 + … +
+A_4</em>z_4 - c<em>(2^13</em>t1) mod X^256+1, which is FIPS 204
+Algorithm 8’s NTT^-1(A_hat o NTT(z) - NTT(c) o NTT(t1*2^d)) read as
+polynomials.</p>
 <h2 id="how-the-chain-is-put-together">How the chain is put
 together</h2>
 <ol type="1">
 <li>SAW proves each C function equal to a Cryptol model:
 <code>ntt</code>, <code>invntt_tomont</code>,
 <code>poly_pointwise_montgomery</code>, <code>poly_add</code>,
+<code>poly_sub</code>, <code>poly_shiftl</code>,
 <code>poly_reduce</code>,
 <code>polyvecl_pointwise_acc_montgomery</code>, the
 <code>poly_ntt</code> and <code>poly_invntt_tomont</code> wrappers, and
@@ -311,7 +320,12 @@ Isabelle2025-2 and the AFP snapshot of 2026-06-05. The results are
 claimed for those versions.</p>
 <h2 id="what-it-does-not-cover">What it does not cover</h2>
 <ul>
-<li>Signature verification, as above.</li>
+<li>The rest of signature verification (hashing, decoding, hints) and of
+signing (sampling, rejection, rounding). This is about the polynomial
+products only.</li>
+<li>The input ranges the theorems assume (t1 is 10-bit, z and c are
+small, A’s coefficients fit in 23 bits) are read from the decoding and
+sampling code, not proved.</li>
 <li>The C side is proved on bitcode compiled with
 <code>-O0 -fwrapv</code>. That no signed overflow happens on a normal
 build is mechanized for the forward NTT and argued from the proved
@@ -323,6 +337,10 @@ the build fails if the headline theorems pick up any other oracle.</li>
 <code>poly_uniform</code>, which masks every candidate to 23 bits.
 <code>poly_uniform</code> itself is not verified, and neither is the
 sampling against FIPS 204.</li>
+<li><code>poly_shiftl</code> shifts a signed int, which C defines only
+for non-negative values that do not overflow. That holds because t1 is
+10-bit, which is read from the source; SAW does not see that kind of
+undefined behaviour.</li>
 <li>ML-DSA-44 only. The vector length 4 is fixed in the models.</li>
 <li>Reference C only. Not the AVX2 code, and not constant-time
 properties.</li>
@@ -345,7 +363,9 @@ of the theorem, and that three of four Isabelle mutation tests only
 showed the proof script breaking when its statement changed. The second
 found unverified loops between <code>sign.c</code> and the proved
 functions. Those loops are now proved, and the rest is corrected in the
-text above.</p>
+text above. The third, on verification, found that the loops reused by
+the signer were not proved to leave their inputs unchanged; they now
+are.</p>
 <h2 id="reproducing">Reproducing</h2>
 <pre><code>git clone https://github.com/amarshat/pqc-assay &amp;&amp; cd pqc-assay
 ./scripts/setup.sh           # pinned toolchain into .tools/ (macOS arm64 tested)
