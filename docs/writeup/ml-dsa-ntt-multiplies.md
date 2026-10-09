@@ -73,7 +73,9 @@ loop with its output overlapping an input, and neither case is proved.
    the earlier work, the convolution theorem instantiated at q = 8380417, and a lemma that the
    negacyclic convolution formula is polynomial multiplication mod X^n+1. `make convolution`.
 
-`make verify` runs all of it.
+`make verify` runs all of it. The pinned checkers are SAW 1.5.1 (with its bundled z3),
+cryptol-to-isabelle from the same release, Isabelle2025-2 and the AFP snapshot of 2026-06-05. The
+results are claimed for those versions.
 
 ## What it does not cover
 

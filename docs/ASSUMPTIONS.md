@@ -795,6 +795,14 @@ hardest. Each is a real gap, not a formality.
   - Impact on Assay: the SAW leg (C ≡ Cryptol model) is unaffected ,  it asserts no bound. The
     Isabelle correctness spec is stated over the **half-open** domain `-2^31*Q <= a < 2^31*Q`, where
     the strict `-Q < r < Q` is actually true; see `spec/isabelle/MLDSA_NTT_Spec.thy` (`mont_input_ok`).
+  - Same issue in the standard (noted 2026-10-09): NIST's FIPS 204 potential-updates list
+    (`fips-204-potential-updates.xlsx`, last updated 2026-07-31) says Appendix A's Montgomery
+    reduction "incorrectly gives the upper bound of the input range as inclusive when it should be
+    exclusive", and that Appendix A will be rewritten to match the reference implementation. The
+    list credits no reporter, and we did not report this to NIST; it is an independent statement of
+    the same endpoint issue. The same list's NTT entry (Sec. 2.5/7.5: `zeta_j` is
+    `zeta^(2 BitRev8(j) + 1)`, not `w` evaluated there) matches the convention our theorems state.
+    No other entry touches the NTT or multiplication.
 - **OF-2 (2026-06-08): PQClean `reduce32` doc-comment output bound is off by one on the low end
   under its own (one-sided) precondition.** The comment in `target/pqclean/reduce.c` states, for
   `a <= 2^31 - 2^22 - 1`, that it returns `r` with **`-6283008 <= r <= 6283008`**. But the stated
