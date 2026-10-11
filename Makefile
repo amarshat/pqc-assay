@@ -27,7 +27,7 @@ all: verify
 ## forward-NTT model ≡ FIPS-203 residue transform (Isabelle, Kem_Work). The ML-KEM C ≡ Cryptol legs
 ## (mlkem-reduce, mlkem-ntt) gate separately on every push in saw.yml.
 verify: target-identity lift-check saw poly-nsw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett mlkem-isabelle convolution
-	@echo "✔ pipeline complete — all checked steps passed"
+	@echo "✔ pipeline complete: all checked steps passed"
 
 ## Integrity gate: the vendored C under proof is byte-for-byte the pinned snapshot.
 target-identity:
@@ -161,7 +161,7 @@ ntt-nsw:
 ## The poly.c / polyvec.c functions on every multiplication path, on the DEFAULT (nsw) bitcode:
 ## no signed overflow, every callee precondition met, under the 9q input bound. With
 ## check_wrapv_diff.sh (the two builds differ only in nsw/inbounds) this carries the -fwrapv
-## functional proofs over to a normal build. z3 only, about 30 min; part of `verify`.
+## functional proofs over to a normal build. z3 only, 30 to 50 min; part of `verify`.
 poly-nsw: bitcode
 	CLANG=$(CLANG) ./scripts/check_wrapv_diff.sh $(TARGET_C)
 	@echo ">> SAW: poly layer on the nsw bitcode, no signed overflow under the call-site bounds"

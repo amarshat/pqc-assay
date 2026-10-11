@@ -880,8 +880,9 @@ signing and verification. Things they do not prove:
    `t < Q` test is right. This is read from the source; `poly_uniform` is not verified.
 3. `poly_add`, `poly_sub`, the accumulator and the loops are proven equal to their models on the
    `-fwrapv` bitcode. Since 2026-10-11 the absence of signed-overflow UB on a normal build is
-   mechanized for them too: `proof/saw/poly_nsw.saw` (`make poly-nsw`; 1889 s, exit 0, z3, on an
-   Apple M2 Max, macOS 13.7, Apple clang 14.0.3, not yet on the pinned clang 17) runs
+   mechanized for them too: `proof/saw/poly_nsw.saw` (`make poly-nsw`; z3; 1889 s, exit 0, on an
+   Apple M2 Max, macOS 13.7, Apple clang 14.0.3; and exit 0 in about 48 min on the pinned Apple
+   clang 17.0.0 in CI verify run 38100891287 on e264684, 2026-10-11) runs
    `montgomery_reduce`, `reduce32`, `poly_pointwise_montgomery` (both call forms), `poly_add`,
    `poly_sub`, `poly_reduce`, the accumulator, the matrix loop, the `pointwise_poly` loops (both
    forms), `polyveck_sub` and `polyveck_reduce` on the DEFAULT bitcode, where every signed add, sub

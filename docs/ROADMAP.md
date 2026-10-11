@@ -2,6 +2,17 @@
 
 The whole strategy is **depth, scoped tight**. One finished proof beats three half-built ones.
 
+## Where things stand (2026-10-11)
+
+The sections below are a log in the order the work happened; this is the summary. For ML-DSA-44's
+reference C the chain now runs from the C to `R_q`: `reduce.c`, the forward and inverse NTT on signed
+inputs (v1, v1.5, fork 1), the NTT-based multiply and the `A*y` / `A*s1` rows (v4, O7 and O8), and a
+row of verification's `A*z - c*t1*2^13` (v4). Signed-overflow freedom on a normal build is
+mechanized for the forward NTT (`make ntt-nsw`) and the polynomial layer (`make poly-nsw`), and
+still argued for the inverse NTT and the transform wrappers. The README's claim table is the
+current list. Open, in rough order: a methods paper, the inverse NTT on the default build,
+ML-KEM's inverse against FIPS 203, then v2 (optimized code) and v3 (constant time).
+
 ## v1 — the Montgomery-reduction primitive (DONE) + the reduce.c layer
 - Delivered: `montgomery_reduce` in **PQClean's reference ML-DSA C**, proven end-to-end
   (C ≡ Cryptol via SAW; model ≡ independent FIPS-derived spec via Isabelle). `make verify` green.
@@ -680,8 +691,8 @@ theorems about the definition we wrote.
   the third add, so the carried bound is tested too.
 
   Two things were needed to make it run in 30 minutes on z3 (1889 s, exit 0, 2026-10-11, Apple M2
-  Max, macOS 13.7, Apple clang 14.0.3; not yet run on the pinned clang 17, which the CI verify job
-  uses). The `nsw` check on the int64
+  Max, macOS 13.7, Apple clang 14.0.3; on the pinned clang 17 in CI verify run 38100891287, exit 0
+  in about 48 min). The `nsw` check on the int64
   multiply is a 128-bit multiplier-equivalence goal that yices, cvc5 and ABC each fail to close in
   120 s (z3: about 40 s); it holds for all 32-bit operands, so it is proved once and used as a
   rewrite rule. And Crucible keeps every earlier call's checked precondition as a hypothesis, so

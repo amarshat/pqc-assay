@@ -1,5 +1,9 @@
 # ePrint outline (draft)
 
+Superseded 2026-10-11. This outline was written when the result was the reduce layer and forward-NTT
+overflow freedom. Several of its non-claims below have since been proven (both transforms against
+FIPS 204 on signed inputs, the multiply and matrix rows in `R_q`); the README claim table is current.
+
 Working title: *Machine-Checking the ML-DSA Reference Reduction Layer and Forward-NTT
 Overflow-Freedom: A Reproducible SAW→Cryptol→Isabelle Pipeline*
 

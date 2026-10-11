@@ -3,7 +3,6 @@
 </p>
 
 <h1 align="center">PQC-Assay</h1>
-<p align="center"><em>(formerly "Assay")</em></p>
 
 <p align="center">
   <a href="https://github.com/amarshat/pqc-assay/actions/workflows/verify.yml"><img src="https://github.com/amarshat/pqc-assay/actions/workflows/verify.yml/badge.svg" alt="verify"></a>
@@ -13,447 +12,127 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
   <img src="https://img.shields.io/badge/Isabelle-2025--2-9cf.svg" alt="Isabelle2025-2">
   <img src="https://img.shields.io/badge/SAW-1.5.1-orange.svg" alt="SAW 1.5.1">
-  <img src="https://img.shields.io/badge/Isabelle-no%20sorry%20%7C%20no%20smt%20%7C%2088%20code--gen%20evals-success.svg" alt="Isabelle: no sorry, no smt, 88 code-generator evals">
   <a href="https://doi.org/10.5281/zenodo.21178811"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.21178811.svg" alt="DOI"></a>
 </p>
 
-Machine-checking post-quantum reference C against its specification, using the
-SAW → Cryptol → Isabelle pipeline.
+PQC-Assay machine-checks the unmodified PQClean reference C for ML-DSA-44 (FIPS 204) against a
+specification written from the standard. SAW proves the C equal to a Cryptol model, Galois's
+`cryptol-to-isabelle` lifts that model into Isabelle, and Isabelle proves the lifted model equal to
+the FIPS 204 mathematics. It is the toolchain Apple used for its 2026 `corecrypto` work; none of
+Apple's code or theories are used here.
 
-PQC-Assay builds a reproducible refinement chain for the **unmodified PQClean reference C** for
-ML-DSA (FIPS 204): fixed-width C semantics, through a SAW-anchored Cryptol model and a lifted
-word-level Isabelle model, up to an independent FIPS-204 specification, with the machine arithmetic's
-in-range preconditions proven separately. The toolchain (SAW → Cryptol → Isabelle) is the one Apple
-used for its 2026 `corecrypto` work (see [Background](#background-if-formal-verification-is-new-to-you));
-this project uses none of Apple's code or theories, and the Isabelle spec is written from FIPS 204.
+As of October 2026 the chain reaches from the C to ring arithmetic in `R_q = Z_q[X]/(X^256+1)`: the
+forward and inverse NTT compute the FIPS 204 transforms, the NTT-based multiply computes the product
+in `R_q`, and a row of the signer's `A*y` and of verification's `A*z - c*t1*2^13` computes the sum of
+products FIPS 204 specifies. This is reference C, not the optimized code that ships, and it is the
+arithmetic core of the scheme, not the scheme. Writeup:
+[The ML-DSA reference NTT multiplies polynomials, checked from the C](https://amarshat.github.io/pqc-assay/writeup/ml-dsa-ntt-multiplies.html).
 
-Current scope is the `reduce.c` arithmetic layer (both legs) and the forward and inverse NTT: C≡Cryptol
-functional equivalence, a machine-checked overflow-freedom / coefficient-bound result (forward), and
-(in the `Tier2` / `Tier2_InvWork` sessions, both gated in `make verify`) full FIPS-204 functional-
-correctness theorems for the lifted normal-domain transforms. The bridges linking those transforms back
-to the montgomery-domain models the SAW C≡Cryptol legs check are now proven (`ntt_bridge` forward,
-`invntt_bridge` inverse), so C → FIPS-204 forward NTT and C → FIPS-204 inverse NTT are each a single
-machine-checked chain mod q. The forward chain's former `-fwrapv` no-UB assumption is now itself
-machine-checked (`make ntt-nsw`: the default nsw build verified overflow-free and equal to the model
-on the bounded window); the inverse still carries it as a scoped assumption (claim table below).
-Montgomery reduction is an
-implementation device the NTT uses; it is not defined in FIPS 204. None of this is the
-optimized/assembly code that ships in production (see [Roadmap](docs/ROADMAP.md)).
+## What is proven (ML-DSA-44)
 
-A **second scheme**, ML-KEM-512 (FIPS 203), shows the method is not ML-DSA-specific: the same
-SAW → Cryptol → Isabelle pipeline verifies the ML-KEM-512 `clean` reduce layer and forward NTT.
-C ≡ Cryptol for `montgomery_reduce`, `barrett_reduce`, and the 7-level `ntt` (SAW, gated on every push
-in `saw.yml`), and Cryptol ≡ FIPS 203 for the forward transform in Isabelle: `ntt_residue` (session
-`Kem_Work`, gated in `make verify`) proves the montgomery model computes the FIPS-203 degree-2 residue
-coefficients, the *incomplete* NTT that mod 3329 splits X²⁵⁶+1 into 128 degree-2 factors. Forward NTT
-+ reduce only: ML-KEM inverse NTT is future work, and the overflow story is simpler than ML-DSA's (the
-int16 butterfly cannot overflow int32, so no coefficient-bound proof is needed). ML-KEM claim table
-below.
+"Machine-checked" means a pinned tool exited 0 on the stated property, in `make verify` unless noted.
+"Argued" means a sound step that is not mechanized. Details and every assumption are in
+[`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md).
 
-A **second target**, the unmodified RustCrypto `ml-dsa` Rust crate (reached through `mir-json`, the
-`rust` CI badge), adds a MIR-level study of the field arithmetic and its tractability boundary. Its one
-hard obligation, wide-domain Barrett reduction, is machine-checked via bitwuzla, with an oracle-free
-Isabelle proof alongside. See [Second target: RustCrypto `ml-dsa`](#second-target-rustcrypto-ml-dsa-rust-via-mir).
-
-### Why this exists, and Q-SEAL
-
-Why verify these implementations at all: [`WHY.md`](WHY.md). The short version is that deployed ML-DSA
-is the trust base for hardware-rooted, quantum-safe proof of possession (secure-element and eSIM
-attestation, credential binding), and a real one-character regression in a deployed ML-DSA crate's hint
-decoder (CVE-2026-24850) shows the primitives need checking, not just testing.
-
-The applied setting is **Q-SEAL** ([`docs/qseal/QSEAL-v0.1.md`](docs/qseal/QSEAL-v0.1.md)), a hybrid
-quantum-safe secure-element attestation layer whose mandatory suite pairs ECDSA P-256 with ML-DSA-44.
-Verification of Q-SEAL lives in [`qseal/`](qseal/): six and a half of the seven section-16 targets are
-machine-checked (target 7 covers field values, not lengths). Six (1 transcript bijection, 2 challenge binding, 3 hybrid no-downgrade with the
-signature verifiers left uninterpreted, 4 sequential single-use, 6 evidence reassembly
-round-trip-or-fail-closed, 7 field-value validation before signing) are SAW proofs that a C reference
-matches a Cryptol model of the spec rule, each with an injected-mutant non-vacuity check (and a
-mutation-adequacy pass that kills 55 of 58 systematic relational/logical mutants of the C, the three
-survivors being equivalent mutants; `make qseal-mutants`). The remaining one (5, `PROFILE_ACTION_OBSERVED` must not be obtainable through a host-exposed APDU
-path) is a safety property checked in ProVerif, over four queries and seven models: the honest one, a
-generated reachability witness, a generated guard ablation, and four mutants, one per query, so that
-every query has something in the repository that falsifies it. That model twice proved nothing before
-it proved anything; `docs/ASSUMPTIONS.md` OF-3 and `qseal/README.md` record both episodes. See
-[`qseal/README.md`](qseal/README.md) for the exact scope and non-claims of each. `make qseal-tbs
-qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-reachability`.
-
-Public review of v0.1 surfaced a hybrid non-separability gap (component signatures committed to the
-key pair only via an identifier). TBS-V2 (spec 7.1) adds a signed 32-byte pair commitment: model
-bijectivity/injectivity plus commitment-signedness proven in Cryptol, the C reference (de)serializer
-proven equal to the model in SAW (`make qseal-ref`), and the demo signs V2 with the reserved FIPS 204
-context `"Q-SEAL/v2"` and recomputes the commitment on verify. Key-usage rules (reserved context,
-dedicated classical key) are spec obligations in sections 6.1/7.1.
-
-A third track, **Cap-V1** ([`cap/`](cap/), spec [`docs/cap/CAP-V1.md`](docs/cap/CAP-V1.md)), applies
-the same discipline to agent delegation: a fixed 191-byte capability token, hybrid-signed with the
-same ECDSA P-256 + ML-DSA-44 suite, whose Rust verifier is machine-checked with Kani (55 harnesses:
-format bijection, chain attenuation, key binding, single-use, per-link revocation; each tagged
-honestly in the spec as independent content, definition check, or non-vacuity cover). A runnable
-demo (`make cap-demo`) drives the verified gate with real hybrid signatures through eight
-accept/reject scenarios, and the write-up is
-[A machine-checked capability layer for agent delegation](https://amarshat.github.io/pqc-assay/writeup/verified-agent-delegation.html).
-`make cap-kani cap-hybrid cap-demo`.
-
-To anchor the method to a real defect, [`cve-anchor/`](cve-anchor/) machine-checks the FIPS 204
-hint-decode canonicity rule that CVE-2026-24850 (GHSA-5x2r-hc65-25f9) broke: SAW proves a verifiable
-reference decoder equals a Cryptol model of the rule, and the buggy `<=` variant (the exact CVE) is
-rejected by the same proof. The rule is FIPS 204's, not ours. `make cve-anchor`.
-
-## What's proven
-
-`make verify` checks both legs (exit 0):
-
-- **SAW (C ≡ Cryptol)**, bit-for-bit:
-  - The `reduce.c` layer: `montgomery_reduce` (`−2³¹·Q ≤ a ≤ Q·2³¹`), `reduce32` (`a ≤ 2³¹−2²²−1`),
-    `caddq`, `freeze`, these also assert no signed-overflow UB in range.
-  - The forward NTT `ntt(a[256])`, under two's-complement wrapping (`-fwrapv`). This is functional
-    equivalence for all inputs; overflow-freedom is proven separately in Isabelle (below).
-  - The forward NTT again on the DEFAULT (nsw) bitcode (`make ntt-nsw`, ~12.5 h, out of band):
-    under inputs in `±(2³¹−2²⁷)`, all ~3000 signed-overflow side conditions discharge AND the
-    result equals the model (SAW + bitwuzla 0.9.1). This mechanizes the forward `-fwrapv` ⇒ no-UB
-    step on that window; the same step for the inverse remains argued.
-
-  A mutation test confirms the reduce proof is non-vacuous, and CI diffs the lifted Isabelle model
-  against the Cryptol model SAW checks.
-- **Isabelle (model ≡ spec)**, the whole `reduce.c` layer, no `sorry`/`oops`:
-  - `montgomery_reduce` meets `is_montgomery_reduction` (`2³²·r ≡ a (mod Q)`, `−Q < r < Q`) on
-    `−2³¹·Q ≤ a < 2³¹·Q`.
-  - `caddq` (residue-preserving, maps `[−Q,Q)` into `[0,Q)`); `reduce32` (residue-preserving, output
-    in the true window `[−6283009, 6283008]`) on `a ≤ 2³¹−2²²−1`; `freeze = caddq∘reduce32` (output
-    in `[0,Q)`), proven compositionally.
-- **Isabelle (forward-NTT overflow-freedom)**, `ntt_overflow_free`, no `sorry`/`oops`: for inputs
-  with every coefficient in `±(2³¹−2²⁷)`, the model NTT keeps every coefficient `< 2³¹` through all
-  8 levels, so **no `int32` add/sub overflows** and every `montgomery_reduce` input stays in range.
-  This is the coefficient-bound composition the `-fwrapv` proof sidesteps, proven by induction over
-  the 8 levels (one per-level lemma iterated, montgomery output bound `|t| < Q`), not by SAW
-  unrolling. The C-side claim (the reference forward NTT has no signed-overflow UB on this window)
-  is now separately mechanized too: `make ntt-nsw` verifies the default (nsw) bitcode directly
-  (SAW + bitwuzla, 12.5 h), so the forward direction no longer leans on the argued `-fwrapv`
-  meta-step (see [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md)).
-
-Chained with the SAW leg, this gives C ≡ spec for the full `reduce.c` arithmetic layer (each function
-computes a correct residue mod Q within its proven output window), plus a machine-checked
-coefficient-bound / overflow-freedom result for the forward NTT.
-
-While doing this we found two off-by-one errors in PQClean's reduce.c doc comments, `montgomery_reduce`
-(strict bound fails at one unreachable endpoint; OF-1) and `reduce32` (documented `−6283008` low end is
-reachably `−6283009` under its own one-sided precondition; OF-2). Both are doc/contract issues, not
-miscomputations. See `docs/ASSUMPTIONS.md`.
-
-## Forward-NTT functional correctness (proven, gated in `make verify`)
-
-The overflow-freedom result above does not say the forward NTT computes the *right* transform. That
-theorem is now proven, in a separate Isabelle session (`Tier2`), no `sorry`/`oops`, no `smt`, build
-exits 0:
-
-```
-theorem fwd_ntt_correct:
-  bounded w  ⟹  k < 256  ⟹
-    cf (nttFwdAllRef w) k = (∑ j<256. cf w j · ζ^((2·brv₈ k + 1)·j)) mod q      (ζ = 1753, q = 8380417)
-```
-
-The lifted forward NTT, at each output position `k`, computes the FIPS-204 negacyclic DFT coefficient
-at the bit-reversed index `brv₈ k`, i.e. ML-DSA's natural-input → bit-reversed-output convention.
-The statement is about the lifted **normal-domain** model `nttFwdAllRef` (a lift of a normal-domain
-Cryptol NTT, machine-checked equal to its original recursive twiddle table, not a hand-written model).
-The SAW C≡Cryptol leg checks the C against the **montgomery-domain** model; connecting that model to
-`nttFwdAllRef` (montgomery ≡ normal, mod q) is the `work/Mont_Bridge.thy` work, now finished:
-`ntt_bridge` proves `sint_seq (ntt w ! k) mod q = (∑ j<256. cf w j · ζ^((2·brv₈ k + 1)·j)) mod q`
-where `ntt` is the montgomery model SAW checks the C against. So the two ends join into one chain.
-
-How it is built (Isabelle, no holes):
-
-- **`fwd_as_bfly`**, the lifted forward NTT equals an 8-fold abstract Cooley-Tukey butterfly transform
-  on the integer-coefficient view (`cf (nttFwdAllRef w) n = fwdBfly (cf w) n`), decoupling the
-  finished word-level seam from the combinatorial argument.
-- **`inv_form`**, a closed-form stage invariant (the sub-DFT held after each layer), with exact
-  `inv_form_lower` (additive butterfly leg) and `inv_form_upper` (subtractive leg, a congruence mod
-  `q` using `ζ²⁵⁶ ≡ −1`).
-- **`applyN_inv`**, induction over the 8 layers, discharging each step with the recursion lemmas and
-  the per-layer twiddle closed form `z_closed` (`zetabrv[i] = ζ^(brv₈ i) mod q`). At layer 8 this is
-  `fwd_ntt_correct`.
-
-The route is self-contained (a direct closed-form negacyclic DFT), so it does not depend on aligning
-with the recursive Cooley-Tukey transform in the Archive of Formal Proofs.
-
-The inverse NTT (`Tier2_InvWork`) mirrors this for the Gentleman-Sande direction: `inv_as_bfly`
-(the lifted `nttInvAllRef` is an 8-fold abstract GS transform `invBfly`), a closed-form stage invariant
-`ginv_form` with exact `ginv_lower` (additive leg) and `ginv_upper` (subtractive leg, a congruence mod
-`q`), and `applyG_inv` (induction over the 8 layers). The per-layer twiddle reduces to the normal table
-via `gtwid_lo`/`gtwid_hi` (`±zt(2^(8−t)−1−hi)`), proven from the bit-reversal identity
-`gz_brv`. At layer 8 this is `inv_ntt_correct`; composed with the montgomery-scale bridge
-(`invntt_scale_bridge`) it is `invntt_bridge`.
-
-Status: `Tier2` (forward) and `Tier2_InvWork` (inverse) are first-class `make` targets and part of
-`make verify` (`lift-check saw isabelle tier2 tier2-inv`). The no-`sorry`/`oops`/`admit` gate runs over
-all of `spec/` (including both) on every push (`saw.yml`); the full Tier2 + Tier2_InvWork *build* runs
-in `verify.yml` (manual `workflow_dispatch`, like the rest of the Isabelle leg, because of CI cost).
-The inverse NTT and its `256⁻¹` (= `mont/256`) normalization are now machine-checked (`invntt_bridge`),
-and inverse overflow-freedom too (`invntt_overflow_free`, under a non-negative `[0,Q)` input window,
-not the symmetric `|coeff| < Q`; it is tight because the Gentleman-Sande low leg doubles the bound per
-level, and it does not cover the signed centered coefficients the reference feeds `invntt_tomont`). Still open: constant-time, and
-the inverse's `-fwrapv` ⇒ no-UB seam (the forward's is now mechanized, `make ntt-nsw`). See
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
-
-### Claim status (forward-NTT chain)
-
-What is and is not machine-checked, end to end. "Machine-checked" = a tool exited 0 on the stated
-theorem this is built from; "argued" = a sound but un-mechanized meta-step; "assumed" = taken on faith
-with justification in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md); "not claimed" = out of scope.
-
-| Link in the chain | Status |
+| Link | Status |
 |---|---|
-| `reduce.c` primitives (`montgomery_reduce`/`reduce32`/`caddq`/`freeze`) ≡ Cryptol | machine-checked (SAW + Z3) |
-| C `ntt(a[256])` ≡ Cryptol montgomery `ntt` (under `-fwrapv` wrapping; functional) | machine-checked (SAW) |
-| montgomery NTT overflow-freedom / coefficient bound | machine-checked (Isabelle `ntt_overflow_free`) |
-| forward: no signed-overflow UB in the DEFAULT (nsw) build, and ≡ model, on `±(2³¹−2²⁷)` inputs | machine-checked (SAW + bitwuzla, `make ntt-nsw`, ~12.5 h) |
-| inverse: `-fwrapv` wrapping ⇒ no signed-overflow UB in the C | argued (meta-step, not mechanized) |
-| poly.c / polyvec.c multiplication-path functions: no signed-overflow UB in the DEFAULT build, given 9q pointwise operands | machine-checked (SAW + z3, `make poly-nsw`, ~30 min); build equivalence up to `nsw`/`inbounds` by `scripts/check_wrapv_diff.sh` |
-| Cryptol montgomery `ntt` lifts to Isabelle | machine-checked (cryptol-to-isabelle; builds) |
-| montgomery lifted `ntt` ≡ normal `nttFwdAllRef` (mod q) | machine-checked (Isabelle `Mont_Bridge`, `mbfly0`..`mbfly7` composed) |
-| normal `nttFwdAllRef` ≡ FIPS-204 forward NTT | machine-checked (Isabelle `fwd_ntt_correct`) |
-| montgomery `ntt` ≡ FIPS-204 forward NTT (mod q), composed | machine-checked (Isabelle `ntt_bridge`) |
-| C `invntt_tomont(a[256])` ≡ Cryptol montgomery `invntt` (under `-fwrapv` wrapping; functional) | machine-checked (SAW) |
-| montgomery lifted `invntt` ≡ normal `nttInvAllRef` (mod q), incl. the `mont/256` scale | machine-checked (Isabelle `Rcong_invcore` + `invntt_scale_bridge`) |
-| normal `nttInvAllRef` ≡ FIPS-204 inverse NTT (mod q) | machine-checked (Isabelle `inv_ntt_correct`) |
-| montgomery `invntt` ≡ FIPS-204 inverse NTT (mod q), composed | machine-checked (Isabelle `invntt_bridge`) |
-| inverse NTT overflow-freedom / coefficient bound (under non-negative `[0,Q)` input, not `\|coeff\| < Q`) | machine-checked (Isabelle `invntt_overflow_free`) |
-| constant-time / side channels | not claimed |
+| `reduce.c` (`montgomery_reduce`, `reduce32`, `caddq`, `freeze`) ≡ Cryptol, no signed overflow in range | machine-checked (SAW + z3) |
+| `reduce.c` models meet their contracts (residue mod q, output windows) | machine-checked (Isabelle) |
+| C `ntt` and `invntt_tomont` ≡ Cryptol models (`-fwrapv` build, all inputs) | machine-checked (SAW) |
+| Cryptol models lift to the Isabelle models used below | machine-checked (`make lift-check` regenerates and diffs) |
+| forward NTT model ≡ FIPS 204 forward NTT mod q | machine-checked (Isabelle `ntt_bridge` on `[0,q)`, `ntt_signed_correct` on `\|coeff\| < q`) |
+| inverse NTT model ≡ FIPS 204 inverse NTT mod q, scaled by `mont/256` (`mont` = 2³² mod q) | machine-checked (Isabelle `invntt_bridge` on `[0,q)`, `invntt_signed_correct` on `\|coeff\| < q`) |
+| no int32 overflow in the NTT models (forward on `±(2³¹−2²⁷)`, inverse on `\|coeff\| < q`) | machine-checked (Isabelle `ntt_overflow_free`, `invntt_overflow_free`) |
+| forward NTT on the default build: no signed-overflow UB, and ≡ model, on `±(2³¹−2²⁷)` | machine-checked once (SAW + bitwuzla, `make ntt-nsw`, 12.5 h, 2026-07-10, before `poly.c` was vendored; no paired mutant; out of band) |
+| inverse NTT on the default build: no signed-overflow UB | argued (from the `-fwrapv` proof plus `invntt_overflow_free`) |
+| `invntt(pointwise(ntt a, ntt b))` is `a*b` in `R_q`, for `\|coeff\| < q` inputs | machine-checked (SAW for `poly_pointwise_montgomery`, Isabelle `ntt_mult_correct`, `ntt_mult_ring`) |
+| a row of `A*y` / `A*s1` is `sum_i f_i*y_i` in `R_q` (`f_i` any polynomial whose NTT is row entry i of `A_hat`; `\|y\| < q`) | machine-checked (SAW for the accumulator, `poly_add`, `poly_reduce`, the wrappers and loops; Isabelle `acc_mult_fips`, `acc_mult_ring`) |
+| a row of verification's `A*z - c*t1*2^13`, FIPS form and in `R_q` | machine-checked (Isabelle `ver_row_fips`, `ver_row_ring`) |
+| pointwise, add, sub, reduce, accumulator and the loops on the multiply paths: no signed-overflow UB on the default build, given pointwise operands within 9q (= 75423752) | machine-checked (SAW + z3, `make poly-nsw`, 48 min on CI's clang 17) |
+| `poly_shiftl` on the default build: no signed-shift UB | argued (clang emits a plain `shl`, so SAW cannot see it; `poly_nsw.saw` checks the range fact only) |
+| transform wrappers `poly_ntt` / `poly_invntt_tomont` on the default build | argued |
+| `negconv` is multiplication in `R_q`; the NTT locale has a model at the ML-DSA parameters | machine-checked (Isabelle `negconv_is_mult`, `mldsa_model`) |
+| hypotheses read from the source: the order `sign.c` / `verify` call these in; A's 23-bit coefficient bound; verification's `t1` (10-bit), `\|z\|` and `\|c\|` below q | not proven (A-ROW 2, 5 in `docs/ASSUMPTIONS.md`) |
+| sampling, rounding, hints, packing, hashing; constant time | not claimed |
 
-With `ntt_bridge` (forward) and `invntt_bridge` (inverse) the two machine-checked ends join in both
-directions: C → FIPS-204 forward NTT *and* C → FIPS-204 inverse NTT are each one connected
-machine-checked chain mod q. The forward chain now has no argued step on the bounded window (the
-nsw row above); the inverse's only non-mechanized step is its `-fwrapv` ⇒ no-UB meta-argument
-(the "argued" row above). Both directions are also overflow-free (`ntt_overflow_free` /
-`invntt_overflow_free`); the inverse needs a tight non-negative `[0,Q)` input window (`256·(Q−1)` just
-fits int32), which does not cover the signed centered inputs at the reference call site (open). What is *not* claimed: that this is the hard or shipping code (it
-is the reference C, and the field arithmetic is the easy primitive), or constant-time.
+The 9q operand bound comes from Isabelle's `ntt_out_bounded` for transform outputs and from the
+23-bit mask in `poly_uniform` for A (read from the source). The Isabelle theories contain no `sorry`,
+`oops` or `smt`, and CI greps for `sorry`/`oops`/`admit` on every push. They use `by eval`, which
+trusts the code generator, 88 times (85 in `make verify`), for the twiddle tables and a few gcd
+facts. Every NTT theorem in the table depends on it (OF-4, measured with `Thm_Deps.all_oracles`);
+`negconv_is_mult` does not. Results are claimed for the pinned checkers: SAW 1.5.1,
+`cryptol-to-isabelle` from the same release, Isabelle2025-2, AFP 2026-06-05.
 
-### Second scheme: ML-KEM-512 (FIPS 203) forward NTT + reduce
+Along the way we found two off-by-one errors in the bounds documented in PQClean's `reduce.c`
+(OF-1, `montgomery_reduce`; OF-2, `reduce32`). Neither causes a miscomputation. Both were reported
+upstream as pq-crystals/dilithium#114.
 
-The same pipeline on a different NIST standard, to show the method is not ML-DSA-specific. Target:
-PQClean `ml-kem-512/clean` (`reduce.c`, `ntt.c`, same pin). Forward transform + reduce layer only;
-ML-KEM inverse NTT is future work.
+## Other targets
 
-| Link in the chain | Status |
-|---|---|
-| `montgomery_reduce` / `barrett_reduce` ≡ Cryptol (16-bit, direct SMT, result+1 mutants rejected) | machine-checked (SAW + Z3, `make mlkem-reduce`, `saw.yml`) |
-| C `ntt(a[256])` ≡ Cryptol montgomery `ntt` (7 levels, under `-fwrapv`; functional) | machine-checked (SAW, `make mlkem-ntt`, `saw.yml`) |
-| brick (a) montgomery `montgomery_reduce` ≡ FIPS-203 residue (`2¹⁶·r ≡ a mod 3329`, `-q<r<q`) | machine-checked (Isabelle `montgomery_reduce_correct_kem`) |
-| brick (b) 7-level Cooley-Tukey routing ≡ abstract recurrence on the coefficient view | machine-checked (Isabelle `ntt_recurrence`) |
-| brick (c) montgomery `ntt` ≡ FIPS-203 degree-2 residue transform (mod 3329), composed | machine-checked (Isabelle `ntt_residue`, `make mlkem-isabelle` / `make verify`) |
-| `-fwrapv` wrapping ⇒ no signed-overflow UB in the C | argued (meta-step); simpler than ML-DSA (int16 butterfly cannot overflow int32) |
-| ML-KEM inverse NTT | not done (future work) |
-| overflow-freedom coefficient bound | not needed (int16 → int32 cannot overflow) |
-| constant-time / side channels | not claimed |
+ML-KEM-512 (FIPS 203) goes through the same pipeline on PQClean's `ml-kem-512/clean`:
+`montgomery_reduce`, `barrett_reduce` and the forward and inverse `ntt` ≡ Cryptol (SAW, run in
+`saw.yml`), and the forward NTT model ≡ the FIPS 203 degree-2 residue transform (Isabelle
+`ntt_residue`, in `make verify`). The inverse's FIPS 203 correctness is not done, and the no-overflow
+step is argued (int16 operands cannot overflow int32).
 
-`ntt_residue` states: for a reduced input and `k < 256`, output `k = 2i+c` equals the even (`c=0`) /
-odd (`c=1`) coefficient of `f mod (X² − 17^(2·brv₇(i)+1))`. Kyber's `X²⁵⁶+1` has a 256th root of unity
-but no 512th mod 3329, so it factors only into 128 degree-2 terms: the transform is the *incomplete*
-NTT, distinct math from the ML-DSA complete split. The C ≡ Cryptol and Cryptol ≡ FIPS-203 ends join at
-the montgomery-domain model `ntt` that both check.
+For the RustCrypto `ml-dsa` crate (Rust, via MIR), the crate's field arithmetic and NTT layers in SAW over
+`mir-json`. Its hard step, Barrett reduction on products below `2^46`, stalls every bit-blaster SAW
+ships; it is closed with bitwuzla (`make barrett-solver`) and separately in Isabelle with no oracle
+(`make barrett`).
 
-## Second target: RustCrypto `ml-dsa` (Rust, via MIR)
+Q-SEAL ([`docs/qseal/QSEAL-v0.1.md`](docs/qseal/QSEAL-v0.1.md), [`qseal/`](qseal/)) is a hybrid
+ECDSA P-256 + ML-DSA-44 secure-element attestation layer. Six of its seven spec targets are SAW
+proofs of a C reference against Cryptol models, the other is a ProVerif safety property, and each
+has a mutant that must fail. Target 7 covers field values, not lengths, and target 3 leaves both
+signature verifiers uninterpreted, so none of the ML-DSA results above are composed into it. Cap-V1
+([`cap/`](cap/)) is a capability token for agent delegation whose Rust verifier is checked with Kani
+(55 harnesses). The CVE anchor ([`cve-anchor/`](cve-anchor/)) proves a reference decoder written here,
+not the affected crate's, against the FIPS 204 hint-decode rule CVE-2026-24850 broke, and the buggy
+variant is rejected. The motivation is in [`WHY.md`](WHY.md).
 
-Alongside the PQClean C, the pipeline is pointed at the [RustCrypto `ml-dsa`](https://crates.io/crates/ml-dsa)
-crate (pinned 0.1.1), an unmodified third-party Rust ML-DSA, reached through `mir-json` + `crucible-mir`
-(the `rust` CI badge). This leg is both a portability check for the approach and a **tractability-boundary
-study** of the field arithmetic. The `Elem` field ops (`neg/add/sub/mul == arithmetic mod q`) are verified
-in SAW over the MIR; the eight NTT layers are verified against the FIPS 204 Algorithm 41/42 bodies with the
-field ops as uninterpreted routing symbols.
+[`external-corpus/`](external-corpus/) runs the non-vacuity checks against the example proofs shipped inside SAW 1.5.1. A specification weakened so it still
+admits a state went unflagged at 22 of 27 sites.
 
-The one hard step is wide-domain **Barrett reduction**: `barrett_reduce(x) == x mod q` for products
-`x < 2^46`. This is the goal every eager bit-blaster bundled with SAW stalls on (z3 ran 3h15m without
-converging, saw-script #3306; z3/cvc5/yices/abc all time out past `2^34`). It is now **closed two ways**:
+The reduce-layer theory was submitted to the Archive of Formal Proofs and rejected on scope; see
+[`afp/README.md`](afp/README.md).
 
-- **SAW + bitwuzla** (`implementations/rustcrypto-ml-dsa/proof/ntt/barrett_reduce_bitwuzla.saw`,
-  `make barrett-solver`): a real `mir_verify` of the deployed `barrett_reduce` against `x mod q`,
-  discharged by bitwuzla's abstraction-refinement in ~23 min (the core bit-vector goal in 551 s), with a
-  non-vacuity guard. bitwuzla is a trusted SMT oracle, the same trust class as the z3/yices used
-  throughout the SAW leg.
-- **Isabelle, oracle-free** (Route Y, `spec/isabelle/tier2/barrett`, `make barrett`): the same identity on
-  the tool-lifted model, `barrettBV x == x mod q`, with no `smt` and a kernel-checked no-oracle
-  certificate, for assurance that does not rest on trusting a solver.
+## Limits
 
-So the tractability boundary is measured and crossed, not left as a wall: eager bit-blasting stalls,
-abstraction-refinement (bitwuzla) crosses it, and the same identity in unbounded-integer arithmetic
-discharges in 0.04 s. The `barrett-solver` proof runs out of band (too slow for the fast CI leg). Full
-trust decomposition in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md).
-
-## The reduction layer as a standalone Isabelle entry (`afp/`)
-
-[`afp/MLDSA_Reduce`](afp/MLDSA_Reduce) is the reduce-layer mathematics rewritten as a self-contained
-Isabelle development over `Word_Lib`, with no dependency on the `Cryptol` session that ships inside SAW.
-Four contracts proved against fixed-width models of PQClean's routines (Montgomery reduction, `caddq`,
-`reduce32`, `freeze`), plus the exact functional characterisations, the arithmetic core, and witnesses
-for the two places where the reference implementation's documented bounds are off by one at an endpoint.
-`scripts/afp-check.sh` gates it against the Archive of Formal Proofs rules.
-
-It was submitted to the AFP on 2026-08-23 and **rejected on 2026-09-12**, on scope: four routines at one
-fixed modulus are a small subset of FIPS 204, and entries covering FIPS 202/203/204 and the generic
-modular algorithms were already queued. Nothing was raised about the proofs or the build. See
-[`afp/README.md`](afp/README.md) for the full outcome and what would have to change to revive it.
-
-## The NTT computes a product (`make convolution`)
-
-Every other NTT theorem here says the transform is the transform and that it inverts.
-`NNTT_negconv` in `spec/isabelle/tier2/inv/Negacyclic_Conv.thy` says the transform carries
-`negconv` to pointwise multiplication, where `negconv` is the coefficient formula for
-multiplication in `R_q = Z_q[X]/(X^n+1)`.
-
-`negconv` is proven to be multiplication in `R_q`: `negconv_is_mult`
-(`spec/isabelle/tier2/inv/Negacyclic_Poly.thy`) states
-`Poly (negconv xs ys) = (Poly xs * Poly ys) mod (X^n+1)` for length-`n` lists. Before that lemma
-existed the only evidence was agreement with an independent long-division implementation at five
-parameter sets, which is a test; that check is still in the tree.
-
-Prior art, which an earlier version of this section did not acknowledge: the AFP `CRYSTALS-Kyber`
-entry proves the stronger statement over an actual quotient ring
-(`convolution_thm_ntt_poly`, `NTT_Scheme.thy:1043`), generic in q and n.
-
-Theorems proven inside a locale are vacuous if the locale has no model, and neither this development
-nor the AFP NTT entry it builds on exhibited one. `mldsa_model` now does, at q = 8380417, n = 256,
-omega = 3073009, psi = 1753. Primality goes through a Pratt certificate rather than the code
-generator, and the order of omega is pinned by two facts (omega^256 = 1, omega^128 = -1) rather than
-by checking 255 powers. Session `Tier2_Inv`, no `sorry`/`oops`/`smt`/`by eval`.
-
-Connected to the implementation models (O7, O8). SAW proves `poly_pointwise_montgomery` equal to
-the Cryptol `pointwise`, and `ntt_mult_correct` (`spec/isabelle/tier2/convwork/Conv_Bridge.thy`,
-session `Tier2_Conv`) proves that for inputs with `|coeff| < q`, `invntt(pointwise(ntt a, ntt b))`
-equals `negconv a b` mod q coefficient by coefficient, with the Montgomery factors cancelling
-exactly. `ntt_mult_ring` restates it in `Z_q[X]/(X^256+1)`: the output, as a polynomial over
-`Z_q`, is the product of the two input polynomials reduced mod `X^256+1`. That is a statement about
-the SAW-checked models, so it reaches the C through three separate `-O0 -fwrapv` equivalences and the
-aliasing scope in A-POINTWISE (both forms the reference uses are proven). It inherits the code-generator oracle from the twiddle-table
-facts the transform bridges use. In the scheme it covers the signer's `c*s1`, `c*s2` and `c*t0`.
-
-The matrix products are covered too. SAW proves `polyvecl_pointwise_acc_montgomery`, `poly_add` (in
-the aliasing form `c == a` it is called with), `poly_reduce`, the `poly_ntt` / `poly_invntt_tomont`
-wrappers and the vector and matrix loops in `polyvec.c` equal to their Cryptol models.
-`acc_mult_ring` (`spec/isabelle/tier2/accwork/Acc_Bridge.thy`) proves, about those models, that a row
-of keygen's `A*s1` or the signer's `A*y` computes `sum_i f_i * y_i` in `R_q` for any polynomials `f_i`
-whose transforms are the sampled rows. Not proven: the order `sign.c` calls these in (read from
-the source) and the bound on A's coefficients (read from `poly_uniform`'s 23-bit mask). The absence
-of signed overflow on a normal build is mechanized in `proof/saw/poly_nsw.saw` (`make poly-nsw`) for
-the pointwise, add, sub, reduce and accumulate functions and the matrix, `pointwise_poly`,
-`polyveck_sub` and `polyveck_reduce` loops; not for the transform wrappers and their loops, and for
-the inverse NTT it is still argued. See A-ROW in
-`docs/ASSUMPTIONS.md`. Verification's `A*z - c*t1*2^d` is covered the same way (`ver_row_ring`,
-`spec/isabelle/tier2/verwork/Ver_Bridge.thy`), including the two aliasing calls it makes. See
-`docs/ROADMAP.md` v4. These results are claimed for the pinned checkers: SAW 1.5.1, cryptol-to-isabelle from the same
-release, Isabelle2025-2 and AFP 2026-06-05.
-
-## The checks, run on proofs we did not write (`make external-corpus`)
-
-Every other measurement here is on our own code, which is one data point. `external-corpus/` runs two
-of the non-vacuity checks against the worked LLVM proofs that ship inside SAW 1.5.1, written by SAW's
-authors. Nineteen of the twenty-nine scripts using `llvm_verify` run under the pinned toolchain.
-
-Emptying a specification outright, with `llvm_precond {{ False }}`, is caught by the tool: 54 of 54
-call sites rejected with `Symbolic execution failed. Infeasible branch`. Weakening one so it still
-admits a state is not. Pinning the first symbolic input with `llvm_precond {{ v == zero }}` leaves the
-path satisfiable, and 22 of 27 live specification sites still reported success with no signal at all.
-
-None of the five signals came from the proof of the weakened specification. All five came from a
-different proof downstream that consumed the result as an override and could no longer discharge the
-precondition at the call site. Specifications whose result is terminal, which is what a verification
-effort usually ships, were silent 21 times out of 21. Each site is separately probed with an
-unsatisfiable precondition and counted only if that is rejected, so a site the run never reaches
-cannot masquerade as a result; one site failed that control and is excluded.
-
-These are teaching examples, not a production proof development, and `external-corpus/README.md` says
-so. They are also not ours, which is the point.
-
-## Scope and limitations
-
-The proofs are honestly scoped. They cover the `reduce.c` arithmetic, the forward and inverse NTT (both
-against FIPS 204), and, on the RustCrypto Rust, the field layer including wide Barrett. The honest limits:
-
-- `montgomery_reduce` is the least bug-prone thing in the stack (branch-free, two multiplies and a shift,
-  unchanged in pq-crystals for years). ML-DSA's real correctness risk is reduction-bound composition
-  across the NTT/InvNTT (e.g. ePrint [2026/1032](https://eprint.iacr.org/2026/1032), an optimized-path
-  overflow that passed test vectors; and the missing-reduction bug Apple's SAW work caught in ML-DSA
-  InvNTT). The forward and inverse NTT proofs here, with their machine-checked coefficient-bound results,
-  target exactly that class for the reference C. The harder target is the shipping optimized code, where
-  those bugs actually occurred.
-- The verified range (`|a| ≤ 2³¹·Q ≈ 2⁵⁴`) is about 256× wider than anything ML-DSA feeds the
-  function (call sites produce `≲ Q² ≈ 2⁴⁶`), which is why OF-1's endpoint never occurs in practice.
-- `montgomery_reduce` is identical across ML-DSA-44/65/87, so the "-44" pin is cosmetic and the
-  result holds for all three.
-- This is reference C. The code that ships (AVX2/aarch64; OpenSSL, BoringSSL, AWS-LC; PQ Code Package
-  `mldsa-native`) is different, and verified with other tools (CBMC, HOL-Light). Pointing this
-  pipeline at `mldsa-native` is v2.
-
-So: a working end-to-end pipeline on third-party reference C, plus two minor upstream doc fixes (OF-1,
-OF-2). Not an ML-DSA assurance result.
-
-## Background (if formal verification is new to you)
-
-In May 2026 Apple open-sourced the [formal verification of `corecrypto`](https://github.com/apple/corecrypto/tree/2026-05),
-the cryptography on Apple devices, covering ML-KEM and ML-DSA (FIPS 203/204). Formal verification here
-means a machine-checked proof that the code computes what the spec says for every input, not just the
-cases a test happens to hit. Apple used [Galois](https://github.com/GaloisInc/saw-script)'s SAW +
-Cryptol and the [Isabelle](https://isabelle.in.tum.de/) prover, and caught bugs that testing had
-missed. PQC-Assay applies the same public approach to third-party reference C.
-
-## Pipeline
-
-```
-   target C subroutine
-          │  (1) hand-translate
-          ▼
-   Cryptol model  ──(2) SAW: C ≡ Cryptol──►  ✔
-          │  (3) cryptol-to-isabelle
-          ▼
-   Isabelle model ──(4) model ≡ FIPS spec──►  ✔ reduce.c layer
-          │        ├─(4') montgomery ntt ≡ FIPS-204 forward NTT (mod q) ─► ✔ ntt_bridge
-          │        └─(4'') montgomery invntt ≡ FIPS-204 inverse NTT (mod q) ─► ✔ invntt_bridge
-          ▼
-                  spec written from FIPS 204; no Apple artifacts
-```
-
-Steps (4') and (4'') close the forward- and inverse-NTT chains: `ntt_bridge` / `invntt_bridge` prove
-the montgomery-domain models the SAW legs check the C against equal the FIPS-204 negacyclic DFT and its
-inverse, mod q (the inverse montgomery-scaled by `mont/256`). The only non-mechanized link in either
-chain is `-fwrapv ⇒ no signed-overflow UB` (see the claim table above).
-
-Detail in [`docs/PIPELINE.md`](docs/PIPELINE.md).
+The verified code is the portable reference C. What ships (AVX2/aarch64 code in OpenSSL, BoringSSL,
+AWS-LC, `mldsa-native`) is different code. `mldsa-native` is verified with CBMC and HOL-Light. ePrint
+2026/1032 reports a reduction-bound overflow in optimized code that passed test vectors. The C proofs are on `-O0` bitcode, so the compiler
+is trusted. Everything is functional correctness; nothing here is about side channels.
 
 ## Reproduce
 
-macOS on Apple Silicon (pinned toolchain; see `docs/ASSUMPTIONS.md`).
+macOS on Apple Silicon; tool versions are pinned in `scripts/setup.sh`.
 
 ```bash
-./scripts/setup.sh                   # install pinned SAW, Cryptol, Isabelle, cryptol-to-isabelle
-./scripts/setup_isabelle_cryptol.sh  # AFP + build the SAW 'Cryptol' Isabelle session (slow, once)
-make verify                          # both legs; non-zero exit = a proof failed
-make saw                             # SAW leg only (fast, no Isabelle)
+./scripts/setup.sh                   # pinned SAW, Cryptol, Isabelle, cryptol-to-isabelle
+./scripts/setup_isabelle_cryptol.sh  # AFP + the SAW 'Cryptol' Isabelle session (slow, once)
+make verify                          # every gated step; non-zero exit = a proof failed
+make saw                             # SAW only, fast
+make claim-lint                      # SAW specs have paired mutants (exemptions printed); cited paths exist
 ```
+
+The full `make verify` took 3 h 20 min in `verify.yml` run 38100891287 on 2026-10-11 (macos-15
+runner, Apple clang 17.0.0, manual dispatch); the workflow caches Isabelle heaps, so warm runs are
+shorter. `make ntt-nsw` and `make barrett-solver` are out of band, and `ntt-nsw` needs macOS 15 (the
+pinned bitwuzla does not load on 13).
 
 ## Layout
 
 | Path | What |
 |------|------|
-| `target/`  | The C under verification, with pinned provenance |
-| `model/`   | Cryptol model of the primitives |
-| `proof/`   | SAW scripts (C ≡ Cryptol) |
-| `spec/`    | Isabelle spec + the equivalence proof |
-| `implementations/` | Second target: RustCrypto `ml-dsa` (MIR) and its SAW proofs |
-| `qseal/`   | Q-SEAL protocol properties (Cryptol/SAW/ProVerif) and demo |
-| `cap/`     | Cap-V1 capability layer: Kani-verified Rust verifier and demo |
-| `afp/`     | The reduce layer as a standalone Isabelle entry (submitted to the AFP, rejected on scope) |
-| `external-corpus/` | The non-vacuity checks run against SAW's own shipped example proofs |
-| `docs/`    | Roadmap, assumptions, pipeline, specs, writeups |
-| `scripts/` | Toolchain setup and pipeline orchestration |
-
-## Tools
-
-SAW + Cryptol and `cryptol-to-isabelle` (saw-script 1.5.1) from Galois; Isabelle + AFP. The pipeline
-structure follows Apple's published corecrypto approach; no Apple code or theories are used.
+| `target/` | Vendored C, pinned (`target/README.md`) |
+| `model/` | Cryptol models |
+| `proof/` | SAW scripts |
+| `spec/` | Isabelle specs and proofs |
+| `implementations/` | RustCrypto `ml-dsa` (MIR) |
+| `qseal/`, `cap/`, `cve-anchor/` | Protocol, capability and CVE work |
+| `docs/` | [Roadmap](docs/ROADMAP.md), [assumptions](docs/ASSUMPTIONS.md), [pipeline](docs/PIPELINE.md), writeups |
 
 ## License
 
-Project code: [MIT](LICENSE). The vendored C in `target/` is PQClean/pq-crystals reference code (CC0;
-see [`target/README.md`](target/README.md)). The Isabelle spec is original; no Apple artifacts are
-included.
+Project code: [MIT](LICENSE). The vendored C in `target/` is PQClean/pq-crystals reference code
+(CC0; see [`target/README.md`](target/README.md)).
