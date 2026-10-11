@@ -15,51 +15,63 @@
   <a href="https://doi.org/10.5281/zenodo.21178811"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.21178811.svg" alt="DOI"></a>
 </p>
 
-PQC-Assay machine-checks the unmodified PQClean reference C for ML-DSA-44 (FIPS 204) against a
-specification written from the standard. SAW proves the C equal to a Cryptol model, Galois's
+PQC-Assay machine-checks the arithmetic functions of the unmodified PQClean reference C for
+ML-DSA-44 (FIPS 204) against a specification written from the standard. SAW proves the C equal to a Cryptol model, Galois's
 `cryptol-to-isabelle` lifts that model into Isabelle, and Isabelle proves the lifted model equal to
 the FIPS 204 mathematics. It is the toolchain Apple used for its 2026 `corecrypto` work; none of
 Apple's code or theories are used here.
 
-As of October 2026 the chain reaches from the C to ring arithmetic in `R_q = Z_q[X]/(X^256+1)`: the
-forward and inverse NTT compute the FIPS 204 transforms, the NTT-based multiply computes the product
-in `R_q`, and a row of the signer's `A*y` and of verification's `A*z - c*t1*2^13` computes the sum of
-products FIPS 204 specifies. This is reference C, not the optimized code that ships, and it is the
-arithmetic core of the scheme, not the scheme. Writeup:
-[The ML-DSA reference NTT multiplies polynomials, checked from the C](https://amarshat.github.io/pqc-assay/writeup/ml-dsa-ntt-multiplies.html).
+As of October 2026 the chain reaches from individual C functions to ring arithmetic in
+`R_q = Z_q[X]/(X^256+1)`: the forward and inverse NTT compute the FIPS 204 transforms, and the
+compositions of models that ML-DSA uses for its products compute those products in `R_q`. This is
+reference C, not the optimized code that ships, and it is the arithmetic core of the scheme, not the
+scheme. Writeup:
+[The ML-DSA reference NTT multiplies polynomials: C functions to models, models to the ring](https://amarshat.github.io/pqc-assay/writeup/ml-dsa-ntt-multiplies.html).
 
-## What is proven (ML-DSA-44)
+> **Where the proofs stop.** Each C function is proved equal to its model, and Isabelle proves that
+> a composition of those models computes the product. That `sign.c` composes the functions that way,
+> on those buffers, with inputs in the ranges the theorems assume, is read from the C, not proved.
+> `sign.c` is not vendored and nothing here is a proof about it. Every hypothesis of the product
+> theorems, and whether a proof or a source line discharges it, is listed in
+> [`docs/COMPOSITION.md`](docs/COMPOSITION.md).
 
-"Machine-checked" means a pinned tool exited 0 on the stated property, in `make verify` unless noted.
-"Argued" means a sound step that is not mechanized. Details and every assumption are in
-[`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md).
+## Proved (ML-DSA-44)
 
-| Link | Status |
+Each row means a pinned tool exited 0 on the stated property, in `make verify` unless noted.
+
+| Property | Checked by |
 |---|---|
-| `reduce.c` (`montgomery_reduce`, `reduce32`, `caddq`, `freeze`) ≡ Cryptol, no signed overflow in range | machine-checked (SAW + z3) |
-| `reduce.c` models meet their contracts (residue mod q, output windows) | machine-checked (Isabelle) |
-| C `ntt` and `invntt_tomont` ≡ Cryptol models (`-fwrapv` build, all inputs) | machine-checked (SAW) |
-| Cryptol models lift to the Isabelle models used below | machine-checked (`make lift-check` regenerates and diffs) |
-| forward NTT model ≡ FIPS 204 forward NTT mod q | machine-checked (Isabelle `ntt_bridge` on `[0,q)`, `ntt_signed_correct` on `\|coeff\| < q`) |
-| inverse NTT model ≡ FIPS 204 inverse NTT mod q, scaled by `mont/256` (`mont` = 2³² mod q) | machine-checked (Isabelle `invntt_bridge` on `[0,q)`, `invntt_signed_correct` on `\|coeff\| < q`) |
-| no int32 overflow in the NTT models (forward on `±(2³¹−2²⁷)`, inverse on `\|coeff\| < q`) | machine-checked (Isabelle `ntt_overflow_free`, `invntt_overflow_free`) |
-| forward NTT on the default build: no signed-overflow UB, and ≡ model, on `±(2³¹−2²⁷)` | machine-checked once (SAW + bitwuzla, `make ntt-nsw`, 12.5 h, 2026-07-10, before `poly.c` was vendored; no paired mutant; out of band) |
-| inverse NTT on the default build: no signed-overflow UB | argued (from the `-fwrapv` proof plus `invntt_overflow_free`) |
-| `invntt(pointwise(ntt a, ntt b))` is `a*b` in `R_q`, for `\|coeff\| < q` inputs | machine-checked (SAW for `poly_pointwise_montgomery`, Isabelle `ntt_mult_correct`, `ntt_mult_ring`) |
-| a row of `A*y` / `A*s1` is `sum_i f_i*y_i` in `R_q` (`f_i` any polynomial whose NTT is row entry i of `A_hat`; `\|y\| < q`) | machine-checked (SAW for the accumulator, `poly_add`, `poly_reduce`, the wrappers and loops; Isabelle `acc_mult_fips`, `acc_mult_ring`) |
-| a row of verification's `A*z - c*t1*2^13`, FIPS form and in `R_q` | machine-checked (Isabelle `ver_row_fips`, `ver_row_ring`) |
-| pointwise, add, sub, reduce, accumulator and the loops on the multiply paths: no signed-overflow UB on the default build, given pointwise operands within 9q (= 75423752) | machine-checked (SAW + z3, `make poly-nsw`, 48 min on CI's clang 17) |
-| `poly_shiftl` on the default build: no signed-shift UB | argued (clang emits a plain `shl`, so SAW cannot see it; `poly_nsw.saw` checks the range fact only) |
-| transform wrappers `poly_ntt` / `poly_invntt_tomont` on the default build | argued |
-| `negconv` is multiplication in `R_q`; the NTT locale has a model at the ML-DSA parameters | machine-checked (Isabelle `negconv_is_mult`, `mldsa_model`) |
-| hypotheses read from the source: the order `sign.c` / `verify` call these in; A's 23-bit coefficient bound; verification's `t1` (10-bit), `\|z\|` and `\|c\|` below q | not proven (A-ROW 2, 5 in `docs/ASSUMPTIONS.md`) |
+| `reduce.c` (`montgomery_reduce`, `reduce32`, `caddq`, `freeze`) ≡ Cryptol, no signed overflow in range | SAW + z3 |
+| `reduce.c` models meet their contracts (residue mod q, output windows) | Isabelle |
+| each C function on the product paths ≡ its Cryptol model (`-fwrapv` build): `ntt`, `invntt_tomont`, pointwise, add, sub, shift, reduce, the accumulator, the wrappers and the vector and matrix loops; loops leave their inputs unchanged | SAW |
+| the Cryptol models lift to the Isabelle models used below | `make lift-check` regenerates and diffs |
+| forward NTT model ≡ FIPS 204 forward NTT mod q | Isabelle `ntt_bridge` on `[0,q)`, `ntt_signed_correct` on `\|coeff\| < q` |
+| inverse NTT model ≡ FIPS 204 inverse NTT mod q, scaled by `mont/256` (`mont` = 2³² mod q) | Isabelle `invntt_bridge` on `[0,q)`, `invntt_signed_correct` on `\|coeff\| < q` |
+| no int32 overflow in the NTT models (forward on `±(2³¹−2²⁷)`, inverse on `\|coeff\| < q`) | Isabelle `ntt_overflow_free`, `invntt_overflow_free` |
+| model composition `invntt(pointwise(ntt a, ntt b))` = `a*b` in `R_q`, for `\|coeff\| < q` | Isabelle `ntt_mult_correct`, `ntt_mult_ring` |
+| model composition `invntt(preduce(acc u v))` with `v = ntt y` = `sum_i f_i*y_i` in `R_q` (`f_i` any polynomial whose NTT is row entry i of `A_hat`, which exists) | Isabelle `acc_mult_fips`, `acc_mult_ring`, `acc_mult_ring_ex` |
+| model composition for verification's row, `A*z - c*t1*2^13`, FIPS form and in `R_q` | Isabelle `ver_row_fips`, `ver_row_ring` |
+| `negconv` is multiplication in `R_q`; the NTT locale has a model at the ML-DSA parameters | Isabelle `negconv_is_mult`, `mldsa_model` |
+| default build, polynomial layer: no signed-overflow UB in pointwise, add, sub, reduce, accumulator and the loops on the product paths, given pointwise operands within 9q (= 75423752) | SAW + z3, `make poly-nsw`, 48 min on CI's clang 17 |
+| default build, forward NTT: no signed-overflow UB, and ≡ model, on `±(2³¹−2²⁷)` | SAW + bitwuzla, `make ntt-nsw`; run once, 12.5 h, 2026-07-10, before `poly.c` was vendored; no paired mutant; out of band |
+
+## Not proved
+
+| Item | Status |
+|---|---|
+| `sign.c` calls the functions in the order the composed models assume, on the right buffers (`v = ntt y`, `ch = ntt c`, `th = ntt(t1 << 13)`, ...) | read from the source: [`docs/COMPOSITION.md`](docs/COMPOSITION.md) gives each with its line |
+| input ranges the theorems take: `\|A\| < 9q` (23-bit mask in `rej_uniform`), `\|y\|`, `\|s1\|`, `\|s2\|`, `\|t0\|`, `\|c\|`, `\|z\|` below q, `0 <= t1 <= 1023` | read from the source (sampling and unpack code, not verified) |
+| two builds are the same program apart from `nsw` / `inbounds` flags | checked by a script (`scripts/check_wrapv_diff.sh`), not proved |
+| default build: inverse NTT and the `poly_ntt` / `poly_invntt_tomont` wrappers have no signed-overflow UB | argued from the `-fwrapv` proofs and the Isabelle bounds |
+| default build: `poly_shiftl` has no signed-shift UB | argued from the `t1` range (clang emits a plain `shl`, so SAW cannot see it) |
+| the compiler | trusted (`-O0`) |
 | sampling, rounding, hints, packing, hashing; constant time | not claimed |
 
 The 9q operand bound comes from Isabelle's `ntt_out_bounded` for transform outputs and from the
-23-bit mask in `poly_uniform` for A (read from the source). The Isabelle theories contain no `sorry`,
+23-bit mask in `rej_uniform` for A (read from the source). The Isabelle theories contain no `sorry`,
 `oops` or `smt`, and CI greps for `sorry`/`oops`/`admit` on every push. They use `by eval`, which
 trusts the code generator, 88 times (85 in `make verify`), for the twiddle tables and a few gcd
-facts. Every NTT theorem in the table depends on it (OF-4, measured with `Thm_Deps.all_oracles`);
+facts. Every NTT theorem in the Proved table depends on it (OF-4, measured with `Thm_Deps.all_oracles`);
 `negconv_is_mult` does not. Results are claimed for the pinned checkers: SAW 1.5.1,
 `cryptol-to-isabelle` from the same release, Isabelle2025-2, AFP 2026-06-05.
 

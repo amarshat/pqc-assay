@@ -870,7 +870,8 @@ measured: `ntt_bridge`, `invntt_bridge` and the ML-KEM `ntt_residue`.
 
 `ntt_mult_ring`, `acc_mult_ring` and `ver_row_ring` (`spec/isabelle/tier2/`), with the SAW proofs of
 the per-polynomial functions and the loops in `polyvec.c`, cover the multiplications in keygen,
-signing and verification. Things they do not prove:
+signing and verification. Things they do not prove (`docs/COMPOSITION.md` lists every
+hypothesis of the three theorems with the proof or `sign.c` line that discharges it):
 
 1. The order in which `sign.c` calls them (ntt, then the pointwise or matrix loop, then reduce, then
    the inverse) is read from `sign.c` at the pin, which is not vendored. The loops themselves and

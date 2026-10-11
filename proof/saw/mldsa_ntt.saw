@@ -438,15 +438,17 @@ print "NON-VACUOUS: the perturbed polyveck_reduce spec is rejected";
 // disjoint, as at those call sites. (Verification's aliased call, r == v, is proven further down.)
 // The inputs are restated unchanged: the signer reuses cp for three calls and the transformed
 // secrets across rejection iterations, so "the loop does not modify its inputs" is part of the claim.
-let vpw_d alias d = do {
+// da and dv bump the restated inputs, for the mutants that check those clauses are live.
+let vpw_di alias d da dv = do {
     pr <- llvm_alloc (llvm_alias alias);
     (a, pa) <- poly_to_fresh "a";
     (v, pv) <- vec4_fresh alias "v";
     llvm_execute_func [pr, pa, pv];
     vec4_post pr (bump4 {{ [ pointwise a r | r <- v ] }} d);
-    llvm_points_to (llvm_field pa "coeffs") (llvm_term a);
-    vec4_post pv v;
+    llvm_points_to (llvm_field pa "coeffs") (llvm_term (bump1 a da));
+    vec4_post pv (bump4 v dv);
 };
+let vpw_d alias d = vpw_di alias d {{ 0 : [32] }} {{ 0 : [32] }};
 
 let polyvecl_pwpoly_spec = vpw_d "struct.polyvecl" {{ 0 : [32] }};
 let polyvecl_pwpoly_mut_spec = vpw_d "struct.polyvecl" {{ 1 : [32] }};
@@ -461,9 +463,17 @@ llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_pointwise_poly_montgomery" [point
 print "VERIFIED: PQCLEAN_MLDSA44_CLEAN_polyveck_pointwise_poly_montgomery == map (pointwise a)";
 fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_pointwise_poly_montgomery" [pointwise_ov] true polyveck_pwpoly_mut_spec (w4_unint_z3 ["pointwise"]));
 print "NON-VACUOUS: the perturbed polyveck_pointwise_poly_montgomery spec is rejected";
+// The "inputs unchanged" clauses are what lets the signer reuse cp and the transformed secrets, so
+// they get their own mutants: claiming a changed a (cp) or a changed v must be rejected.
+let polyveck_pwpoly_amut_spec = vpw_di "struct.polyveck" {{ 0 : [32] }} {{ 1 : [32] }} {{ 0 : [32] }};
+let polyveck_pwpoly_vmut_spec = vpw_di "struct.polyveck" {{ 0 : [32] }} {{ 0 : [32] }} {{ 1 : [32] }};
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_pointwise_poly_montgomery" [pointwise_ov] true polyveck_pwpoly_amut_spec (w4_unint_z3 ["pointwise"]));
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_pointwise_poly_montgomery" [pointwise_ov] true polyveck_pwpoly_vmut_spec (w4_unint_z3 ["pointwise"]));
+print "NON-VACUOUS: polyveck_pointwise_poly_montgomery mutants claiming a or v changed are rejected";
 
 // The matrix loop: t.vec[i] = acc(mat[i], v) for the K = 4 rows.
-let matrix_d d = do {
+// dm bumps the restated A, for the mutant that checks the "A unchanged" clause is live.
+let matrix_di d dm = do {
     pm <- llvm_alloc (llvm_array 4 (llvm_alias "struct.polyvecl"));
     m <- llvm_fresh_var "m" (llvm_array 4 (llvm_array 4 (llvm_array 256 (llvm_int 32))));
     llvm_points_to (llvm_elem (llvm_elem (llvm_elem (llvm_elem pm 0) 0) 0) 0) (llvm_term {{ m @ 0 @ 0 }});
@@ -487,7 +497,7 @@ let matrix_d d = do {
     llvm_execute_func [pt, pm, pv];
     vec4_post pt (bump4 {{ [ acc row v | row <- m ] }} d);
     // A and v unchanged: A is reused across the signer's rejection iterations
-    llvm_points_to (llvm_elem (llvm_elem (llvm_elem (llvm_elem pm 0) 0) 0) 0) (llvm_term {{ m @ 0 @ 0 }});
+    llvm_points_to (llvm_elem (llvm_elem (llvm_elem (llvm_elem pm 0) 0) 0) 0) (llvm_term (bump1 {{ m @ 0 @ 0 }} dm));
     llvm_points_to (llvm_elem (llvm_elem (llvm_elem (llvm_elem pm 0) 0) 1) 0) (llvm_term {{ m @ 0 @ 1 }});
     llvm_points_to (llvm_elem (llvm_elem (llvm_elem (llvm_elem pm 0) 0) 2) 0) (llvm_term {{ m @ 0 @ 2 }});
     llvm_points_to (llvm_elem (llvm_elem (llvm_elem (llvm_elem pm 0) 0) 3) 0) (llvm_term {{ m @ 0 @ 3 }});
@@ -505,12 +515,16 @@ let matrix_d d = do {
     llvm_points_to (llvm_elem (llvm_elem (llvm_elem (llvm_elem pm 3) 0) 3) 0) (llvm_term {{ m @ 3 @ 3 }});
     vec4_post pv v;
 };
+let matrix_d d = matrix_di d {{ 0 : [32] }};
 let matrix_spec = matrix_d {{ 0 : [32] }};
 let matrix_mut_spec = matrix_d {{ 1 : [32] }};
+let matrix_amut_spec = matrix_di {{ 0 : [32] }} {{ 1 : [32] }};
 llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyvec_matrix_pointwise_montgomery" [acc_ov] true matrix_spec (w4_unint_z3 ["acc"]);
 print "VERIFIED: PQCLEAN_MLDSA44_CLEAN_polyvec_matrix_pointwise_montgomery == map (\\row -> acc row v)";
 fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyvec_matrix_pointwise_montgomery" [acc_ov] true matrix_mut_spec (w4_unint_z3 ["acc"]));
 print "NON-VACUOUS: the perturbed polyvec_matrix_pointwise_montgomery spec is rejected";
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyvec_matrix_pointwise_montgomery" [acc_ov] true matrix_amut_spec (w4_unint_z3 ["acc"]));
+print "NON-VACUOUS: a polyvec_matrix_pointwise_montgomery mutant claiming A changed is rejected";
 
 // ---------------------------------------------------------------------------------------------
 // Verification: w1 = invntt(reduce(A*z - c*(t1 << 13))). The new pieces are poly_shiftl, poly_sub

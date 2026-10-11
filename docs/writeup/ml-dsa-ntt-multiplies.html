@@ -5,8 +5,8 @@
   <meta name="generator" content="pandoc 3.10.1" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
   <meta name="author" content="Amar Akshat" />
-  <title>The ML-DSA reference NTT multiplies polynomials, checked from
-the C</title>
+  <title>The ML-DSA reference NTT multiplies polynomials: C functions to
+models, models to the ring</title>
   <style>
     /* Default styles provided by pandoc.
     ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -175,10 +175,10 @@ the C</title>
     }
     .display.math{display: block; text-align: center; margin: 0.5rem auto;}
   </style>
-  <meta name="description" content="PQClean's ML-DSA-44 reference C, machine-checked from the C through SAW and Isabelle: the NTT, pointwise multiply and inverse compose to multiplication in Z_q[X]/(X^256+1), for every polynomial product in key generation, signing and verification." />
+  <meta name="description" content="PQClean's ML-DSA-44 reference C: SAW proves each arithmetic function equal to a model, and Isabelle proves the composed models multiply in Z_q[X]/(X^256+1) for every polynomial product in the scheme. How sign.c composes the functions is read from the source, not proved." />
   <meta property="og:type" content="article" />
-  <meta property="og:title" content="The ML-DSA reference NTT multiplies polynomials, checked from the C" />
-  <meta property="og:description" content="Machine-checked from PQClean's ML-DSA-44 C to multiplication in Z_q[X]/(X^256+1), for every polynomial product in key generation, signing and verification." />
+  <meta property="og:title" content="The ML-DSA reference NTT multiplies polynomials: C functions to models, models to the ring" />
+  <meta property="og:description" content="Each arithmetic function of PQClean's ML-DSA-44 C proved equal to a model; the composed models proved to multiply in Z_q[X]/(X^256+1). The composition in sign.c is read from the source." />
   <meta property="og:url" content="https://amarshat.github.io/pqc-assay/writeup/ml-dsa-ntt-multiplies.html" />
   <style>
     table { border-collapse: collapse; margin: 1em 0; }
@@ -193,8 +193,9 @@ the C</title>
 </head>
 <body>
 <h1
-id="the-ml-dsa-reference-ntt-multiplies-polynomials-checked-from-the-c">The
-ML-DSA reference NTT multiplies polynomials, checked from the C</h1>
+id="the-ml-dsa-reference-ntt-multiplies-polynomials-c-functions-to-models-models-to-the-ring">The
+ML-DSA reference NTT multiplies polynomials: C functions to models,
+models to the ring</h1>
 <p><em>Amar Akshat · <a
 href="https://github.com/amarshat">github.com/amarshat</a></em></p>
 <p>ML-DSA spends most of its arithmetic multiplying polynomials in
@@ -203,18 +204,27 @@ transform both operands with the NTT, multiply coefficient by
 coefficient, transform back. Earlier work in this repository proved that
 PQClean’s reference C computes the FIPS 204 forward and inverse NTT.
 That says the transform is the transform. It does not say that
-transform, pointwise multiply and inverse, as the C actually composes
-them, give you the product. This post is about closing that gap, and
-about where in the scheme the result applies.</p>
+transform, pointwise multiply and inverse, composed, give you the
+product. This post closes that gap for the models SAW proved the C
+functions equal to, and says where in the scheme the result applies. How
+<code>sign.c</code> composes the C functions is read from the source,
+not proved; the table below and <a
+href="https://github.com/amarshat/pqc-assay/blob/main/docs/COMPOSITION.md"><code>docs/COMPOSITION.md</code></a>
+say exactly where that line falls.</p>
 <p>Everything here is in the <a
 href="https://github.com/amarshat/pqc-assay">repository</a> and
 reproduces from a <code>make</code> target. The target is PQClean’s
 ML-DSA-44 <code>clean</code> implementation at commit
-<code>202a8f9</code>, vendored unmodified with SHA-256 pinned.</p>
+<code>202a8f9</code>. <code>reduce.c</code>, <code>ntt.c</code>,
+<code>poly.c</code> and <code>polyvec.c</code> are vendored unmodified
+with SHA-256 pinned; <code>sign.c</code> and <code>packing.c</code> are
+not vendored.</p>
 <h2 id="what-is-proved">What is proved</h2>
-<p>For polynomials a and b whose coefficients all satisfy |c| &lt;
-q:</p>
-<pre><code>invntt_tomont(poly_pointwise_montgomery(ntt(a), ntt(b))) = a * b   in Z_q[X]/(X^256+1)</code></pre>
+<p>For polynomials a and b whose coefficients all satisfy |c| &lt; q, on
+the Cryptol models that SAW proves equal to the C functions
+<code>ntt</code>, <code>poly_pointwise_montgomery</code> and
+<code>invntt_tomont</code>:</p>
+<pre><code>invntt(pointwise(ntt a, ntt b)) = a * b   in Z_q[X]/(X^256+1)</code></pre>
 <p>Here <code>*</code> and the reduction mod X^256+1 are the polynomial
 multiplication and remainder from Isabelle’s standard library, at a type
 of integers mod 8380417. They are not a convolution formula written for
@@ -229,10 +239,11 @@ of A<em>y is computed as four pointwise products summed with
 The theorem <code>acc_mult_ring</code> in <a
 href="https://github.com/amarshat/pqc-assay/blob/main/spec/isabelle/tier2/accwork/Acc_Bridge.thy"><code>Acc_Bridge.thy</code></a>
 says: for any polynomials A_i whose transforms are the sampled rows, the
-C’s output for that row is A_1</em>y_1 + A_2<em>y_2 + A_3</em>y_3 +
-A_4*y_4 mod X^256+1. Every row has such A_i, because the transform is
-onto mod q, and that is proved too (<code>ntt_int_surj</code>). This is
-FIPS 204’s NTT^-1(A_hat o NTT(y)) read as polynomials.</p>
+composed models’ output for that row is A_1</em>y_1 + A_2<em>y_2 +
+A_3</em>y_3 + A_4*y_4 mod X^256+1. Every row has such A_i, because the
+transform is onto mod q, and that is proved too
+(<code>ntt_int_surj</code>). This is FIPS 204’s NTT^-1(A_hat o NTT(y))
+read as polynomials.</p>
 <p>The Montgomery bookkeeping is proved rather than assumed.
 <code>poly_pointwise_montgomery</code> leaves a factor 2^-32.
 <code>invntt_tomont</code> multiplies by 41978 and leaves another 2^-32.
@@ -245,44 +256,67 @@ pointwise outputs added together cannot overflow a 32-bit int, and that
 the sum is inside <code>reduce32</code>’s precondition.</p>
 <h2 id="where-it-applies-in-ml-dsa">Where it applies in ML-DSA</h2>
 <table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+</colgroup>
 <thead>
 <tr>
 <th>Operation</th>
 <th>Where</th>
-<th>Covered</th>
+<th>Each function on the path</th>
+<th>Composed model computes the product</th>
+<th><code>sign.c</code> calls them in that order, on those inputs</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>A*s1</td>
 <td>key generation</td>
-<td>yes</td>
+<td>proved (SAW)</td>
+<td>proved (<code>acc_mult_ring</code>)</td>
+<td>read from the source</td>
 </tr>
 <tr>
 <td>A*y</td>
 <td>signing</td>
-<td>yes</td>
+<td>proved (SAW)</td>
+<td>proved (<code>acc_mult_ring</code>)</td>
+<td>read from the source</td>
 </tr>
 <tr>
 <td>c<em>s1, c</em>s2, c*t0</td>
 <td>signing</td>
-<td>yes</td>
+<td>proved (SAW)</td>
+<td>proved (<code>ntt_mult_ring</code>)</td>
+<td>read from the source</td>
 </tr>
 <tr>
 <td>A<em>z - c</em>t1*2^d</td>
 <td>verification</td>
-<td>yes</td>
+<td>proved (SAW)</td>
+<td>proved (<code>ver_row_ring</code>)</td>
+<td>read from the source</td>
 </tr>
 </tbody>
 </table>
-<p>Covered means every function on the path, from the vector and matrix
-loops in <code>polyvec.c</code> down to <code>montgomery_reduce</code>,
-is proved equal to a Cryptol model in the form it is called (including
-the calls where the output overlaps an input), the loops are proved to
-leave their inputs unchanged (the signer reuses the challenge and A
-across calls), and the Isabelle theorems apply to the composition. The
-order in which <code>sign.c</code> calls those functions is read from
-the source, not proved.</p>
+<p>The first column of results means every function on the path, from
+the vector and matrix loops in <code>polyvec.c</code> down to
+<code>montgomery_reduce</code>, is proved equal to a Cryptol model in
+the form it is called (including the calls where the output overlaps an
+input), and the loops are proved to leave their inputs unchanged (the
+signer reuses the challenge and A across calls). The second means
+Isabelle proves the composition of those models computes the product.
+The third is where the proofs stop: that <code>sign.c</code> makes those
+calls in that order, on those buffers, with inputs in the ranges the
+theorems assume, is read from the C. <code>sign.c</code> is not part of
+the proof. <a
+href="https://github.com/amarshat/pqc-assay/blob/main/docs/COMPOSITION.md"><code>docs/COMPOSITION.md</code></a>
+lists every hypothesis of the three theorems and the proof or
+<code>sign.c</code> line that discharges it.</p>
 <p>Verification needed three more pieces: the shift by 2^13, a
 subtraction, and a pointwise call whose output overwrites one of its
 inputs. The theorem <code>ver_row_ring</code> in <a
@@ -320,12 +354,16 @@ Isabelle2025-2 and the AFP snapshot of 2026-06-05. The results are
 claimed for those versions.</p>
 <h2 id="what-it-does-not-cover">What it does not cover</h2>
 <ul>
+<li>How <code>sign.c</code> composes the proved functions: the call
+order, which buffer is passed where, and the input ranges the theorems
+assume (t1 is 10-bit, z, c, y and the secrets are small, A’s
+coefficients fit in 23 bits, from <code>rej_uniform</code>, which is not
+verified, and neither is sampling against FIPS 204). Each is read from a
+named line of the pinned source, listed in <a
+href="https://github.com/amarshat/pqc-assay/blob/main/docs/COMPOSITION.md"><code>docs/COMPOSITION.md</code></a>.</li>
 <li>The rest of signature verification (hashing, decoding, hints) and of
 signing (sampling, rejection, rounding). This is about the polynomial
 products only.</li>
-<li>The input ranges the theorems assume (t1 is 10-bit, z and c are
-small, A’s coefficients fit in 23 bits) are read from the decoding and
-sampling code, not proved.</li>
 <li>The C side is proved on bitcode compiled with
 <code>-O0 -fwrapv</code>. That no signed overflow happens on a normal
 build is mechanized for the forward NTT and for the pointwise, add,
@@ -337,10 +375,6 @@ proved bounds. The compiler is trusted.</li>
 <li>Isabelle’s code generator is trusted for some facts about the
 constant twiddle tables (the <code>by eval</code> method). A check in
 the build fails if the headline theorems pick up any other oracle.</li>
-<li>The bound on A’s coefficients (at most 9q) is read from
-<code>poly_uniform</code>, which masks every candidate to 23 bits.
-<code>poly_uniform</code> itself is not verified, and neither is the
-sampling against FIPS 204.</li>
 <li><code>poly_shiftl</code> shifts a signed int, which C defines only
 for non-negative values that do not overflow. That holds because t1 is
 10-bit, which is read from the source; SAW does not see that kind of
@@ -359,17 +393,20 @@ the part that is new is connecting it to a C implementation, including
 the Montgomery factors and the bounds, and to the places the scheme
 calls it.</p>
 <h2 id="how-the-claims-were-checked">How the claims were checked</h2>
-<p>Before publishing, each milestone went to an adversarial review that
-re-ran the tools and checked every claim against the output. The first
-round found that an early draft overstated where the result applied,
-that a “no <code>by eval</code>” claim was true of the new files but not
-of the theorem, and that three of four Isabelle mutation tests only
-showed the proof script breaking when its statement changed. The second
-found unverified loops between <code>sign.c</code> and the proved
-functions. Those loops are now proved, and the rest is corrected in the
-text above. The third, on verification, found that the loops reused by
-the signer were not proved to leave their inputs unchanged; they now
-are.</p>
+<p>Each milestone was reviewed by re-running the tools and checking
+every claim against the output. The first round found that an early
+draft overstated where the result applied, that a “no
+<code>by eval</code>” claim was true of the new files but not of the
+theorem, and that three of four Isabelle mutation tests only showed the
+proof script breaking when its statement changed. The second found
+unverified loops between <code>sign.c</code> and the proved functions.
+Those loops are now proved, and the rest is corrected in the text above.
+The third, on verification, found that the loops reused by the signer
+were not proved to leave their inputs unchanged; they now are. A later
+round found that this page still described the composition as proved on
+the C, and that “unchanged across iterations” was only proved for the
+calls that receive the buffer, not for the unverified code between them;
+both are corrected, and mutants now test the “unchanged” clauses.</p>
 <h2 id="reproducing">Reproducing</h2>
 <pre><code>git clone https://github.com/amarshat/pqc-assay &amp;&amp; cd pqc-assay
 ./scripts/setup.sh           # pinned toolchain into .tools/ (macOS arm64 tested)
