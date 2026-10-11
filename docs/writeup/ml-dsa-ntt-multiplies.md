@@ -90,8 +90,10 @@ results are claimed for those versions.
 - The input ranges the theorems assume (t1 is 10-bit, z and c are small, A's coefficients fit in 23
   bits) are read from the decoding and sampling code, not proved.
 - The C side is proved on bitcode compiled with `-O0 -fwrapv`. That no signed overflow happens on a
-  normal build is mechanized for the forward NTT and argued from the proved bounds for the rest.
-  The compiler is trusted.
+  normal build is mechanized for the forward NTT and for the pointwise, add, subtract, reduce and
+  accumulate functions and the loops on the multiplication paths (`make poly-nsw`, which also
+  checks that the two builds differ only in overflow and `inbounds` flags). For the inverse NTT and
+  the transform wrappers it is argued from the proved bounds. The compiler is trusted.
 - Isabelle's code generator is trusted for some facts about the constant twiddle tables (the
   `by eval` method). A check in the build fails if the headline theorems pick up any other oracle.
 - The bound on A's coefficients (at most 9q) is read from `poly_uniform`, which masks every candidate

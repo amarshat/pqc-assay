@@ -209,6 +209,7 @@ with justification in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md); "not claimed
 | montgomery NTT overflow-freedom / coefficient bound | machine-checked (Isabelle `ntt_overflow_free`) |
 | forward: no signed-overflow UB in the DEFAULT (nsw) build, and ≡ model, on `±(2³¹−2²⁷)` inputs | machine-checked (SAW + bitwuzla, `make ntt-nsw`, ~12.5 h) |
 | inverse: `-fwrapv` wrapping ⇒ no signed-overflow UB in the C | argued (meta-step, not mechanized) |
+| poly.c / polyvec.c multiplication-path functions: no signed-overflow UB in the DEFAULT build, given 9q pointwise operands | machine-checked (SAW + z3, `make poly-nsw`, ~30 min); build equivalence up to `nsw`/`inbounds` by `scripts/check_wrapv_diff.sh` |
 | Cryptol montgomery `ntt` lifts to Isabelle | machine-checked (cryptol-to-isabelle; builds) |
 | montgomery lifted `ntt` ≡ normal `nttFwdAllRef` (mod q) | machine-checked (Isabelle `Mont_Bridge`, `mbfly0`..`mbfly7` composed) |
 | normal `nttFwdAllRef` ≡ FIPS-204 forward NTT | machine-checked (Isabelle `fwd_ntt_correct`) |
@@ -333,8 +334,11 @@ wrappers and the vector and matrix loops in `polyvec.c` equal to their Cryptol m
 `acc_mult_ring` (`spec/isabelle/tier2/accwork/Acc_Bridge.thy`) proves, about those models, that a row
 of keygen's `A*s1` or the signer's `A*y` computes `sum_i f_i * y_i` in `R_q` for any polynomials `f_i`
 whose transforms are the sampled rows. Not proven: the order `sign.c` calls these in (read from
-the source), the bound on A's coefficients (read from `poly_uniform`'s 23-bit mask), and the absence
-of signed overflow on the default build for `poly_add` and the accumulator (argued). See A-ROW in
+the source) and the bound on A's coefficients (read from `poly_uniform`'s 23-bit mask). The absence
+of signed overflow on a normal build is mechanized in `proof/saw/poly_nsw.saw` (`make poly-nsw`) for
+the pointwise, add, sub, reduce and accumulate functions and the matrix, `pointwise_poly`,
+`polyveck_sub` and `polyveck_reduce` loops; not for the transform wrappers and their loops, and for
+the inverse NTT it is still argued. See A-ROW in
 `docs/ASSUMPTIONS.md`. Verification's `A*z - c*t1*2^d` is covered the same way (`ver_row_ring`,
 `spec/isabelle/tier2/verwork/Ver_Bridge.thy`), including the two aliasing calls it makes. See
 `docs/ROADMAP.md` v4. These results are claimed for the pinned checkers: SAW 1.5.1, cryptol-to-isabelle from the same

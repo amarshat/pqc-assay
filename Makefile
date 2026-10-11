@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -26,7 +26,7 @@ all: verify
 ## Tier2) → inverse-NTT model ≡ FIPS-204 inverse transform (Isabelle, Tier2_InvWork) → ML-KEM
 ## forward-NTT model ≡ FIPS-203 residue transform (Isabelle, Kem_Work). The ML-KEM C ≡ Cryptol legs
 ## (mlkem-reduce, mlkem-ntt) gate separately on every push in saw.yml.
-verify: target-identity lift-check saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett mlkem-isabelle convolution
+verify: target-identity lift-check saw poly-nsw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett mlkem-isabelle convolution
 	@echo "✔ pipeline complete — all checked steps passed"
 
 ## Integrity gate: the vendored C under proof is byte-for-byte the pinned snapshot.
@@ -157,6 +157,15 @@ barrett-solver:
 ntt-nsw:
 	@echo ">> SAW + bitwuzla: forward ntt on the nsw bitcode, overflow-free + == model (~12.5 h)"
 	PATH="$(TOOLS_BIN):$$PATH" $(SAW) proof/saw/ntt_nsw.saw
+
+## The poly.c / polyvec.c functions on every multiplication path, on the DEFAULT (nsw) bitcode:
+## no signed overflow, every callee precondition met, under the 9q input bound. With
+## check_wrapv_diff.sh (the two builds differ only in nsw/inbounds) this carries the -fwrapv
+## functional proofs over to a normal build. z3 only, about 30 min; part of `verify`.
+poly-nsw: bitcode
+	CLANG=$(CLANG) ./scripts/check_wrapv_diff.sh $(TARGET_C)
+	@echo ">> SAW: poly layer on the nsw bitcode, no signed overflow under the call-site bounds"
+	$(SAW) proof/saw/poly_nsw.saw
 
 ## Q-SEAL protocol property (independent of the ML-DSA primitive). Fast (<1s). Property 1 of
 ## Q-SEAL v0.1 section 16: the fixed-length TBS-V1 transcript serializer is bijective and injective,

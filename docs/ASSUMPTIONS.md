@@ -130,6 +130,11 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
     late-level band (where the Gentleman-Sande doubling makes terms widest) resists the same
     bitwuzla abstraction-refinement that crossed the forward's unroll. Measured boundary datum,
     recorded in the script header; the inverse link stays argued.
+  - *the polynomial layer* (2026-10-11): `proof/saw/poly_nsw.saw` runs the poly.c / polyvec.c
+    functions on the multiplication paths on the default bitcode; see A-ROW item 3 for what it
+    covers. It uses z3 only. The pinned bitwuzla 0.9.1 binary that `ntt_nsw.saw` needs does not
+    load on the macOS 13 development machine (built for macOS 15, links Homebrew's mpfr), so
+    `make ntt-nsw` was not re-run there.
 - Anything not listed as proven is, explicitly, NOT proven.
 
 ## v2 (Rust / RustCrypto `ml-dsa`) assumptions
@@ -873,10 +878,31 @@ signing and verification. Things they do not prove:
 2. The theorem needs `|A coeff| <= 9q`. That holds because `rej_uniform` in `poly.c` masks each
    candidate to 23 bits (`t &= 0x7FFFFF`), so any stored value is below 2^23 < 9q, whether or not the
    `t < Q` test is right. This is read from the source; `poly_uniform` is not verified.
-3. `poly_add`, `poly_sub`, the accumulator and the loops are proven on the `-fwrapv` bitcode. That
-   no int32 add or subtract overflows is proven on the model (the four-term sum stays below 4q, the
-   difference below 5q), and the step from there to "the default bitcode has no signed-overflow UB"
-   is argued, as for the inverse NTT, not mechanized.
+3. `poly_add`, `poly_sub`, the accumulator and the loops are proven equal to their models on the
+   `-fwrapv` bitcode. Since 2026-10-11 the absence of signed-overflow UB on a normal build is
+   mechanized for them too: `proof/saw/poly_nsw.saw` (`make poly-nsw`; 1889 s, exit 0, z3, on an
+   Apple M2 Max, macOS 13.7, Apple clang 14.0.3, not yet on the pinned clang 17) runs
+   `montgomery_reduce`, `reduce32`, `poly_pointwise_montgomery` (both call forms), `poly_add`,
+   `poly_sub`, `poly_reduce`, the accumulator, the matrix loop, the `pointwise_poly` loops (both
+   forms), `polyveck_sub` and `polyveck_reduce` on the DEFAULT bitcode, where every signed add, sub
+   and mul carries `nsw`. SAW shows none overflows and every callee precondition holds, given
+   pointwise operands within 9q; the bounds after that (pointwise below q, sum below 4q, difference
+   below 5q, reduced output below q) are carried from call to call inside the script.
+
+   Each spec has a mutant that widens or drops one input bound and is rejected, and one more checks
+   the chain: the accumulator against a `poly_add` that needs `|a| < 2q` fails at the third add.
+   The specs state bounds, not functional results. `scripts/check_wrapv_diff.sh` checks that the
+   default and `-fwrapv` IR are identical once `nsw` and `inbounds` flags are stripped, so with no
+   flagged operation overflowing the default build computes what the `-fwrapv` proofs describe.
+   Stripping `inbounds` is safe because crucible-llvm rejects a pointer offset that leaves its
+   allocation on either build (checked with a probe in review). The script compiles fresh IR with
+   the same flags as `build_bitcode.sh` rather than disassembling `build/*.bc` (no `llvm-dis` in the
+   toolchain), so it relies on clang being deterministic.
+
+   Still not mechanized on this route:
+   `invntt_tomont` (argued, see the inverse NTT entry), the `ntt` / `invntt` wrappers and loops on
+   the default bitcode (`ntt` itself is `ntt_nsw.saw`, out of band), and the 9q operand bound,
+   which comes from `ntt_out_bounded` for transform outputs and from item 2 for A.
 4. ML-DSA-44 only: L = K = 4 are fixed in the models and the theorems.
 5. Verification's input ranges are read from the source, not proven: `t1` is 10-bit
    (`polyt1_unpack` masks with `0x3FF`), `z` is at most 2^17 in magnitude from `polyz_unpack` (and
@@ -885,8 +911,11 @@ signing and verification. Things they do not prove:
    The theorem needs only `|z|, |c| < q` and `t1` in [0, 1023].
    `poly_shiftl` shifts a signed int, which C defines only for non-negative values whose result
    fits. SAW does not see that undefined behaviour on either bitcode: clang emits a plain `shl`, and
-   a review probe showed `poly_shiftl` verifies with no precondition on the default module too. So
-   its definedness rests entirely on the `t1` range read from `polyt1_unpack`, not on `-fwrapv`.
+   a review probe showed `poly_shiftl` verifies with no precondition on the default module too.
+   `poly_nsw.saw` checks the C11 6.5.7p4 condition as arithmetic instead (for `0 <= x <= 1023`,
+   `x * 2^13` is in `[0, 2^31)` and equals the 32-bit `x << 13`; at `2^18` it fails). That is a
+   fact about the range, not about the C: definedness still rests on the `t1` range read from
+   `polyt1_unpack`.
 
 ## A-POINTWISE: `poly_pointwise_montgomery` is verified for the two forms the reference uses
 

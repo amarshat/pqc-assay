@@ -27,7 +27,9 @@ methodology / experience report, NOT a novelty claim — the outline says so exp
 - Not NTT *transform* correctness (negacyclic / model ≡ FIPS-spec) — we have C≡model + overflow-freedom,
   not transform correctness.
 - The **C-side overflow-freedom bridge (nsw)** is an argued meta-step (wrapv≡model + model-no-wrap ⇒
-  nsw no-UB), **not** separately mechanized.
+  nsw no-UB), **not** separately mechanized. (Later: mechanized for the forward NTT in 2026-07,
+  `ntt_nsw.saw`, and for the poly.c / polyvec.c functions in 2026-10, `poly_nsw.saw`; the inverse NTT
+  stays argued.)
 - Not constant-time.
 
 ## Section skeleton

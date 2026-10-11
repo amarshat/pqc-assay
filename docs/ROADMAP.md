@@ -608,7 +608,8 @@ theorems about the definition we wrote.
   vendored, not proven. (2) ML-DSA-44 only (L = K = 4 in the models). (3) The 9q bound on A is read
   from `poly_uniform`'s 23-bit mask, not proven. (4) The `-fwrapv` to standard-C step for `poly_add`,
   the accumulator and the inverse NTT is argued from the derived bounds, not mechanized. See A-ROW
-  in ASSUMPTIONS.
+  in ASSUMPTIONS. (Superseded 2026-10-11 for `poly_add` and the accumulator: see "No overflow on a
+  normal build" below. The inverse NTT stays argued.)
 
   With that scope: every polynomial multiplication in keygen and signing at the pin (`A*s1`, `A*y`,
   `c*s1`, `c*s2`, `c*t0`) runs through functions verified here, down to the loops `sign.c` calls.
@@ -658,8 +659,39 @@ theorems about the definition we wrote.
   signing `A*y`, `c*s1`, `c*s2`, `c*t0`; verification `A*z`, `c*(2^13*t1)`) runs through C functions
   SAW proves equal to Cryptol models on the `-O0 -fwrapv` bitcode, and Isabelle proves those models
   compute the corresponding product in `R_q`, trusting the code generator for the twiddle tables.
-  The order of the calls in `sign.c`, the input ranges, and the absence of C undefined behaviour on
-  the default build are read from the source, not proven.
+  The order of the calls in `sign.c` and the input ranges are read from the source, not proven. The
+  absence of C undefined behaviour on the default build was argued here; since 2026-10-11 it is
+  mechanized for the poly.c / polyvec.c functions (next entry) and stays argued for the inverse NTT
+  and the transform wrappers.
+
+- **No overflow on a normal build, for the polynomial layer. DONE 2026-10-11.** The products above
+  were proven on `-fwrapv` bitcode, with no-UB on a normal build argued from the Isabelle bounds.
+  `proof/saw/poly_nsw.saw` (`make poly-nsw`) now runs the same poly.c / polyvec.c functions on the
+  default bitcode, where signed add/sub/mul are `nsw` and overflow is a proof obligation:
+  `poly_pointwise_montgomery` (disjoint and `c == b`), `poly_add` and `poly_sub` (`c == a`),
+  `poly_reduce`, `polyvecl_pointwise_acc_montgomery`, `polyvec_matrix_pointwise_montgomery`,
+  `polyvec{l,k}_pointwise_poly_montgomery` (disjoint, and `r == v`), `polyveck_sub`,
+  `polyveck_reduce`, over `montgomery_reduce` and `reduce32`. Given pointwise operands within 9q,
+  SAW shows no overflow and every callee precondition met, and carries the output bounds (below q,
+  4q, 5q, then q after reduction) from call to call. The specs state bounds only; functional
+  equality stays with `mldsa_ntt.saw`, and `scripts/check_wrapv_diff.sh` checks the two builds are
+  the same IR up to `nsw` / `inbounds`. Each spec has a widened-bound mutant that SAW rejects, and
+  one more verifies the accumulator against a `poly_add` that needs `|a| < 2q`, which must fail at
+  the third add, so the carried bound is tested too.
+
+  Two things were needed to make it run in 30 minutes on z3 (1889 s, exit 0, 2026-10-11, Apple M2
+  Max, macOS 13.7, Apple clang 14.0.3; not yet run on the pinned clang 17, which the CI verify job
+  uses). The `nsw` check on the int64
+  multiply is a 128-bit multiplier-equivalence goal that yices, cvc5 and ABC each fail to close in
+  120 s (z3: about 40 s); it holds for all 32-bit operands, so it is proved once and used as a
+  rewrite rule. And Crucible keeps every earlier call's checked precondition as a hypothesis, so
+  the per-call goals keep only the two input-bound hypotheses (`retain_hyps`), which only weakens
+  what is assumed.
+
+  Scope: the inverse NTT stays argued; `ntt` is `ntt_nsw.saw`; the transform wrappers and loops are
+  not run on the default bitcode; the 9q operand bound comes from `ntt_out_bounded` and, for A, from
+  `poly_uniform`'s mask (read); `poly_shiftl`'s shift has no IR flag, and its C11 condition is
+  checked as arithmetic on the `t1` range, which is read from the source. A-ROW item 3.
 
 ### What it unlocks
 

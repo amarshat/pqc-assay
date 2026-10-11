@@ -1,0 +1,354 @@
+// No signed-overflow UB in the polynomial layer, mechanized on the default build.
+//
+// mldsa_ntt.saw proves the poly.c / polyvec.c functions equal to their Cryptol models on the
+// -fwrapv bitcode, where signed overflow wraps. A normal build does not pass -fwrapv: clang marks
+// signed int add/sub/mul `nsw`, and overflow is undefined. Here the same functions are run on that
+// DEFAULT bitcode, where SAW must show every nsw operation stays in range, every call meets its
+// callee's precondition, and every memory access is in bounds, under the stated input bounds.
+//
+// The two bitcodes differ only in those flags: with `nsw` and `inbounds` stripped, the default and
+// -fwrapv IR of the vendored C are identical (scripts/check_wrapv_diff.sh). Dropping `inbounds`
+// loses nothing SAW relies on: crucible-llvm rejects a pointer offset that leaves its allocation on
+// either build, flag or not. So once no flagged
+// operation overflows, the default build computes what the -fwrapv build computes, and the
+// functional results of mldsa_ntt.saw carry over. That is why the specs here state only bounds:
+// each output is a fresh value constrained by the bound the next call needs. Restating the
+// functional result would put 256 uninterpreted montgomery_reduce applications, each on a
+// product, into every pointwise goal; z3 and yices both stall on that (measured 2026-10-10).
+//
+// Input bounds, and where each comes from:
+//   - pointwise operands |x| <= 75423752 (9q): forward NTT outputs (Isabelle ntt_out_bounded) and
+//     the sampled rows of A (23-bit, read from poly_uniform; ASSUMPTIONS A-ROW 2).
+//   - everything after that is chained inside this script: pointwise output |x| < q, the
+//     accumulator |x| < 4q, poly_sub |x| < 5q, all below reduce32's precondition, and poly_reduce
+//     output |x| < q, which is the window invntt_overflow_free assumes.
+//
+// Not covered here: ntt (proof/saw/ntt_nsw.saw, 12.5 h, out of band); invntt_tomont (attempted
+// 2026-07, measured impractical; its overflow bound is proved on the model only); and poly_shiftl,
+// whose `<<` on a signed int is emitted as a plain `shl` with no flag, so SAW cannot see its UB on
+// any bitcode. For the shift, the C11 6.5.7p4 condition is checked as an arithmetic fact below.
+//
+// Non-vacuity: each spec has a mutant that widens or drops one input bound until an operation can
+// overflow or a callee precondition can fail, and SAW must reject it. That shows the side conditions are
+// being checked. (A result+1 mutant would only re-test a functional claim, and these specs make
+// none beyond the bounds.)
+
+enable_experimental;
+
+m <- llvm_load_module "../../build/mldsa_ntt.bc";
+import "../../model/cryptol/MLDSA_NTT.cry";
+
+let B9 = {{ 75423752 : [32] }};
+let WIDE = {{ 268435456 : [32] }};   // 2^28: 2^28 * 9q > 2^31 q, past montgomery_reduce's domain
+
+// |x| <= b and |x| < b, coefficientwise
+let within b x = {{ all (\c -> (c >=$ (- b)) /\ (c <=$ b)) x }};
+let below b x = {{ all (\c -> (c >$ (- b)) /\ (c <$ b)) x }};
+
+// --- leaf reductions -------------------------------------------------------------------------
+// montgomery_reduce: half-open domain (finding OF-1: at the inclusive upper end |t| = q).
+let mont_nsw_spec = do {
+    a <- llvm_fresh_var "a" (llvm_int 64);
+    llvm_precond {{ (a >=$ (- ((2 : [64]) ^^ 31 * 8380417))) /\ (a <$ ((2 : [64]) ^^ 31 * 8380417)) }};
+    llvm_execute_func [llvm_term a];
+    r <- llvm_fresh_var "r" (llvm_int 32);
+    llvm_return (llvm_term r);
+    llvm_postcond {{ (r >$ (-Q32)) /\ (r <$ Q32) }};
+};
+let mont_nsw_mut_spec = do {
+    a <- llvm_fresh_var "a" (llvm_int 64);
+    llvm_execute_func [llvm_term a];
+    r <- llvm_fresh_var "r" (llvm_int 32);
+    llvm_return (llvm_term r);
+    llvm_postcond {{ (r >$ (-Q32)) /\ (r <$ Q32) }};
+};
+mont_nsw_ov <- llvm_verify m "PQCLEAN_MLDSA44_CLEAN_montgomery_reduce" [] true mont_nsw_spec z3;
+fails (llvm_verify m "PQCLEAN_MLDSA44_CLEAN_montgomery_reduce" [] true mont_nsw_mut_spec z3);
+
+// reduce32: for a <= 2^31 - 2^22 - 1 the result is below q in absolute value (the extremes are
+// -6283009 and 6283008; the low end is one past what reduce.c documents, finding OF-2).
+let reduce32_nsw_d pre = do {
+    a <- llvm_fresh_var "a" (llvm_int 32);
+    pre a;
+    llvm_execute_func [llvm_term a];
+    r <- llvm_fresh_var "r" (llvm_int 32);
+    llvm_return (llvm_term r);
+    llvm_postcond {{ (r >$ (-Q32)) /\ (r <$ Q32) }};
+};
+let reduce32_nsw_spec = reduce32_nsw_d (\a -> llvm_precond {{ reduce32_in_range a }});
+let reduce32_nsw_mut_spec = reduce32_nsw_d (\a -> return ());
+reduce32_nsw_ov <- llvm_verify m "PQCLEAN_MLDSA44_CLEAN_reduce32" [] true reduce32_nsw_spec z3;
+fails (llvm_verify m "PQCLEAN_MLDSA44_CLEAN_reduce32" [] true reduce32_nsw_mut_spec z3);
+print "NSW: montgomery_reduce (|t| < q) and reduce32 (|r| < q) in range on the default bitcode";
+
+let poly_to_fresh nm = do {
+    p <- llvm_alloc (llvm_alias "struct.poly");
+    x <- llvm_fresh_var nm (llvm_array 256 (llvm_int 32));
+    llvm_points_to (llvm_field p "coeffs") (llvm_term x);
+    return (x, p);
+};
+
+// a fresh result polynomial at p with every coefficient below b
+let poly_out_below p nm b = do {
+    y <- llvm_fresh_var nm (llvm_array 256 (llvm_int 32));
+    llvm_points_to (llvm_field p "coeffs") (llvm_term y);
+    llvm_postcond (below b y);
+};
+
+// --- poly_pointwise_montgomery -----------------------------------------------------------------
+// The int64 product of two 9q values is at most 75423752^2 < 2^31 q: no overflow, and always in
+// montgomery_reduce's domain. Both call forms the reference uses (c disjoint, c == b).
+let pointwise_nsw_d alias_b ba = do {
+    (a, pa) <- poly_to_fresh "a";
+    (b, pb) <- poly_to_fresh "b";
+    llvm_precond (within ba a);
+    llvm_precond (within B9 b);
+    pc <- if alias_b then return pb else llvm_alloc (llvm_alias "struct.poly");
+    llvm_execute_func [pc, pa, pb];
+    llvm_setup_with_tag "outbound" (poly_out_below pc "c" {{ Q32 }});
+    llvm_points_to (llvm_field pa "coeffs") (llvm_term a);
+    if alias_b then return () else llvm_points_to (llvm_field pb "coeffs") (llvm_term b);
+};
+// The nsw check on the int64 multiply comes out as "the 128-bit product of the sign-extended
+// operands equals the sign-extension of the 64-bit product", a multiplier-equivalence goal SAT
+// solvers handle badly (yices, cvc5 and ABC each time out at 120 s on it alone; z3 takes ~40 s).
+// It holds for all 32-bit operands, so it is proved once here and used as a rewrite rule, which
+// turns each of the 256 copies into True. Each goal then keeps only the two input-bound
+// hypotheses: Crucible adds every earlier call's checked precondition as a hypothesis, and with
+// 255 product bounds in context a single goal took minutes. Dropping hypotheses only weakens the
+// assumptions, so a goal proved this way is still proved.
+mul_nsw_thm <- prove_core z3 "(x y : Vec 32 Bool) -> Eq Bool (bvEq 128 (bvMul 128 (bvSExt 96 31 x) (bvSExt 96 31 y)) (bvSExt 64 63 (bvMul 64 (bvSExt 32 31 x) (bvSExt 32 31 y)))) True";
+// The output bound (tagged "outbound") needs the montgomery_reduce postconditions, so that one goal
+// keeps every hypothesis.
+let pw_tac = do {
+    post <- goal_has_tags ["outbound"];
+    if post then w4_unint_z3 []
+    else do { simplify (addsimp mul_nsw_thm empty_ss); normalize_sequent; retain_hyps [0, 1]; w4_unint_z3 []; };
+};
+
+let pointwise_nsw_spec = pointwise_nsw_d false B9;
+let pointwise_nsw_mut_spec = pointwise_nsw_d false WIDE;
+pointwise_nsw_ov <- llvm_verify m "PQCLEAN_MLDSA44_CLEAN_poly_pointwise_montgomery" [mont_nsw_ov] true
+                                pointwise_nsw_spec pw_tac;
+fails (llvm_verify m "PQCLEAN_MLDSA44_CLEAN_poly_pointwise_montgomery" [mont_nsw_ov] true
+                   pointwise_nsw_mut_spec pw_tac);
+
+let pointwise_alias_b_nsw_spec = pointwise_nsw_d true B9;
+let pointwise_alias_b_nsw_mut_spec = pointwise_nsw_d true WIDE;
+pointwise_alias_b_nsw_ov <- llvm_verify m "PQCLEAN_MLDSA44_CLEAN_poly_pointwise_montgomery" [mont_nsw_ov] true
+                                        pointwise_alias_b_nsw_spec pw_tac;
+fails (llvm_verify m "PQCLEAN_MLDSA44_CLEAN_poly_pointwise_montgomery" [mont_nsw_ov] true
+                   pointwise_alias_b_nsw_mut_spec pw_tac);
+print "NSW: poly_pointwise_montgomery (both forms), |a|,|b| <= 9q: no overflow, output |c| < q";
+
+// --- poly_add (c == a, as in the accumulator), poly_sub (c == a, as in polyveck_sub) -----------
+// The functional postcondition is kept here (it is linear) so the accumulator can carry the
+// running-sum bound from one add to the next.
+let poly_addsub_nsw_d fn f ba = do {
+    (a, pa) <- poly_to_fresh "a";
+    (b, pb) <- poly_to_fresh "b";
+    llvm_precond (below ba a);
+    llvm_precond (below {{ Q32 }} b);
+    llvm_execute_func [pa, pa, pb];
+    llvm_points_to (llvm_field pa "coeffs") (llvm_term {{ f a b }});
+    llvm_points_to (llvm_field pb "coeffs") (llvm_term b);
+};
+let poly_add_nsw_spec = poly_addsub_nsw_d "add" {{ padd }} {{ 3 * Q32 }};
+let poly_add_nsw_mut_spec = poly_addsub_nsw_d "add" {{ padd }} {{ 2147483647 : [32] }};
+poly_add_nsw_ov <- llvm_verify m "PQCLEAN_MLDSA44_CLEAN_poly_add" [] true poly_add_nsw_spec z3;
+fails (llvm_verify m "PQCLEAN_MLDSA44_CLEAN_poly_add" [] true poly_add_nsw_mut_spec z3);
+
+let poly_sub_nsw_spec = poly_addsub_nsw_d "sub" {{ psub }} {{ 4 * Q32 }};
+let poly_sub_nsw_mut_spec = poly_addsub_nsw_d "sub" {{ psub }} {{ 2147483647 : [32] }};
+poly_sub_nsw_ov <- llvm_verify m "PQCLEAN_MLDSA44_CLEAN_poly_sub" [] true poly_sub_nsw_spec z3;
+fails (llvm_verify m "PQCLEAN_MLDSA44_CLEAN_poly_sub" [] true poly_sub_nsw_mut_spec z3);
+print "NSW: poly_add (|a| < 3q, |b| < q) and poly_sub (|a| < 4q, |b| < q), c aliasing a: no overflow";
+
+// --- poly_reduce ---------------------------------------------------------------------------------
+// Input below 5q covers both callers (A*y below 4q; verification's difference below 5q).
+let poly_reduce_nsw_d b = do {
+    (a, pa) <- poly_to_fresh "a";
+    llvm_precond (below b a);
+    llvm_execute_func [pa];
+    poly_out_below pa "r" {{ Q32 }};
+};
+let poly_reduce_nsw_spec = poly_reduce_nsw_d {{ 5 * Q32 }};
+let poly_reduce_nsw_mut_spec = poly_reduce_nsw_d {{ 2147483647 : [32] }};
+poly_reduce_nsw_ov <- llvm_verify m "PQCLEAN_MLDSA44_CLEAN_poly_reduce" [reduce32_nsw_ov] true
+                                  poly_reduce_nsw_spec z3;
+fails (llvm_verify m "PQCLEAN_MLDSA44_CLEAN_poly_reduce" [reduce32_nsw_ov] true
+                   poly_reduce_nsw_mut_spec z3);
+print "NSW: poly_reduce, |a| < 5q: reduce32 in range, output |r| < q";
+
+// --- vector layer --------------------------------------------------------------------------------
+let vec_at p i = llvm_elem (llvm_elem (llvm_field p "vec") i) 0;
+
+// one fresh variable per row, so the spec can be matched when used as an override
+let vec4_fresh alias nm = do {
+    p <- llvm_alloc (llvm_alias alias);
+    x0 <- llvm_fresh_var (str_concat nm "0") (llvm_array 256 (llvm_int 32));
+    x1 <- llvm_fresh_var (str_concat nm "1") (llvm_array 256 (llvm_int 32));
+    x2 <- llvm_fresh_var (str_concat nm "2") (llvm_array 256 (llvm_int 32));
+    x3 <- llvm_fresh_var (str_concat nm "3") (llvm_array 256 (llvm_int 32));
+    llvm_points_to (vec_at p 0) (llvm_term x0);
+    llvm_points_to (vec_at p 1) (llvm_term x1);
+    llvm_points_to (vec_at p 2) (llvm_term x2);
+    llvm_points_to (vec_at p 3) (llvm_term x3);
+    return ({{ [x0, x1, x2, x3] }}, p);
+};
+
+let vec4_post p t = do {
+    llvm_points_to (vec_at p 0) (llvm_term {{ t @ 0 }});
+    llvm_points_to (vec_at p 1) (llvm_term {{ t @ 1 }});
+    llvm_points_to (vec_at p 2) (llvm_term {{ t @ 2 }});
+    llvm_points_to (vec_at p 3) (llvm_term {{ t @ 3 }});
+};
+
+let vec4_out_below p nm b = do {
+    y0 <- llvm_fresh_var (str_concat nm "0") (llvm_array 256 (llvm_int 32));
+    y1 <- llvm_fresh_var (str_concat nm "1") (llvm_array 256 (llvm_int 32));
+    y2 <- llvm_fresh_var (str_concat nm "2") (llvm_array 256 (llvm_int 32));
+    y3 <- llvm_fresh_var (str_concat nm "3") (llvm_array 256 (llvm_int 32));
+    llvm_points_to (vec_at p 0) (llvm_term y0);
+    llvm_points_to (vec_at p 1) (llvm_term y1);
+    llvm_points_to (vec_at p 2) (llvm_term y2);
+    llvm_points_to (vec_at p 3) (llvm_term y3);
+    llvm_postcond (below b y0);
+    llvm_postcond (below b y1);
+    llvm_postcond (below b y2);
+    llvm_postcond (below b y3);
+};
+
+let all_within b x = {{ all (\r -> all (\c -> (c >=$ (- b)) /\ (c <=$ b)) r) x }};
+let all_below b x = {{ all (\r -> all (\c -> (c >$ (- b)) /\ (c <$ b)) r) x }};
+
+// polyvecl_pointwise_acc_montgomery: one row of A*y (A*z). Output |w| < 4q.
+let acc_nsw_d bu = do {
+    (u, pu) <- vec4_fresh "struct.polyvecl" "u";
+    (v, pv) <- vec4_fresh "struct.polyvecl" "v";
+    llvm_precond (all_within bu u);
+    llvm_precond (all_within B9 v);
+    pw <- llvm_alloc (llvm_alias "struct.poly");
+    llvm_execute_func [pw, pu, pv];
+    poly_out_below pw "w" {{ 4 * Q32 }};
+    vec4_post pu u;
+    vec4_post pv v;
+};
+let acc_nsw_spec = acc_nsw_d B9;
+let acc_nsw_mut_spec = acc_nsw_d WIDE;
+acc_nsw_ov <- llvm_verify m "PQCLEAN_MLDSA44_CLEAN_polyvecl_pointwise_acc_montgomery"
+                [pointwise_nsw_ov, poly_add_nsw_ov] true acc_nsw_spec z3;
+fails (llvm_verify m "PQCLEAN_MLDSA44_CLEAN_polyvecl_pointwise_acc_montgomery"
+                   [pointwise_nsw_ov, poly_add_nsw_ov] true acc_nsw_mut_spec z3);
+print "NSW: polyvecl_pointwise_acc_montgomery, entries <= 9q: every callee in range, |w| < 4q";
+
+// The mutants above all fail at the first pointwise call, so none shows the running-sum bound is
+// carried through the adds. This one does: poly_add verified with a tighter |a| < 2q, then the
+// accumulator checked against that override. The third add sees a sum up to 3q, so it must fail.
+let poly_add_tight_spec = poly_addsub_nsw_d "add" {{ padd }} {{ 2 * Q32 }};
+let poly_add_tight_mut_spec = poly_addsub_nsw_d "add" {{ padd }} {{ 2147483647 : [32] }};
+poly_add_tight_ov <- llvm_verify m "PQCLEAN_MLDSA44_CLEAN_poly_add" [] true poly_add_tight_spec z3;
+fails (llvm_verify m "PQCLEAN_MLDSA44_CLEAN_poly_add" [] true poly_add_tight_mut_spec z3);
+fails (llvm_verify m "PQCLEAN_MLDSA44_CLEAN_polyvecl_pointwise_acc_montgomery"
+                   [pointwise_nsw_ov, poly_add_tight_ov] true acc_nsw_spec z3);
+print "NON-VACUOUS: the accumulator against a poly_add that needs |a| < 2q is rejected (third add)";
+
+// --- the loops between sign.c and the functions above ----------------------------------------------
+// Their own arithmetic is unsigned (loop counters), so what is checked is that each callee's
+// precondition holds on every iteration, with the per-call specs above as overrides.
+
+// polyvec{l,k}_pointwise_poly_montgomery(r, a, v): c*s1, c*s2, c*t0 (disjoint) and verification's
+// c*t1 (r == v).
+let vpw_nsw_d alias aliased ba = do {
+    (a, pa) <- poly_to_fresh "a";
+    llvm_precond (within ba a);
+    (v, pv) <- vec4_fresh alias "v";
+    llvm_precond (all_within B9 v);
+    pr <- if aliased then return pv else llvm_alloc (llvm_alias alias);
+    llvm_execute_func [pr, pa, pv];
+    vec4_out_below pr "r" {{ Q32 }};
+    llvm_points_to (llvm_field pa "coeffs") (llvm_term a);
+    if aliased then return () else vec4_post pv v;
+};
+let polyvecl_pwpoly_nsw_spec = vpw_nsw_d "struct.polyvecl" false B9;
+let polyvecl_pwpoly_nsw_mut_spec = vpw_nsw_d "struct.polyvecl" false WIDE;
+llvm_verify m "PQCLEAN_MLDSA44_CLEAN_polyvecl_pointwise_poly_montgomery" [pointwise_nsw_ov] true polyvecl_pwpoly_nsw_spec z3;
+fails (llvm_verify m "PQCLEAN_MLDSA44_CLEAN_polyvecl_pointwise_poly_montgomery" [pointwise_nsw_ov] true polyvecl_pwpoly_nsw_mut_spec z3);
+
+let polyveck_pwpoly_nsw_spec = vpw_nsw_d "struct.polyveck" false B9;
+let polyveck_pwpoly_nsw_mut_spec = vpw_nsw_d "struct.polyveck" false WIDE;
+llvm_verify m "PQCLEAN_MLDSA44_CLEAN_polyveck_pointwise_poly_montgomery" [pointwise_nsw_ov] true polyveck_pwpoly_nsw_spec z3;
+fails (llvm_verify m "PQCLEAN_MLDSA44_CLEAN_polyveck_pointwise_poly_montgomery" [pointwise_nsw_ov] true polyveck_pwpoly_nsw_mut_spec z3);
+
+let polyveck_pwpoly_alias_nsw_spec = vpw_nsw_d "struct.polyveck" true B9;
+let polyveck_pwpoly_alias_nsw_mut_spec = vpw_nsw_d "struct.polyveck" true WIDE;
+llvm_verify m "PQCLEAN_MLDSA44_CLEAN_polyveck_pointwise_poly_montgomery" [pointwise_alias_b_nsw_ov] true polyveck_pwpoly_alias_nsw_spec z3;
+fails (llvm_verify m "PQCLEAN_MLDSA44_CLEAN_polyveck_pointwise_poly_montgomery" [pointwise_alias_b_nsw_ov] true polyveck_pwpoly_alias_nsw_mut_spec z3);
+print "NSW: polyvec{l,k}_pointwise_poly_montgomery (disjoint, and r aliasing v), entries <= 9q: output |r| < q";
+
+// polyvec_matrix_pointwise_montgomery: A*y, A*s1, A*z. Output rows |t| < 4q.
+let mat_at pm i j = llvm_elem (llvm_elem (llvm_elem (llvm_elem pm i) 0) j) 0;
+let matrix_nsw_d bv = do {
+    pm <- llvm_alloc (llvm_array 4 (llvm_alias "struct.polyvecl"));
+    mrows <- for [0, 1, 2, 3] (\i -> for [0, 1, 2, 3] (\j -> do {
+        x <- llvm_fresh_var "m" (llvm_array 256 (llvm_int 32));
+        llvm_points_to (mat_at pm i j) (llvm_term x);
+        llvm_precond (within B9 x);
+        return x;
+    }));
+    (v, pv) <- vec4_fresh "struct.polyvecl" "v";
+    llvm_precond (all_within bv v);
+    pt <- llvm_alloc (llvm_alias "struct.polyveck");
+    llvm_execute_func [pt, pm, pv];
+    vec4_out_below pt "t" {{ 4 * Q32 }};
+    for [0, 1, 2, 3] (\i -> for [0, 1, 2, 3] (\j ->
+        llvm_points_to (mat_at pm i j) (llvm_term (nth (nth mrows i) j))));
+    vec4_post pv v;
+};
+let matrix_nsw_spec = matrix_nsw_d B9;
+let matrix_nsw_mut_spec = matrix_nsw_d WIDE;
+llvm_verify m "PQCLEAN_MLDSA44_CLEAN_polyvec_matrix_pointwise_montgomery" [acc_nsw_ov] true matrix_nsw_spec z3;
+fails (llvm_verify m "PQCLEAN_MLDSA44_CLEAN_polyvec_matrix_pointwise_montgomery" [acc_nsw_ov] true matrix_nsw_mut_spec z3);
+print "NSW: polyvec_matrix_pointwise_montgomery, entries <= 9q: output |t| < 4q";
+
+// polyveck_sub(w1, w1, t1) in verification: |w1| < 4q (A*z), |t1| < q (c*t1).
+let vsub_nsw_d bu = do {
+    (u, pu) <- vec4_fresh "struct.polyveck" "u";
+    (v, pv) <- vec4_fresh "struct.polyveck" "v";
+    llvm_precond (all_below bu u);
+    llvm_precond (all_below {{ Q32 }} v);
+    llvm_execute_func [pu, pu, pv];
+    vec4_post pu {{ [ psub x y | x <- u | y <- v ] }};
+    vec4_post pv v;
+};
+let polyveck_sub_nsw_spec = vsub_nsw_d {{ 4 * Q32 }};
+let polyveck_sub_nsw_mut_spec = vsub_nsw_d {{ 2147483647 : [32] }};
+llvm_verify m "PQCLEAN_MLDSA44_CLEAN_polyveck_sub" [poly_sub_nsw_ov] true polyveck_sub_nsw_spec z3;
+fails (llvm_verify m "PQCLEAN_MLDSA44_CLEAN_polyveck_sub" [poly_sub_nsw_ov] true polyveck_sub_nsw_mut_spec z3);
+print "NSW: polyveck_sub (w aliasing u), |u| < 4q, |v| < q";
+
+// polyveck_reduce: input below 5q (covers A*y and verification's difference), output |r| < q.
+let vreduce_nsw_d b = do {
+    (u, pu) <- vec4_fresh "struct.polyveck" "u";
+    llvm_precond (all_below b u);
+    llvm_execute_func [pu];
+    vec4_out_below pu "r" {{ Q32 }};
+};
+let polyveck_reduce_nsw_spec = vreduce_nsw_d {{ 5 * Q32 }};
+let polyveck_reduce_nsw_mut_spec = vreduce_nsw_d {{ 2147483647 : [32] }};
+llvm_verify m "PQCLEAN_MLDSA44_CLEAN_polyveck_reduce" [poly_reduce_nsw_ov] true polyveck_reduce_nsw_spec z3;
+fails (llvm_verify m "PQCLEAN_MLDSA44_CLEAN_polyveck_reduce" [poly_reduce_nsw_ov] true polyveck_reduce_nsw_mut_spec z3);
+print "NSW: polyveck_reduce, |u| < 5q: output |r| < q";
+
+// --- poly_shiftl ----------------------------------------------------------------------------------
+// C11 6.5.7p4: for signed E1, E1 << E2 is defined only if E1 >= 0 and E1 * 2^E2 is representable.
+// clang emits a plain `shl` with no flag for it, so this is not a side condition SAW generates.
+// Checked directly: for 0 <= x <= 1023 (t1 is 10-bit, read from polyt1_unpack), x * 2^13 is in
+// [0, 2^31), and the 32-bit shift (Cryptol pshiftl, proven equal to the C in mldsa_ntt.saw) gives
+// exactly that value.
+prove_print z3 {{ \(x : [32]) -> ((x >=$ 0) /\ (x <=$ 1023)) ==>
+                    ((toSignedInteger x * 8192 >= 0) /\ (toSignedInteger x * 8192 < 2 ^^ 31)
+                     /\ (toSignedInteger (x << 13) == toSignedInteger x * 8192)) }};
+fails (prove_print z3 {{ \(x : [32]) -> ((x >=$ 0) /\ (x <=$ 262144)) ==>
+                    (toSignedInteger x * 8192 < 2 ^^ 31) }});
+print "NSW: poly_shiftl, 0 <= t1 <= 1023: the shift is defined (C11 6.5.7p4) and equals t1 * 2^13";
