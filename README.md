@@ -53,6 +53,7 @@ Each row means a pinned tool exited 0 on the stated property, in `make verify` u
 | model composition for verification's row, `A*z - c*t1*2^13`, FIPS form and in `R_q` | Isabelle `ver_row_fips`, `ver_row_ring` |
 | `negconv` is multiplication in `R_q`; the NTT locale has a model at the ML-DSA parameters | Isabelle `negconv_is_mult`, `mldsa_model` |
 | default build, polynomial layer: no signed-overflow UB in pointwise, add, sub, reduce, accumulator and the loops on the product paths, given pointwise operands within 9q (= 75423752) | SAW + z3, `make poly-nsw`, 48 min on CI's clang 17 |
+| output ranges of `polyt1_unpack` [0, 1023], `polyt0_unpack` [−4095, 4096], `polyeta_unpack` [−5, 2], `polyz_unpack` [−(2¹⁷−1), 2¹⁷], for any input bytes, default build | SAW + z3, `make saw` |
 | default build, forward NTT: no signed-overflow UB, and ≡ model, on `±(2³¹−2²⁷)` | SAW + bitwuzla, `make ntt-nsw`; run once, 12.5 h, 2026-07-10, before `poly.c` was vendored; no paired mutant; out of band |
 
 ## Not proved
@@ -60,12 +61,12 @@ Each row means a pinned tool exited 0 on the stated property, in `make verify` u
 | Item | Status |
 |---|---|
 | `sign.c` calls the functions in the order the composed models assume, on the right buffers (`v = ntt y`, `ch = ntt c`, `th = ntt(t1 << 13)`, ...) | read from the source: [`docs/COMPOSITION.md`](docs/COMPOSITION.md) gives each with its line |
-| input ranges the theorems take: `\|A\| < 9q` (23-bit mask in `rej_uniform`), `\|y\|`, `\|s1\|`, `\|s2\|`, `\|t0\|`, `\|c\|`, `\|z\|` below q, `0 <= t1 <= 1023` | read from the source (sampling and unpack code, not verified) |
+| input ranges the theorems take, at the call sites: that `packing.c` and `poly_uniform_gamma1` get `t1`, `t0`, `s1`, `s2`, `z`, `y` from the unpack functions above; `\|A\| < 9q` (23-bit mask in `rej_uniform`), keygen's `s1`, `s2` (`rej_eta`) and `\|c\| <= 1` (`poly_challenge`) | read from the source (the three samplers are not verified) |
 | two builds are the same program apart from `nsw` / `inbounds` flags | checked by a script (`scripts/check_wrapv_diff.sh`), not proved |
 | default build: inverse NTT and the `poly_ntt` / `poly_invntt_tomont` wrappers have no signed-overflow UB | argued from the `-fwrapv` proofs and the Isabelle bounds |
 | default build: `poly_shiftl` has no signed-shift UB | argued from the `t1` range (clang emits a plain `shl`, so SAW cannot see it) |
 | the compiler | trusted (`-O0`) |
-| sampling, rounding, hints, packing, hashing; constant time | not claimed |
+| sampling, rounding, hints, packing (other than the unpack output ranges above), hashing; constant time | not claimed |
 
 The 9q operand bound comes from Isabelle's `ntt_out_bounded` for transform outputs and from the
 23-bit mask in `rej_uniform` for A (read from the source). The Isabelle theories contain no `sorry`,

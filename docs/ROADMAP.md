@@ -675,6 +675,14 @@ theorems about the definition we wrote.
   mechanized for the poly.c / polyvec.c functions (next entry) and stays argued for the inverse NTT
   and the transform wrappers.
 
+- **Unpack output ranges. DONE 2026-10-12.** `proof/saw/poly_ranges.saw` (in `make saw`, about 7 s)
+  proves on the default bitcode that `polyt1_unpack`, `polyt0_unpack`, `polyeta_unpack` and
+  `polyz_unpack` produce coefficients in [0, 1023], [-4095, 4096], [-5, 2] and [-(2^17 - 1), 2^17]
+  for any input bytes, with mutants one tighter at each end that fail. This moves the ranges of t1, t0,
+  s1, s2 (signing), z and y from read-from-source to proved, except for the call sites. Not done:
+  `rej_uniform`, `rej_eta` (a one-call spec timed out in z3 and yices; bitwuzla needs macOS 15) and
+  `poly_challenge` (unbounded rejection loop).
+
 - **No overflow on a normal build, for the polynomial layer. DONE 2026-10-11.** The products above
   were proven on `-fwrapv` bitcode, with no-UB on a normal build argued from the Isabelle bounds.
   `proof/saw/poly_nsw.saw` (`make poly-nsw`) now runs the same poly.c / polyvec.c functions on the

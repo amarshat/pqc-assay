@@ -1,0 +1,72 @@
+// Output ranges of the poly.c unpack functions, on the default (nsw) bitcode.
+//
+// The product theorems (acc_mult_ring, ntt_mult_ring, ver_row_ring) take input ranges as
+// hypotheses: |A| < 9q, |s1|, |s2|, |t0|, |y|, |z|, |c| < q, 0 <= t1 <= 1023. docs/COMPOSITION.md
+// discharged those by reading poly.c. This script proves, for the unpack functions that produce
+// most of those inputs, that every output coefficient lies in the stated range, for every input
+// byte string, with no signed-overflow UB and no out-of-bounds access:
+//   polyt1_unpack (t1, verification), polyt0_unpack (t0, signing), polyeta_unpack (s1, s2,
+//   signing), polyz_unpack (z, verification; and y, which poly_uniform_gamma1 gets by calling
+//   polyz_unpack on SHAKE output).
+//
+// Still read from the source: that sign.c and packing.c call these functions to produce the
+// theorems' inputs, and the ranges of the three samplers:
+//   - rej_uniform (A, 0 <= A < q) and rej_eta (keygen s1, s2, |s| <= 2). Attempted 2026-10-12
+//     with a one-call spec (ret <= len; every written value in range; nothing written at or past
+//     len). Each call writes a[ctr++], where ctr depends on the bytes seen so far. On the default
+//     memory model the 840-byte call was still in symbolic execution after 19 min at 9 GB, and
+//     the 168-byte call simulates in 19 s but z3 did not finish the goals in 8 min. On the
+//     SMT-array model the 168-byte call simulates in 9 s, but z3 and yices each ran out a 5 to 9
+//     min budget on the range goal alone (bitwuzla does not load on macOS 13). ret <= len proves
+//     at once in every configuration.
+//   - poly_challenge (|c| <= 1): its do-while rejects on hash output, so it has no fixed bound.
+//
+// Non-vacuity: each spec has two mutants, each claiming the range one tighter at one end, and SAW
+// must reject both, so both ends of every range are attained.
+
+enable_experimental;
+
+m <- llvm_load_module "../../build/mldsa_ntt.bc";
+
+// lo <= x <= hi, signed, coefficientwise
+let in_range lo hi x = {{ all (\c -> (c >=$ lo) /\ (c <=$ hi)) x }};
+
+// fixed-length byte string in, polynomial out
+let unpack_d nbytes lo hi = do {
+    a <- llvm_fresh_var "a" (llvm_array nbytes (llvm_int 8));
+    pa <- llvm_alloc_readonly (llvm_array nbytes (llvm_int 8));
+    llvm_points_to pa (llvm_term a);
+    pr <- llvm_alloc (llvm_alias "struct.poly");
+    llvm_execute_func [pr, pa];
+    r <- llvm_fresh_var "r" (llvm_array 256 (llvm_int 32));
+    llvm_points_to (llvm_field pr "coeffs") (llvm_term r);
+    llvm_postcond (in_range lo hi r);
+};
+
+// mlo > lo and mhi < hi: each mutant tightens one end
+let unpack_check fn nbytes lo hi mlo mhi = do {
+    llvm_verify m fn [] true (unpack_d nbytes lo hi) z3;
+    fails (llvm_verify m fn [] true (unpack_d nbytes mlo hi) z3);
+    fails (llvm_verify m fn [] true (unpack_d nbytes lo mhi) z3);
+    return ();
+};
+
+// t1: 10-bit fields, 0 <= t1 <= 1023 (ver_row_ring's bt1)
+unpack_check "PQCLEAN_MLDSA44_CLEAN_polyt1_unpack" 320
+    {{ 0 : [32] }} {{ 1023 : [32] }} {{ 1 : [32] }} {{ 1022 : [32] }};
+print "RANGE: polyt1_unpack, 0 <= t1 <= 1023";
+
+// t0: 2^12 - (13 bits), in [-(2^12 - 1), 2^12]
+unpack_check "PQCLEAN_MLDSA44_CLEAN_polyt0_unpack" 416
+    {{ -4095 : [32] }} {{ 4096 : [32] }} {{ -4094 : [32] }} {{ 4095 : [32] }};
+print "RANGE: polyt0_unpack, -4095 <= t0 <= 4096";
+
+// s1, s2 from the secret key: ETA - (3 bits), in [-5, 2]
+unpack_check "PQCLEAN_MLDSA44_CLEAN_polyeta_unpack" 96
+    {{ -5 : [32] }} {{ 2 : [32] }} {{ -4 : [32] }} {{ 1 : [32] }};
+print "RANGE: polyeta_unpack, -5 <= s <= 2";
+
+// z (verification) and y (signing, via poly_uniform_gamma1): GAMMA1 - (18 bits)
+unpack_check "PQCLEAN_MLDSA44_CLEAN_polyz_unpack" 576
+    {{ -131071 : [32] }} {{ 131072 : [32] }} {{ -131070 : [32] }} {{ 131071 : [32] }};
+print "RANGE: polyz_unpack, -(2^17 - 1) <= z <= 2^17";

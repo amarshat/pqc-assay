@@ -3,13 +3,15 @@
 The C proofs stop at function boundaries. SAW proves each C function equal to its Cryptol model.
 Isabelle proves that a particular composition of those models computes a product in
 `R_q = Z_q[X]/(X^256+1)`. That `sign.c` composes the C functions that way, on those buffers, with
-inputs in those ranges, is read from the C. `sign.c` and `packing.c` are not vendored (only
+inputs in those ranges, is read from the C, except the unpack functions' output ranges, which
+are proved (the split rows below). `sign.c` and `packing.c` are not vendored (only
 `reduce.c`, `ntt.c`, `poly.c` and `polyvec.c` are), and nothing here is a proof about them.
 
 This file lists every hypothesis of the three product theorems and says how each one is
 discharged:
 
 - PROVED: by a named theorem or SAW spec;
+- split: the row's claim has parts with different labels, given in the row;
 - SOURCE: by reading a named line of the C, not proven;
 - ASSUMED: taken on trust;
 - ARGUED: a reasoned step that is not mechanized.
@@ -55,7 +57,7 @@ arguments.
 |---|---|
 | `z` is a copy of `y`, then `v = ntt z` | SOURCE: `sign.c:138-139` |
 | the C computes `invntt(preduce(acc u v))` per row | SOURCE: call order at `sign.c:140-142`; each call PROVED (SAW) |
-| `\|y\| < q` | SOURCE: `poly_uniform_gamma1` (`poly.c:458`) decodes with `polyz_unpack`, 18-bit mask at `poly.c:798-813` and `GAMMA1 - x` at `poly.c:815-818`, so `\|y\| <= 2^17`; sampling not verified |
+| `\|y\| < q` | split: PROVED that `polyz_unpack` outputs lie in `[-(2^17 - 1), 2^17]` for any input bytes (`poly_ranges.saw`); SOURCE that `poly_uniform_gamma1` fills `y` by calling it on SHAKE output (`poly.c:467`) |
 | `\|A\| < 9q` | SOURCE: `poly.c:324` |
 | `mat` still holds the expanded A on every rejection iteration | split: PROVED that the matrix loop leaves it unchanged; SOURCE that no other call between `sign.c:128` and `:140` receives `mat`; ASSUMED that the unverified calls in between (sampling, `decompose`, packing, hashing, `chknorm`) do not write out of bounds |
 | `f_i` exists | PROVED: `acc_mult_ring_ex` |
@@ -68,8 +70,8 @@ arguments.
 | the challenge argument is `ntt c` | SOURCE: `sign.c:155-156` (recomputed on every iteration) |
 | the C computes `invntt(pointwise(.,.))` | SOURCE: call order at `sign.c:159-160`, `169-170`, `178-179`; each call PROVED (SAW) |
 | `\|c\| < q` | SOURCE: `poly_challenge` writes `1 - 2*(signs & 1)` or copies an earlier coefficient, `poly.c:510-511` |
-| `\|s1\|, \|s2\| < q` | SOURCE: `unpack_sk` (`packing.c:145,150`) calls `polyeta_unpack`, which gives `ETA - (3 bits)`, in [-5, 2], `poly.c:571-578` |
-| `\|t0\| < q` | SOURCE: `unpack_sk` (`packing.c:155`) calls `polyt0_unpack`, which gives `2^12 - (13 bits)`, `poly.c:730-737` |
+| `\|s1\|, \|s2\| < q` | split: PROVED that `polyeta_unpack` outputs lie in `[-5, 2]` (`poly_ranges.saw`); SOURCE that `unpack_sk` calls it for `s1` and `s2` (`packing.c:145,150`) |
+| `\|t0\| < q` | split: PROVED that `polyt0_unpack` outputs lie in `[-4095, 4096]` (`poly_ranges.saw`); SOURCE that `unpack_sk` calls it (`packing.c:155`) |
 | `cp` unchanged across the three calls at `sign.c:159`, `169`, `178` | split: PROVED that each pointwise loop leaves it unchanged; SOURCE that the calls in between do not receive it; ASSUMED that they do not write out of bounds |
 | `s1`, `s2`, `t0` (in NTT form) unchanged across rejection iterations | split: PROVED that the pointwise loops leave them unchanged; SOURCE that no other call after `sign.c:131` receives them; ASSUMED as above |
 
@@ -81,9 +83,9 @@ arguments.
 | `ch = ntt c` | SOURCE: `sign.c:292`, `298` |
 | `th = ntt(pshiftl t1)` | SOURCE: `sign.c:299-300` |
 | the C computes `invntt(preduce(psub(acc u v, pointwise ch th)))` | SOURCE: call order at `sign.c:296`, `301`, `303-305`; each call PROVED (SAW), including the aliasing forms at `301` and `303` |
-| `\|z\| < q` | SOURCE: `unpack_sig` (`packing.c:227`) calls `polyz_unpack`, `poly.c:798-818`, so `\|z\| <= 2^17`; `chknorm` at `sign.c:274` narrows it further |
+| `\|z\| < q` | split: PROVED that `polyz_unpack` outputs lie in `[-(2^17 - 1), 2^17]` (`poly_ranges.saw`); SOURCE that `unpack_sig` calls it (`packing.c:227`); `chknorm` at `sign.c:274` narrows it further |
 | `\|c\| < q` | SOURCE: `poly.c:510-511` |
-| `0 <= t1 <= 1023` | SOURCE: `unpack_pk` (`packing.c:51`) calls `polyt1_unpack`, which masks with `0x3FF`, `poly.c:623-626` |
+| `0 <= t1 <= 1023` | split: PROVED that `polyt1_unpack` outputs lie in `[0, 1023]` (`poly_ranges.saw`); SOURCE that `unpack_pk` calls it (`packing.c:51`) |
 | `\|A\| < 9q` | SOURCE: `poly.c:324` |
 | `f_i` exists | PROVED for the same `u` by `acc_mult_ring_ex`; not restated as an existential form of `ver_row_ring` |
 
@@ -120,7 +122,10 @@ The SOURCE rows are of two kinds:
 - Call order and argument flow (`v = ntt y`, which buffer goes where, nothing else touches `mat`)
   could be closed by vendoring `sign.c` and running SAW on a harness that performs each sequence,
   with the existing specs as overrides.
-- Input ranges could be closed by SAW specs for the unpack and sampling functions that state
-  output bounds.
+- Input ranges: the unpack functions are done (`proof/saw/poly_ranges.saw`, in `make saw`, on
+  the default bitcode, with mutants one tighter at each end that must fail). The samplers are not:
+  `rej_uniform` (A) and `rej_eta` (keygen `s1`, `s2`) write at a data-dependent index, and a
+  one-call spec did not finish in z3 or yices within 5 to 9 minutes (measurements in the script
+  header); `poly_challenge` has a rejection loop with no fixed bound.
 
-Neither has been done.
+The call-order harness has not been done.

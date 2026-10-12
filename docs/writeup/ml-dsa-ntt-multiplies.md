@@ -94,11 +94,12 @@ results are claimed for those versions.
 
 ## What it does not cover
 
-- How `sign.c` composes the proved functions: the call order, which buffer is passed where, and the
-  input ranges the theorems assume (t1 is 10-bit, z, c, y and the secrets are small, A's
-  coefficients fit in 23 bits, from `rej_uniform`, which is not verified, and neither is sampling
-  against FIPS 204). Each is read from a named line of the pinned source, listed in
-  [`docs/COMPOSITION.md`](https://github.com/amarshat/pqc-assay/blob/main/docs/COMPOSITION.md).
+- How `sign.c` composes the proved functions: the call order, which buffer is passed where, and
+  which function produces each input. Each is read from a named line of the pinned source, listed
+  in [`docs/COMPOSITION.md`](https://github.com/amarshat/pqc-assay/blob/main/docs/COMPOSITION.md).
+  The output ranges of the unpack functions that produce t1, t0, s1, s2, z and y are proved in SAW
+  (`poly_ranges.saw`); the ranges of A (`rej_uniform`), keygen's secrets (`rej_eta`) and c
+  (`poly_challenge`) are read from the source, and sampling is not checked against FIPS 204.
 - The rest of signature verification (hashing, decoding, hints) and of signing (sampling, rejection,
   rounding). This is about the polynomial products only.
 - The C side is proved on bitcode compiled with `-O0 -fwrapv`. That no signed overflow happens on a
@@ -109,7 +110,8 @@ results are claimed for those versions.
 - Isabelle's code generator is trusted for some facts about the constant twiddle tables (the
   `by eval` method). A check in the build fails if the headline theorems pick up any other oracle.
 - `poly_shiftl` shifts a signed int, which C defines only for non-negative values that do not
-  overflow. That holds because t1 is 10-bit, which is read from the source; SAW does not see that
+  overflow. That holds because t1 is 10-bit (proved for `polyt1_unpack`'s output; that `unpack_pk` uses it
+  is read from the source). SAW does not see that
   kind of undefined behaviour.
 - ML-DSA-44 only. The vector length 4 is fixed in the models.
 - Reference C only. Not the AVX2 code, and not constant-time properties.

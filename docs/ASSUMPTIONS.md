@@ -906,18 +906,26 @@ hypothesis of the three theorems with the proof or `sign.c` line that discharges
    the default bitcode (`ntt` itself is `ntt_nsw.saw`, out of band), and the 9q operand bound,
    which comes from `ntt_out_bounded` for transform outputs and from item 2 for A.
 4. ML-DSA-44 only: L = K = 4 are fixed in the models and the theorems.
-5. Verification's input ranges are read from the source, not proven: `t1` is 10-bit
-   (`polyt1_unpack` masks with `0x3FF`), `z` is at most 2^17 in magnitude from `polyz_unpack` (and
-   `chknorm` rejects `|z| >= gamma1 - beta` before the product), and `c` has coefficients in
-   {-1, 0, 1} from `poly_challenge` (via an implementation-defined `uint64` to `int32` conversion).
-   The theorem needs only `|z|, |c| < q` and `t1` in [0, 1023].
+5. Input ranges. Since 2026-10-12 the unpack functions' output ranges are proved, for every input
+   byte string, on the default bitcode (`proof/saw/poly_ranges.saw`, in `make saw`, about 7 s,
+   z3, exit 0): `polyt1_unpack` gives [0, 1023], `polyt0_unpack` [-4095, 4096], `polyeta_unpack`
+   [-5, 2] and `polyz_unpack` [-(2^17 - 1), 2^17]. Each spec has two mutants, one tighter at each
+   end, that SAW rejects. That `packing.c` and `poly_uniform_gamma1` call these functions to produce
+   `t1`, `t0`, `s1`, `s2`, `z` and `y` is read from the source. Still read from the source
+   entirely: `c` has coefficients in {-1, 0, 1} from `poly_challenge` (via an
+   implementation-defined `uint64` to `int32` conversion; its rejection loop has no fixed bound),
+   keygen's `s1`, `s2` come from `rej_eta`, and A from `rej_uniform` (item 2). A one-call spec for
+   the two rejection samplers was attempted and did not finish in z3 or yices; the measurements are
+   in the `poly_ranges.saw` header. The theorems need only `|z|, |c|, |y|, |s1|, |s2|, |t0| < q`,
+   `|A| < 9q` and `t1` in [0, 1023]; `chknorm` also rejects `|z| >= gamma1 - beta` before
+   verification's product.
    `poly_shiftl` shifts a signed int, which C defines only for non-negative values whose result
    fits. SAW does not see that undefined behaviour on either bitcode: clang emits a plain `shl`, and
    a review probe showed `poly_shiftl` verifies with no precondition on the default module too.
    `poly_nsw.saw` checks the C11 6.5.7p4 condition as arithmetic instead (for `0 <= x <= 1023`,
    `x * 2^13` is in `[0, 2^31)` and equals the 32-bit `x << 13`; at `2^18` it fails). That is a
-   fact about the range, not about the C: definedness still rests on the `t1` range read from
-   `polyt1_unpack`.
+   fact about the range, not about the C: definedness still rests on the `t1` range, which is
+   proved for `polyt1_unpack`'s output and read from the source for the call in `unpack_pk`.
 
 ## A-POINTWISE: `poly_pointwise_montgomery` is verified for the two forms the reference uses
 

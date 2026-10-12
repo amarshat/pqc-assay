@@ -355,12 +355,14 @@ claimed for those versions.</p>
 <h2 id="what-it-does-not-cover">What it does not cover</h2>
 <ul>
 <li>How <code>sign.c</code> composes the proved functions: the call
-order, which buffer is passed where, and the input ranges the theorems
-assume (t1 is 10-bit, z, c, y and the secrets are small, A’s
-coefficients fit in 23 bits, from <code>rej_uniform</code>, which is not
-verified, and neither is sampling against FIPS 204). Each is read from a
-named line of the pinned source, listed in <a
-href="https://github.com/amarshat/pqc-assay/blob/main/docs/COMPOSITION.md"><code>docs/COMPOSITION.md</code></a>.</li>
+order, which buffer is passed where, and which function produces each
+input. Each is read from a named line of the pinned source, listed in <a
+href="https://github.com/amarshat/pqc-assay/blob/main/docs/COMPOSITION.md"><code>docs/COMPOSITION.md</code></a>.
+The output ranges of the unpack functions that produce t1, t0, s1, s2, z
+and y are proved in SAW (<code>poly_ranges.saw</code>); the ranges of A
+(<code>rej_uniform</code>), keygen’s secrets (<code>rej_eta</code>) and c
+(<code>poly_challenge</code>) are read from the source, and sampling is
+not checked against FIPS 204.</li>
 <li>The rest of signature verification (hashing, decoding, hints) and of
 signing (sampling, rejection, rounding). This is about the polynomial
 products only.</li>
@@ -377,8 +379,9 @@ constant twiddle tables (the <code>by eval</code> method). A check in
 the build fails if the headline theorems pick up any other oracle.</li>
 <li><code>poly_shiftl</code> shifts a signed int, which C defines only
 for non-negative values that do not overflow. That holds because t1 is
-10-bit, which is read from the source; SAW does not see that kind of
-undefined behaviour.</li>
+10-bit (proved for <code>polyt1_unpack</code>’s output; that
+<code>unpack_pk</code> uses it is read from the source). SAW does not see
+that kind of undefined behaviour.</li>
 <li>ML-DSA-44 only. The vector length 4 is fixed in the models.</li>
 <li>Reference C only. Not the AVX2 code, and not constant-time
 properties.</li>

@@ -9,7 +9,8 @@ code or theories are used.
      ▼
  Cryptol model
      │ (2) SAW llvm_verify: C bitcode ≡ Cryptol → proof/saw/mldsa_ntt.saw   (-fwrapv build)
-     │ (2') SAW: no signed overflow, default build → proof/saw/ntt_nsw.saw, poly_nsw.saw
+     │ (2') SAW: no signed overflow, default build → proof/saw/ntt_nsw.saw, poly_nsw.saw,
+     │      and unpack output ranges                 → proof/saw/poly_ranges.saw
      ▼
  C ≡ Cryptol
      │ (3) cryptol-to-isabelle                  → spec/isabelle/MLDSA_NTT.thy (make lift-check)
