@@ -43,6 +43,7 @@ Each row means a pinned tool exited 0 on the stated property, in `make verify` u
 |---|---|
 | `reduce.c` (`montgomery_reduce`, `reduce32`, `caddq`, `freeze`) ≡ Cryptol, no signed overflow in range | SAW + z3 |
 | `reduce.c` models meet their contracts (residue mod q, output windows) | Isabelle |
+| `reduce.c` under a second C semantics: the AutoCorres2 (C-parser) abstraction of each function takes no undefined-behaviour guard on the contract windows and returns the value of the same Cryptol model | Isabelle + AutoCorres2, `make ac2`; separate setup, not in `make verify` |
 | each C function on the product paths ≡ its Cryptol model (`-fwrapv` build): `ntt`, `invntt_tomont`, pointwise, add, sub, shift, reduce, the accumulator, the wrappers and the vector and matrix loops; loops leave their inputs unchanged | SAW |
 | the Cryptol models lift to the Isabelle models used below | `make lift-check` regenerates and diffs |
 | forward NTT model ≡ FIPS 204 forward NTT mod q | Isabelle `ntt_bridge` on `[0,q)`, `ntt_signed_correct` on `\|coeff\| < q` |
@@ -130,7 +131,7 @@ make claim-lint                      # SAW specs have paired mutants (exemptions
 
 The full `make verify` took 3 h 20 min in `verify.yml` run 38100891287 on 2026-10-11 (macos-15
 runner, Apple clang 17.0.0, manual dispatch); the workflow caches Isabelle heaps, so warm runs are
-shorter. `make ntt-nsw` and `make barrett-solver` are out of band, and `ntt-nsw` needs macOS 15 (the
+shorter. `make ntt-nsw`, `make barrett-solver` and `make ac2` (after `scripts/setup_autocorres2.sh`, which needs a clang >= 15) are out of band, and `ntt-nsw` needs macOS 15 (the
 pinned bitwuzla does not load on 13).
 
 ## Layout

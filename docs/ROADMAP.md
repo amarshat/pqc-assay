@@ -675,6 +675,14 @@ theorems about the definition we wrote.
   mechanized for the poly.c / polyvec.c functions (next entry) and stays argued for the inverse NTT
   and the transform wrappers.
 
+- **Second C semantics for `reduce.c`. DONE 2026-10-19.** `proof/autocorres2/` (`make ac2`) runs
+  AutoCorres2 on the vendored `reduce.c` and proves `montgomery_reduce`, `caddq`, `reduce32` and
+  `freeze` equal to the lifted Cryptol models with no UB guard on their windows, so the C-parser's
+  reading of the source and SAW's reading of the bitcode agree on these functions. On the way:
+  AutoCorres2's default signed word abstraction reports UB in `montgomery_reduce` where C has none
+  (A-AC2 item 5). Next: `ntt.c` and `poly.c` leaves, then the `sign.c` sequences in Isabelle over
+  AutoCorres2, which would move COMPOSITION.md call-order rows from SOURCE to PROVED.
+
 - **Unpack output ranges. DONE 2026-10-12.** `proof/saw/poly_ranges.saw` (in `make saw`, about 7 s)
   proves on the default bitcode that `polyt1_unpack`, `polyt0_unpack`, `polyeta_unpack` and
   `polyz_unpack` produce coefficients in [0, 1023], [-4095, 4096], [-5, 2] and [-(2^17 - 1), 2^17]

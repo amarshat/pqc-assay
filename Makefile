@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -90,6 +90,16 @@ mlkem-isabelle:
 isabelle:
 	@echo ">> Isabelle: proving reduce.c model ≡ FIPS-204 spec"
 	$(ISABELLE) build -b -D spec/isabelle -v $(ISA_SESSION)
+
+## Second C semantics: AutoCorres2 (C-parser) on the vendored PQClean reduce.c, proved equal to the
+## lifted Cryptol models SAW checks the bitcode against. Needs scripts/setup_autocorres2.sh once
+## (AFP mirror with a clang >= 15 for AutoCorres2's layout step, separate Isabelle user home).
+## Not in `verify`: the extra setup is heavy and needs a newer clang than the pinned one.
+AC2_CLANG ?= /opt/homebrew/opt/llvm@22/bin/clang
+ac2:
+	@echo ">> AutoCorres2: PQClean reduce.c (C-parser semantics) == lifted Cryptol models"
+	./proof/autocorres2/gen.sh $(AC2_CLANG) reduce
+	USER_HOME=$(CURDIR)/.tools/isa-ac2-home $(ISABELLE) build -b -D proof/autocorres2 -v PQClean_AC2
 
 ## Tier2 Isabelle session: lifted forward NTT ≡ FIPS-204 negacyclic transform (fwd_ntt_correct)
 ## plus the model bridge (Mont_Bridge) tying the SAW-checked montgomery model to it; the bridge

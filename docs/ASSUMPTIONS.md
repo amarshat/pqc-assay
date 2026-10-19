@@ -943,3 +943,34 @@ The rest of `poly.c` is compiled into the same translation unit. Verified from i
 `poly_pointwise_montgomery` (the two forms above), `poly_add` (`c == a`), `poly_sub` (`c == a`),
 `poly_reduce`, `poly_shiftl`, `poly_ntt` and `poly_invntt_tomont`. Everything else in `poly.c`
 (sampling, packing, rounding, hints, `chknorm`) is not.
+
+## A-AC2: second C semantics, AutoCorres2 on the vendored `reduce.c` (recorded 2026-10-19)
+
+`proof/autocorres2/` (`make ac2`, after `scripts/setup_autocorres2.sh`) runs AutoCorres2 from the
+pinned AFP on `target/pqclean/reduce.c` and proves in Isabelle that each abstraction takes no
+undefined-behaviour guard and returns the value of the lifted Cryptol model SAW checks the bitcode
+against: `montgomery_reduce_ac2_model` (under `mont_input_ok`), `caddq_ac2_model` (all int32),
+`reduce32_ac2_model` and `freeze_ac2_model` (under `reduce32_input_ok`). What this rests on:
+
+1. AutoCorres2 and its C-parser, as a second, independent reading of the C source (SAW reads the
+   `-O0` bitcode). AutoCorres2's generated `ac_corres` theorems connect each abstraction to the
+   C-parser's Simpl semantics; the C-parser's own semantics is trusted.
+2. Preprocessing: `proof/autocorres2/gen.sh` runs `clang -E -P` over the unchanged vendored file
+   with a typedef-only `<stdint.h>`/`<stddef.h>` shim. AutoCorres2's own `cpp -CC` step keeps the
+   `//` comment inside `params.h`'s `QINV` macro and the parse then fails. The preprocessor is
+   trusted to do macro expansion only.
+3. The AFP copy used is the pinned AutoCorres2 with one change, the default `clang_path`
+   (record layouts), so a clang >= 15 can be used; the setup script prints the diff. It runs from
+   its own Isabelle user home, `.tools/isa-ac2-home`.
+4. `declare [[arithmetic_right_shift]]`: right shift of a negative `int32_t` is
+   implementation-defined in C; this takes clang's arithmetic shift, as SAW's bitcode does.
+5. `no_signed_word_abs` for `montgomery_reduce`: AutoCorres2's default signed word abstraction
+   turns `(int32_t)((uint64_t)a * QINV)` into a guarded signed multiply that fails for almost every
+   input, though C has no undefined behaviour there. Without that abstraction the remaining guards
+   are exactly C's int64 overflow conditions. This is a precision limit of the tool's default, and
+   is conservative (it reports UB that is not there, not the reverse).
+
+Checked: `make ac2` exit 0; `Thm_Deps.all_oracles` is empty for the four theorems; a deliberately
+false lemma fails; a mutant C (`caddq` adding q + 1) makes `caddq_ac2_model` fail at the
+negative-input case. Scope: `reduce.c` only. `ntt.c`, `poly.c`, `polyvec.c` and `sign.c` are not
+yet covered, and the theorems are about function values, not the composition in `sign.c`.

@@ -1,0 +1,11 @@
+session PQClean_AC2_Base = AutoCorres2 +
+  description \<open>AutoCorres2 abstraction of the vendored PQClean ML-DSA-44 reduce.c\<close>
+  options [document = false, timeout = 3600]
+  sessions Assay
+  theories Reduce_AC2
+
+session PQClean_AC2 in proofs = PQClean_AC2_Base +
+  description \<open>The AutoCorres2 abstractions equal Assay's lifted Cryptol models\<close>
+  options [document = false, timeout = 3600]
+  sessions Assay
+  theories Reduce_AC2_Model
