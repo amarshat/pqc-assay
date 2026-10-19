@@ -12,8 +12,12 @@
 
 ## Responsible disclosure
 If verification surfaces a real discrepancy in a deployed implementation:
-1. Do **not** post it publicly first.
-2. Record it privately under `docs/ASSUMPTIONS.md` → "Open findings".
+1. Do **not** post it publicly first. This repo is public, so a commit is a publication: do not
+   record the finding in `docs/ASSUMPTIONS.md` or anywhere else in the tree yet.
+2. Keep the details in a GitHub private security advisory on this repo (Security tab, "Report a
+   vulnerability"), or outside the repo.
 3. Report to the implementation's maintainers (e.g. the upstream repo's security contact).
-4. Notify the PQC standards community (pqc-forum) only after maintainer contact.
+4. After the maintainers have fixed it or agreed to disclosure, record it under
+   `docs/ASSUMPTIONS.md` → "Open findings".
+5. Notify the PQC standards community (pqc-forum) only after maintainer contact.
 Coordinated disclosure is both the right thing and the higher-reputation path.

@@ -1,6 +1,28 @@
 name: verify
 on:
-  workflow_dispatch:   # manual for now; with heap caching the warm path is fast (see below)
+  # Runs on every push or PR that touches anything the proofs read, so the badge tracks HEAD.
+  # A warm run (cached heaps) takes about 3 min; a cold one can take hours, see timeout below.
+  push:
+    paths:
+      - 'spec/**'
+      - 'afp/**'
+      - 'proof/**'
+      - 'model/**'
+      - 'target/**'
+      - 'scripts/**'
+      - 'Makefile'
+      - '.github/workflows/verify.yml'
+  pull_request:
+    paths:
+      - 'spec/**'
+      - 'afp/**'
+      - 'proof/**'
+      - 'model/**'
+      - 'target/**'
+      - 'scripts/**'
+      - 'Makefile'
+      - '.github/workflows/verify.yml'
+  workflow_dispatch:
 
 # Full pipeline — SAW (C == Cryptol) + Isabelle (model == FIPS/math spec).
 #
@@ -19,6 +41,12 @@ on:
 # correctly persisting the on-disk store is sufficient.)
 #
 # macOS Apple Silicon (matches the pinned arm64 SAW binary).
+# One run at a time per branch. A newer push waits instead of cancelling, so a cold heap build is
+# never cut off part way.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   verify:
     runs-on: macos-15
@@ -69,8 +97,8 @@ jobs:
 
       - name: Reject proof holes (no sorry/oops/admit)
         run: |
-          if grep -rnE --include='*.thy' '\b(sorry|oops|admit)\b' spec/ afp/; then
-            echo "::error::Found a proof hole (sorry/oops/admit) in spec/ or afp/."; exit 1
+          if grep -rnE --include='*.thy' '\b(sorry|oops|admit)\b' spec/ afp/ proof/; then
+            echo "::error::Found a proof hole (sorry/oops/admit) in spec/, afp/ or proof/."; exit 1
           fi
       - name: Full pipeline — lift-check + SAW (C==Cryptol) + Isabelle (model==spec)
         run: make verify

@@ -26,7 +26,7 @@ all: verify
 ## Tier2) → inverse-NTT model ≡ FIPS-204 inverse transform (Isabelle, Tier2_InvWork) → ML-KEM
 ## forward-NTT model ≡ FIPS-203 residue transform (Isabelle, Kem_Work). The ML-KEM C ≡ Cryptol legs
 ## (mlkem-reduce, mlkem-ntt) gate separately on every push in saw.yml.
-verify: target-identity lift-check saw poly-nsw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett mlkem-isabelle convolution
+verify: target-identity lift-check saw mutation-test poly-nsw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett mlkem-isabelle convolution
 	@echo "✔ pipeline complete: all checked steps passed"
 
 ## Integrity gate: the vendored C under proof is byte-for-byte the pinned snapshot.

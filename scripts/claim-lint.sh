@@ -105,6 +105,14 @@ elif [ "$declared" != "$actual" ]; then
 else
   note "  by-eval uses: $actual, matching the declared count"
 fi
+# The README states the same two numbers in prose; check them against the script too.
+gated=$(python3 scripts/count_eval_oracle.py | sed -n 's/^of which in sessions built by `make verify`: //p')
+readme=$(tr '\n' ' ' < README.md | grep -oE 'trusts the code generator, [0-9]+ times \([0-9]+ in `make verify`\)' || true)
+if [ "$readme" != "trusts the code generator, $actual times ($gated in \`make verify\`)" ]; then
+  bad "README by-eval sentence is '${readme:-missing}' but the counts are $actual total, $gated in make verify"
+else
+  note "  README by-eval figures: $actual total, $gated in make verify, matching the script"
+fi
 
 note "== 4. every mutation figure in the docs agrees =="
 # The mutation count was stated four different ways across the tree once. Collect every "N of M ...

@@ -55,7 +55,15 @@ Each row means a pinned tool exited 0 on the stated property, in `make verify` u
 | `negconv` is multiplication in `R_q`; the NTT locale has a model at the ML-DSA parameters | Isabelle `negconv_is_mult`, `mldsa_model` |
 | default build, polynomial layer: no signed-overflow UB in pointwise, add, sub, reduce, accumulator and the loops on the product paths, given pointwise operands within 9q (= 75423752) | SAW + z3, `make poly-nsw`, 48 min on CI's clang 17 |
 | output ranges of `polyt1_unpack` [0, 1023], `polyt0_unpack` [−4095, 4096], `polyeta_unpack` [−5, 2], `polyz_unpack` [−(2¹⁷−1), 2¹⁷], for any input bytes, default build | SAW + z3, `make saw` |
-| default build, forward NTT: no signed-overflow UB, and ≡ model, on `±(2³¹−2²⁷)` | SAW + bitwuzla, `make ntt-nsw`; run once, 12.5 h, 2026-07-10, before `poly.c` was vendored; no paired mutant; out of band |
+
+## Checked once, not gated
+
+This row met the bar above once but is not re-run and has no mutant that must fail, so it does not
+meet the mutant policy the Proved table holds to.
+
+| Property | Checked by |
+|---|---|
+| default build, forward NTT: no signed-overflow UB, and ≡ model, on `±(2³¹−2²⁷)` | SAW + bitwuzla, `make ntt-nsw`; one run, 12.5 h, 2026-07-10, before `poly.c` was vendored |
 
 ## Not proved
 
@@ -71,7 +79,7 @@ Each row means a pinned tool exited 0 on the stated property, in `make verify` u
 
 The 9q operand bound comes from Isabelle's `ntt_out_bounded` for transform outputs and from the
 23-bit mask in `rej_uniform` for A (read from the source). The Isabelle theories contain no `sorry`,
-`oops` or `smt`, and CI greps for `sorry`/`oops`/`admit` on every push. They use `by eval`, which
+`oops` or `smt`, and CI greps `spec/`, `afp/` and `proof/` for `sorry`/`oops`/`admit` on every push. They use `by eval`, which
 trusts the code generator, 88 times (85 in `make verify`), for the twiddle tables and a few gcd
 facts. Every NTT theorem in the Proved table depends on it (OF-4, measured with `Thm_Deps.all_oracles`);
 `negconv_is_mult` does not. Results are claimed for the pinned checkers: SAW 1.5.1,
@@ -131,7 +139,8 @@ make claim-lint                      # SAW specs have paired mutants (exemptions
 
 The full `make verify` took 3 h 20 min in `verify.yml` run 38100891287 on 2026-10-11 (macos-15
 runner, Apple clang 17.0.0, manual dispatch); the workflow caches Isabelle heaps, so warm runs are
-shorter. `make ntt-nsw`, `make barrett-solver` and `make ac2` (after `scripts/setup_autocorres2.sh`, which needs a clang >= 15) are out of band, and `ntt-nsw` needs macOS 15 (the
+shorter. `verify.yml` runs on every push that touches `spec/`, `afp/`, `proof/`, `model/`,
+`target/`, `scripts/` or the Makefile, so the badge reflects the last such commit. `make ntt-nsw`, `make barrett-solver` and `make ac2` (after `scripts/setup_autocorres2.sh`, which needs a clang >= 15) are out of band, and `ntt-nsw` needs macOS 15 (the
 pinned bitwuzla does not load on 13).
 
 ## Layout

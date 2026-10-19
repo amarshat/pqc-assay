@@ -1,6 +1,7 @@
 session Assay in "." = "Cryptol" +
-  description \<open>Equivalence of the deployed ML-DSA montgomery_reduce subroutine with its
-    mathematical (FIPS-204-consistent) specification.\<close>
+  description \<open>The lifted ML-DSA-44 reduction models (montgomery_reduce, reduce32, caddq,
+    freeze) against their FIPS-204 specifications, and the forward NTT model overflow bound.
+    The NTT transform theorems are in the tier2 sessions.\<close>
   options [document = false]
   theories
     MLDSA_NTT

@@ -1,5 +1,6 @@
-(* WIP — Tier-2 FFT-correctness (negacyclic NTT == ML-DSA layer composition).
-   SEPARATE from `Assay` (the make-verify no-sorry gate) until discharged.
+(* Tier-2 FFT-correctness (negacyclic NTT == ML-DSA layer composition).
+   Separate sessions from `Assay`; `make verify` builds them (targets tier2, tier2-inv,
+   tier2-signed, tier2-invsigned).
 
    Split for fast iteration: Tier2_Base holds the stable deps (incl. the proven
    per-layer butterfly laws in Bridge_Word) as a prebuilt heap image

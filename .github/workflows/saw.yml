@@ -5,7 +5,8 @@ on:
   workflow_dispatch:
 
 # Fast gating check on EVERY push/PR: the SAW leg — C montgomery_reduce == Cryptol model.
-# (The heavy Isabelle leg lives in verify.yml, which only runs when proof files change.)
+# (The Isabelle leg lives in verify.yml, which runs on pushes that touch proof, model, target or
+# script files.)
 jobs:
   saw:
     runs-on: macos-15   # Apple Silicon: matches the pinned arm64 SAW binary
@@ -20,8 +21,8 @@ jobs:
         run: SKIP_ISABELLE=1 ./scripts/setup.sh
       - name: Reject proof holes (no sorry/oops/admit)
         run: |
-          if grep -rnE --include='*.thy' '\b(sorry|oops|admit)\b' spec/; then
-            echo "::error::Found a proof hole (sorry/oops/admit) in spec/."; exit 1
+          if grep -rnE --include='*.thy' '\b(sorry|oops|admit)\b' spec/ afp/ proof/; then
+            echo "::error::Found a proof hole (sorry/oops/admit) in spec/, afp/ or proof/."; exit 1
           fi
       - name: Lift-check (committed Isabelle model == cryptol-to-isabelle of the Cryptol model)
         run: make lift-check

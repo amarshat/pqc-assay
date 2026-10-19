@@ -9,15 +9,17 @@ A `.thy` file that "looks complete" is not a proof. A SAW script that you wrote 
 until `saw` exits 0. If you cannot run the tool, say so and mark the step UNVERIFIED. Fabricated
 or assumed proof results are worse than useless here — they destroy the entire point of the project.
 
-## What we are doing (v1)
-Prove that the **forward NTT** (and the modular-reduction primitives it depends on) in a deployed
-C implementation of **ML-DSA** is equivalent to the **FIPS 204** sub-algorithm, via:
+## What we are doing
+The core claim is the PQClean ML-DSA-44 reference C against FIPS 204: the reduction primitives,
+the forward and inverse NTT, and the polynomial layer, via
 1. C → Cryptol model (`model/cryptol/`)
 2. SAW proves C ≡ Cryptol (`proof/saw/`)
 3. `cryptol-to-isabelle` lifts the Cryptol model into Isabelle
 4. Isabelle proves the lifted model ≡ FIPS-204 spec (`spec/isabelle/`)
 
-Scope is intentionally ONE subroutine. Do not expand scope without updating `docs/ROADMAP.md`.
+The README's Proved and Not-proved tables are the authoritative scope; `docs/COMPOSITION.md`
+separates proved composition from composition read from the source. Do not widen scope without
+updating `docs/ROADMAP.md` and those tables.
 
 ## Conventions
 - Pin every tool version in `scripts/setup.sh`. Reproducibility is the product.
@@ -38,9 +40,11 @@ For this repo specifically: a proof result is a fact, so report it like one (the
 it states, that the tool exited 0), never dress it up.
 
 ## If you find a discrepancy / bug
-Stop. Do not open any public issue or PR automatically. Record it in `docs/ASSUMPTIONS.md` under
-"Open findings" and surface it to the human — disclosure must be deliberate and go through
-maintainers first (see `CONTRIBUTING.md`).
+Stop. Do not open any public issue or PR automatically, and do not commit it: this repo is
+public, so recording it in `docs/ASSUMPTIONS.md` would disclose it. Keep the details outside the
+tree (or in a GitHub private security advisory) and surface it to the human. Disclosure must be
+deliberate and go through maintainers first; it goes into "Open findings" only after that (see
+`CONTRIBUTING.md`).
 
 ## Useful commands
 - `make verify`   run the full pipeline (fails loudly if any step doesn't check)
