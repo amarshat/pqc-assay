@@ -2,10 +2,10 @@
 
 The C proofs stop at function boundaries. SAW proves each C function equal to its Cryptol model.
 Isabelle proves that a particular composition of those models computes a product in
-`R_q = Z_q[X]/(X^256+1)`. For verification, that `sign.c` composes the C functions that way, on
-those buffers, is proved (`proof/saw/sign_verify.saw`), with the callees no proof covers replaced by
-assumed specs (A-SIGN in `docs/ASSUMPTIONS.md`). For key generation and signing it is read from the
-C. The input ranges are read from the C, except the unpack functions' output ranges, which are
+`R_q = Z_q[X]/(X^256+1)`. For key generation and verification, that `sign.c` composes the C
+functions that way, on those buffers, is proved (`proof/saw/sign_compose.saw`), with the callees no
+proof covers replaced by assumed specs (A-SIGN in `docs/ASSUMPTIONS.md`). For signing it is read
+from the C. The input ranges are read from the C, except the unpack functions' output ranges, which are
 proved (the split rows below). `sign.c` is vendored (2026-10-21); `packing.c`, `rounding.c` and
 `fips202.c` are not.
 
@@ -45,10 +45,16 @@ arguments.
 
 ## Key generation: `A*s1` (`acc_mult_ring`)
 
+`sign_compose.saw` proves that `crypto_sign_keypair` writes `MLDSA_Sign::keypair rb` to `pk` and
+`sk`, where `rb` is whatever `randombytes` returns. In that model `t1` and `t0` come from
+`power2round(caddq(invntt(preduce(acc A (ntt s1))) + s2))`, with `A` expanded from `rho`, `s1` and
+`s2` sampled from `rhoprime` with nonces 0 and 4, and `rho`, `rhoprime`, `key` the three slices of
+SHAKE256 of `rb` followed by K and L. Five wrong compositions must fail and do.
+
 | Hypothesis | Discharged by |
 |---|---|
-| `s1hat` is a copy of `s1`, then `v = ntt s1` | SOURCE: `sign.c:48-49` |
-| the C computes `invntt(preduce(acc u v))` per row | SOURCE: call order at `sign.c:50-52`; each call PROVED (SAW) |
+| `s1hat` is a copy of `s1`, then `v = ntt s1` | PROVED: `sign_compose.saw` |
+| the C computes `invntt(preduce(acc u v))` per row | PROVED: `sign_compose.saw`, with each call's own spec PROVED (SAW); ASSUMED that the unverified callees write only their outputs (A-SIGN) |
 | `\|s1\| < q` | SOURCE: `rej_eta` writes `2 - t` with `t < 5`, `poly.c:402,406`; sampling not verified |
 | `\|A\| < 9q` (the bound is `75423752` = 9q − 1) | SOURCE: `rej_uniform` masks to 23 bits, `poly.c:324` |
 | a polynomial `f_i` exists whose NTT is row entry `i` | PROVED: `acc_mult_ring_ex` (via `ntt_int_surj`) |
@@ -79,7 +85,7 @@ arguments.
 
 ## Verification: `A*z - c*t1*2^13` (`ver_row_ring`)
 
-`sign_verify.saw` proves that `crypto_sign_verify` (messages of 32 bytes, empty context) returns
+`sign_compose.saw` proves that `crypto_sign_verify` (messages of 32 bytes, empty context) returns
 `MLDSA_Sign::verify` (`model/cryptol/MLDSA_Sign.cry`). In that model the buffer handed to
 `polyveck_use_hint` is `caddq(invntt(preduce(psub(acc A v, pointwise ch th))))` with `A` the
 output of `polyvec_matrix_expand` on `unpack_pk`'s `rho`, `v = ntt z` for `unpack_sig`'s `z`,
@@ -89,10 +95,10 @@ of their inputs (A-SIGN). Seven wrong compositions must fail and do.
 
 | Hypothesis | Discharged by |
 |---|---|
-| `v = ntt z` | PROVED: `sign_verify.saw` |
-| `ch = ntt c` | PROVED: `sign_verify.saw` |
-| `th = ntt(pshiftl t1)` | PROVED: `sign_verify.saw` |
-| the C computes `invntt(preduce(psub(acc u v, pointwise ch th)))` | PROVED: `sign_verify.saw`, with each call's own spec PROVED (SAW), including the aliasing forms at `sign.c:301` and `303`; ASSUMED that the unverified callees write only their outputs (A-SIGN) |
+| `v = ntt z` | PROVED: `sign_compose.saw` |
+| `ch = ntt c` | PROVED: `sign_compose.saw` |
+| `th = ntt(pshiftl t1)` | PROVED: `sign_compose.saw` |
+| the C computes `invntt(preduce(psub(acc u v, pointwise ch th)))` | PROVED: `sign_compose.saw`, with each call's own spec PROVED (SAW), including the aliasing forms at `sign.c:301` and `303`; ASSUMED that the unverified callees write only their outputs (A-SIGN) |
 | `\|z\| < q` | split: PROVED that `polyz_unpack` outputs lie in `[-(2^17 - 1), 2^17]` (`poly_ranges.saw`); SOURCE that `unpack_sig` calls it (`packing.c:227`); `chknorm` at `sign.c:274` narrows it further |
 | `\|c\| < q` | SOURCE: `poly.c:510-511` |
 | `0 <= t1 <= 1023` | split: PROVED that `polyt1_unpack` outputs lie in `[0, 1023]` (`poly_ranges.saw`); SOURCE that `unpack_pk` calls it (`packing.c:51`) |
@@ -130,8 +136,8 @@ The rows above are about the `-fwrapv` build. Carrying them to a normal build ha
 The SOURCE rows are of two kinds:
 
 - Call order and argument flow (`v = ntt y`, which buffer goes where, nothing else touches `mat`):
-  done for verification (`sign_verify.saw`, SAW on the vendored `sign.c` with the existing specs
-  as overrides). Key generation is straight-line and could be done the same way. Signing has the
+  done for key generation and verification (`sign_compose.saw`, SAW on the vendored `sign.c` with
+  the existing specs as overrides). Signing has the
   `goto rej` loop, which SAW cannot unroll when the exit depends on opaque checks; it needs either
   a loop invariant or a spec of one iteration.
 - Input ranges: the unpack functions are done (`proof/saw/poly_ranges.saw`, in `make saw`, on
@@ -140,4 +146,4 @@ The SOURCE rows are of two kinds:
   one-call spec did not finish in z3 or yices within 5 to 9 minutes (measurements in the script
   header); `poly_challenge` has a rejection loop with no fixed bound.
 
-The call-order proof for key generation and signing has not been done.
+The call-order proof for signing has not been done.

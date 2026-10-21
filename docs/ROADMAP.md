@@ -675,14 +675,15 @@ theorems about the definition we wrote.
   mechanized for the poly.c / polyvec.c functions (next entry) and stays argued for the inverse NTT
   and the transform wrappers.
 
-- **`sign.c` verification composition. DONE 2026-10-21.** `sign.c` vendored (with `sign.h`,
-  `packing.h` and `common/randombytes.h`). `proof/saw/sign_verify.saw` (in `make saw`, about 2 min
+- **`sign.c` key generation and verification composition. DONE 2026-10-21.** `sign.c` vendored (with `sign.h`,
+  `packing.h` and `common/randombytes.h`). `proof/saw/sign_compose.saw` (in `make saw`, about 4 min
   including `mldsa_ntt.saw`) proves `crypto_sign_verify` returns `MLDSA_Sign::verify`: the proven
   arithmetic is used through its specs, and hashing, unpacking, the challenge sampler, matrix
   expansion, `use_hint`, `pack_w1` and the z norm check are assumed specs with opaque outputs
   (A-SIGN). Seven wrong compositions fail. This moves the verification call-order rows of
-  COMPOSITION.md from SOURCE to PROVED. Scope: 32-byte messages, empty context. Next: key
-  generation the same way (straight-line); signing needs a treatment of the `goto rej` loop.
+  COMPOSITION.md from SOURCE to PROVED. Key generation the same way (`crypto_sign_keypair`, random
+  bytes bound through SAW ghost state, five mutants fail). Scope: 32-byte messages, empty context.
+  Next: signing, which needs a treatment of the `goto rej` loop.
 
 - **Second C semantics for `reduce.c`. DONE 2026-10-19.** `proof/autocorres2/` (`make ac2`) runs
   AutoCorres2 on the vendored `reduce.c` and proves `montgomery_reduce`, `caddq`, `reduce32` and

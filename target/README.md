@@ -41,7 +41,7 @@ The natural v2 target (optimized ≡ reference) is **PQ Code Package `mldsa-nati
   `poly_invntt_tomont`.
 - `sign.c`, `sign.h` and `packing.h` vendored 2026-10-21 from the same directory, and `randombytes.h`
   from PQClean's `common/` at the same commit, verbatim, for the composition proof of verification
-  (`proof/saw/sign_verify.saw`). SHA-256: `sign.c`
+  (`proof/saw/sign_compose.saw`). SHA-256: `sign.c`
   `474d7a8c33b45a5e19d9f8a76f501c7ecaa6ca667171a0f40942c71456cbbec2`, `sign.h`
   `b1157ba9d0fc7bd89029e77311373c294e52587a32c497c1bdd3c58d9c7fe964`, `packing.h`
   `55eded057c9d78299e169ff5329915dc3beba291634186ca69f445c71167b5ea`, `randombytes.h`

@@ -1,4 +1,4 @@
-/* Wrong compositions for sign_verify.saw's non-vacuity guards. Each differs from
+/* Wrong compositions for sign_compose.saw's non-vacuity guards. Each differs from
    MLDSA_Sign::verify in one step; crypto_sign_verify must NOT be provable against any of them. */
 module MLDSA_Sign_Mutants where
 
@@ -59,3 +59,26 @@ verify_nobad sig m pk =
   where
     w1  = useHint (w1_pre (expandA (pkRho pk)) (sigZ sig) (challenge (sigC sig)) (pkT1 pk)) (sigH sig)
     c2  = squeeze32 (finalize (absorb768 (absorb64 incInit (mu_of pk m)) (packW1 w1)))
+
+// Key generation, one step changed each.
+keypair_mut : [8] -> [32][8] -> ([PKB][8], [SKB][8])
+keypair_mut k rb = (pk, sk)
+  where
+    sb   = shakeSeed (rb # (if k == 5 then [0, 0] else [4, 4]))
+    rho  = take`{32} sb
+    rhop = take`{64} (drop`{32} sb)
+    key  = drop`{96} sb
+    s1   = etaL rhop 0
+    s2   = etaK rhop (if k == 3 then 0 else 4)
+    s1h  = if k == 1 then s1 else [ ntt p | p <- s1 ]
+    as1  = [ acc row s1h | row <- expandA rho ]
+    t    = [ pcaddq (if k == 2 then invntt (preduce r) else padd (invntt (preduce r)) e) | r <- as1 | e <- s2 ]
+    pk   = packPk rho (p2r1 t)
+    sk   = if k == 4 then packSk key (shakeTr pk) rho (p2r0 t) s1 s2
+           else packSk rho (shakeTr pk) key (p2r0 t) s1 s2
+
+keypair_nontt     = keypair_mut 1
+keypair_nos2      = keypair_mut 2
+keypair_samenonce = keypair_mut 3
+keypair_rhokey    = keypair_mut 4
+keypair_noKL      = keypair_mut 5

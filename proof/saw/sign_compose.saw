@@ -1,19 +1,19 @@
-// SAW proof: sign.c's verification routine composes the proven functions the way
+// SAW proof: sign.c's verification and key generation compose the proven functions the way
 // model/cryptol/MLDSA_Sign.cry says.
 //
-// crypto_sign_verify (verify_ctx with ctx = NULL, ctxlen = 0) is symbolically executed with every
-// callee replaced by a spec:
+// crypto_sign_verify (verify_ctx with ctx = NULL, ctxlen = 0) and crypto_sign_keypair are
+// symbolically executed with every callee replaced by a spec:
 //   - the arithmetic on the product path uses specs proven here or in mldsa_ntt.saw (included
 //     below): ntt, the matrix-vector product, shiftl, pointwise, sub, reduce, invntt, caddq;
-//   - everything else (unpacking, the norm check on z, SHAKE256, the challenge sampler, matrix
-//     expansion, use_hint, pack_w1) uses an ASSUMED spec whose outputs are opaque Cryptol functions
+//   - everything else (unpacking, packing, the norm check on z, SHAKE256, randombytes, the
+//     samplers, matrix expansion, power2round, use_hint, pack_w1) uses an ASSUMED spec whose outputs are opaque Cryptol functions
 //     of its inputs, kept uninterpreted. Each assumed spec is listed in docs/ASSUMPTIONS.md (A-SIGN).
 // So the obligation is that the C calls these functions in this order, on these buffers, with this
 // aliasing, and returns what the composition returns. It holds for every interpretation of the
 // opaque functions, which is why none of their bodies matter.
 //
 // SCOPE: message length fixed at 32 bytes (the absorb spec for the message is per length). The
-// signer's rejection loop (goto rej) is not covered here, nor is keygen.
+// signer's rejection loop (goto rej) is not covered.
 
 include "mldsa_ntt.saw";
 import "../../model/cryptol/MLDSA_Sign.cry";
@@ -377,3 +377,122 @@ fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_verify" verify_ovs fals
 fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_verify" verify_ovs false
                    (verify_spec {{ verify_nobad }}) (w4_unint_z3 opaque));
 print "NON-VACUOUS: compositions without the shift, with the subtraction swapped, with z not transformed, without caddq, without the z norm check, without the message absorbed, or without the unpack_sig check are rejected";
+
+// =============================================================================================
+// Key generation: crypto_sign_keypair returns MLDSA_Sign::keypair.
+
+// polyveck_add(t1, t1, s2): output aliases the first operand. Proven, over poly_add (c == a).
+let vadd_rows_d d = do {
+    (u, pu) <- vec_rows "struct.polyveck" "u";
+    (v, pv) <- vec_rows "struct.polyveck" "v";
+    llvm_execute_func [pu, pu, pv];
+    vec_post pu (bumpv {{ [ padd x y | x <- u | y <- v ] }} d);
+    vec_post pv v;
+};
+polyveck_add_r <- llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_add" [poly_add_alias_ov] true (vadd_rows_d {{ 0 : [32] }}) (w4_unint_z3 ["padd"]);
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_add" [poly_add_alias_ov] true (vadd_rows_d {{ 1 : [32] }}) (w4_unint_z3 ["padd"]));
+print "VERIFIED: per-row polyveck_add (aliased) == zipWith padd (mutant rejected)";
+
+// ASSUMED (A-SIGN), as for verification.
+// randombytes: returns the bytes held in ghost state `rng`, which the keypair spec binds as its
+// input. (No input at all would leave every term closed; see MLDSA_Sign.cry.)
+rng <- declare_ghost_state "rng";
+let randombytes_spec = do {
+    r <- llvm_fresh_var "r" (llvm_array 32 (llvm_int 8));
+    llvm_ghost_value rng r;
+    p <- llvm_alloc (llvm_array 32 (llvm_int 8));
+    llvm_execute_func [p, llvm_term {{ 32 : [64] }}];
+    llvm_ghost_value rng r;
+    llvm_points_to p (llvm_term r);
+    llvm_return (llvm_term {{ 0 : [32] }});
+};
+randombytes_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_randombytes" randombytes_spec;
+
+// shake256(seedbuf, 128, seedbuf, 34): output over its own input.
+let shake256_seed_spec = do {
+    p <- llvm_alloc (llvm_array 128 (llvm_int 8));
+    x <- llvm_fresh_var "x" (llvm_array 34 (llvm_int 8));
+    llvm_points_to_at_type p (llvm_array 34 (llvm_int 8)) (llvm_term x);
+    llvm_execute_func [p, llvm_term {{ 128 : [64] }}, p, llvm_term {{ 34 : [64] }}];
+    llvm_points_to p (llvm_term {{ shakeSeed x }});
+};
+shake256_seed_ov <- llvm_unsafe_assume_spec mw "shake256" shake256_seed_spec;
+
+let eta_spec alias fn f nonce = do {
+    pv <- llvm_alloc (llvm_alias alias);
+    (seed, ps) <- bytes_ro "seed" 64;
+    llvm_execute_func [pv, ps, llvm_term {{ `nonce : [16] }}];
+    vec_post pv {{ f seed `nonce }};
+};
+eta_l_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_polyvecl_uniform_eta" (eta_spec "struct.polyvecl" "l" {{ etaL }} 0);
+eta_k_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_polyveck_uniform_eta" (eta_spec "struct.polyveck" "k" {{ etaK }} 4);
+
+// polyveck_power2round(t1, t0, t1): v1 aliases v.
+let p2r_spec = do {
+    (v, pv) <- vec_rows "struct.polyveck" "v";
+    p0 <- llvm_alloc (llvm_alias "struct.polyveck");
+    llvm_execute_func [pv, p0, pv];
+    vec_post pv {{ p2r1 v }};
+    vec_post p0 {{ p2r0 v }};
+};
+p2r_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_polyveck_power2round" p2r_spec;
+
+let pack_pk_spec = do {
+    ppk <- llvm_alloc (llvm_array 1312 (llvm_int 8));
+    (rho, prho) <- bytes_ro "rho" 32;
+    (t, pt) <- vec_rows "struct.polyveck" "t";
+    llvm_execute_func [ppk, prho, pt];
+    llvm_points_to ppk (llvm_term {{ packPk rho t }});
+    vec_post pt t;
+};
+pack_pk_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_pack_pk" pack_pk_spec;
+
+let pack_sk_spec = do {
+    psk <- llvm_alloc (llvm_array 2560 (llvm_int 8));
+    (rho, prho) <- bytes_ro "rho" 32;
+    (tr, ptr) <- bytes_ro "tr" 64;
+    (key, pkey) <- bytes_ro "key" 32;
+    (t0, pt0) <- vec_rows "struct.polyveck" "t0";
+    (s1, ps1) <- vec_rows "struct.polyvecl" "s1";
+    (s2, ps2) <- vec_rows "struct.polyveck" "s2";
+    llvm_execute_func [psk, prho, ptr, pkey, pt0, ps1, ps2];
+    llvm_points_to psk (llvm_term {{ packSk rho tr key t0 s1 s2 }});
+    vec_post pt0 t0;
+    vec_post ps1 s1;
+    vec_post ps2 s2;
+};
+pack_sk_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_pack_sk" pack_sk_spec;
+
+let keypair_spec kp = do {
+    rb <- llvm_fresh_var "rb" (llvm_array 32 (llvm_int 8));
+    llvm_ghost_value rng rb;
+    ppk <- llvm_alloc (llvm_array 1312 (llvm_int 8));
+    psk <- llvm_alloc (llvm_array 2560 (llvm_int 8));
+    llvm_execute_func [ppk, psk];
+    llvm_ghost_value rng rb;
+    llvm_points_to ppk (llvm_term {{ (kp rb).0 }});
+    llvm_points_to psk (llvm_term {{ (kp rb).1 }});
+    llvm_return (llvm_term {{ 0 : [32] }});
+};
+let keypair_ovs = [randombytes_ov, shake256_seed_ov, shake256_ov, expand_ov, eta_l_ov, eta_k_ov,
+                   p2r_ov, pack_pk_ov, pack_sk_ov,
+                   polyvecl_ntt_r, matrix_r, polyveck_reduce_r, polyveck_invntt_r, polyveck_add_r,
+                   polyveck_caddq_r];
+let opaque_kp = concat opaque ["shakeSeed", "etaL", "etaK", "p2r1", "p2r0",
+                               "packPk", "packSk", "padd"];
+
+llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_keypair" keypair_ovs false
+            (keypair_spec {{ keypair }}) (w4_unint_z3 opaque_kp);
+print "VERIFIED: crypto_sign_keypair returns MLDSA_Sign::keypair";
+
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_keypair" keypair_ovs false
+                   (keypair_spec {{ keypair_nontt }}) (w4_unint_z3 opaque_kp));
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_keypair" keypair_ovs false
+                   (keypair_spec {{ keypair_nos2 }}) (w4_unint_z3 opaque_kp));
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_keypair" keypair_ovs false
+                   (keypair_spec {{ keypair_samenonce }}) (w4_unint_z3 opaque_kp));
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_keypair" keypair_ovs false
+                   (keypair_spec {{ keypair_rhokey }}) (w4_unint_z3 opaque_kp));
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_keypair" keypair_ovs false
+                   (keypair_spec {{ keypair_noKL }}) (w4_unint_z3 opaque_kp));
+print "NON-VACUOUS: keypair compositions with s1 not transformed, without s2, with s1 and s2 from the same nonce, with rho and key swapped in sk, or without K and L in the seed input are rejected";

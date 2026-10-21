@@ -975,10 +975,11 @@ false lemma fails; a mutant C (`caddq` adding q + 1) makes `caddq_ac2_model` fai
 negative-input case. Scope: `reduce.c` only. `ntt.c`, `poly.c`, `polyvec.c` and `sign.c` are not
 yet covered, and the theorems are about function values, not the composition in `sign.c`.
 
-## A-SIGN: `sign.c` verification composition (recorded 2026-10-21)
+## A-SIGN: `sign.c` key generation and verification composition (recorded 2026-10-21)
 
-`proof/saw/sign_verify.saw` (in `make saw`) proves that `crypto_sign_verify` returns
-`MLDSA_Sign::verify`. It rests on the following beyond the per-function proofs it uses as overrides.
+`proof/saw/sign_compose.saw` (in `make saw`) proves that `crypto_sign_verify` returns
+`MLDSA_Sign::verify` and that `crypto_sign_keypair` writes `MLDSA_Sign::keypair rb`. It rests on
+the following beyond the per-function proofs it uses as overrides.
 
 1. **Vendored files.** `sign.c`, `sign.h` and `packing.h` from `crypto_sign/ml-dsa-44/clean/` and
    `randombytes.h` from `common/`, PQClean `202a8f9`, unchanged, SHA-256 pinned in
@@ -1004,12 +1005,23 @@ yet covered, and the theorems are about function values, not the composition in 
    - `PQCLEAN_MLDSA44_CLEAN_polyvec_matrix_expand`: writes the 4x4 matrix from `rho`.
    - `PQCLEAN_MLDSA44_CLEAN_polyveck_use_hint`: in the aliased form `(w1, w1, h)`.
    - `PQCLEAN_MLDSA44_CLEAN_polyveck_pack_w1`: writes 768 bytes from `w1`.
+   - Key generation: `PQCLEAN_randombytes` (32 bytes, returns 0; the bytes are the ghost value
+     `rng`, which the keypair spec binds as its input `rb`), `shake256` in the in-place form
+     `(seedbuf, 128, seedbuf, 34)`, `PQCLEAN_MLDSA44_CLEAN_polyvecl_uniform_eta` (nonce 0) and
+     `PQCLEAN_MLDSA44_CLEAN_polyveck_uniform_eta` (nonce 4), `PQCLEAN_MLDSA44_CLEAN_polyveck_power2round`
+     in the aliased form `(t1, t0, t1)`, `PQCLEAN_MLDSA44_CLEAN_pack_pk`,
+     `PQCLEAN_MLDSA44_CLEAN_pack_sk`.
 3. **Message length 32 bytes, empty context.** The message absorb is specified at length 32, so the
    result is for `mlen = 32` and the `crypto_sign_verify` entry point (`ctx = NULL`,
    `ctxlen = 0`). Other lengths would need their own absorb spec or a symbolic-length one.
-4. **Not covered.** Key generation and signing (`goto rej` loop); the final 32-byte comparison is
-   simulated, not assumed. `crypto_sign_open` is not covered.
-5. **Opaque names checked live.** The proof would be weaker if SAW unfolded the opaque functions
+4. **Not covered.** Signing (`goto rej` loop) and `crypto_sign_open`. The final 32-byte
+   comparison in verification is simulated, not assumed.
+5. **A free input is needed.** Key generation has no input other than the random bytes. In the
+   first version `randombytes` returned an opaque function of its length, so every term was closed,
+   SAW evaluated the placeholder bodies, and a wrong composition (s1 not transformed) passed. The
+   random bytes are now a symbolic input bound through ghost state, and the five keygen mutants
+   fail.
+6. **Opaque names checked live.** The proof would be weaker if SAW unfolded the opaque functions
    to their placeholder bodies (for example `absorbM s _ = s` would make the message irrelevant).
    Mutants that drop the message absorb, the `unpack_sig` check, or the `chknorm` check are
    rejected, which can only happen if those functions stay uninterpreted.

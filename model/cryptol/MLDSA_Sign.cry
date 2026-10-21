@@ -97,3 +97,46 @@ verify sig m pk =
   where
     w1  = useHint (w1_pre (expandA (pkRho pk)) (sigZ sig) (challenge (sigC sig)) (pkT1 pk)) (sigH sig)
     c2  = squeeze32 (finalize (absorb768 (absorb64 incInit (mu_of pk m)) (packW1 w1)))
+
+// ---- key generation ----
+type SKB = 2560    // CRYPTO_SECRETKEYBYTES = 2*SEEDBYTES + TRBYTES + (L+K)*POLYETA_PACKEDBYTES + K*POLYT0_PACKEDBYTES
+
+// opaque steps. The 32 random bytes are an input of the model (`rb`): the proof binds them to the
+// value the randombytes spec returns, through SAW ghost state. With no free input every term here
+// would be closed and SAW would evaluate the placeholder bodies, which makes the proof vacuous (the
+// first version of this proof passed a wrong composition for that reason).
+shakeSeed     : [34][8] -> [128][8]    // shake256(seedbuf, 128, seedbuf, SEEDBYTES + 2), in place
+shakeSeed _ = zero
+etaL          : [64][8] -> [16] -> Vec // polyvecl_uniform_eta(v, seed, nonce)
+etaL _ _ = zero
+etaK          : [64][8] -> [16] -> Vec // polyveck_uniform_eta(v, seed, nonce)
+etaK _ _ = zero
+p2r1          : Vec -> Vec             // polyveck_power2round(v1, v0, v): v1
+p2r1 _ = zero
+p2r0          : Vec -> Vec             // ... and v0
+p2r0 _ = zero
+packPk        : [32][8] -> Vec -> [PKB][8]
+packPk _ _ = zero
+packSk        : [32][8] -> [64][8] -> [32][8] -> Vec -> Vec -> Vec -> [SKB][8]
+packSk _ _ _ _ _ _ = zero
+
+// t = A*s1 + s2 before power2round: caddq(invntt(reduce(A*ntt(s1))) + s2), per row.
+t_pre : [4]Vec -> Vec -> Vec -> Vec
+t_pre a s1 s2 = [ pcaddq (padd (invntt (preduce r)) e) | r <- as1 | e <- s2 ]
+  where
+    s1h = [ ntt p | p <- s1 ]
+    as1 = [ acc row s1h | row <- a ]
+
+// crypto_sign_keypair: (pk, sk), given the bytes randombytes returns
+keypair : [32][8] -> ([PKB][8], [SKB][8])
+keypair rb = (pk, sk)
+  where
+    sb   = shakeSeed (rb # [4, 4])   // seedbuf[SEEDBYTES] = K, seedbuf[SEEDBYTES+1] = L
+    rho  = take`{32} sb
+    rhop = take`{64} (drop`{32} sb)
+    key  = drop`{96} sb
+    s1   = etaL rhop 0
+    s2   = etaK rhop 4
+    t    = t_pre (expandA rho) s1 s2
+    pk   = packPk rho (p2r1 t)
+    sk   = packSk rho (shakeTr pk) key (p2r0 t) s1 s2
