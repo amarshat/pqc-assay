@@ -1,0 +1,99 @@
+/* What sign.c's verification routine computes, written as a composition of the models the
+   per-function proofs use (MLDSA_NTT) and of named functions for the steps no proof here covers
+   (hashing, unpacking, the challenge sampler, matrix expansion, hints, w1 packing, the z norm check).
+
+   The named functions are OPAQUE: every proof that imports this module keeps them uninterpreted
+   (w4_unint_z3), so a result holds for every function of that type, and their bodies are never
+   unfolded. The bodies below are placeholders that only fix the types. A proof that verify's C
+   returns `verify` therefore says: the C calls these functions, and the proven arithmetic, on the
+   buffers and in the order this composition states, and combines their results this way. It says
+   nothing about what the opaque functions compute.
+
+   The incremental SHAKE256 state (shake256incctx holds a pointer to 26 uint64 words in PQClean's
+   fips202.c) is modelled as a [26][64] value threaded through absorb, finalize and squeeze. */
+module MLDSA_Sign where
+
+import MLDSA_NTT
+
+type PKB  = 1312   // CRYPTO_PUBLICKEYBYTES = SEEDBYTES + K*POLYT1_PACKEDBYTES
+type SIGB = 2420   // CRYPTO_BYTES = CTILDEBYTES + L*POLYZ_PACKEDBYTES + OMEGA + K
+type Poly = [256][32]
+type Vec  = [4]Poly
+type St   = [26][64]
+
+// ---- opaque steps (uninterpreted in every proof) ----
+pkRho     : [PKB][8] -> [32][8]
+pkRho _ = zero
+pkT1      : [PKB][8] -> Vec
+pkT1 _ = zero
+sigC      : [SIGB][8] -> [32][8]
+sigC _ = zero
+sigZ      : [SIGB][8] -> Vec
+sigZ _ = zero
+sigH      : [SIGB][8] -> Vec
+sigH _ = zero
+sigBad    : [SIGB][8] -> [32]
+sigBad _ = zero
+chkZ      : Vec -> [32]
+chkZ _ = zero
+expandA   : [32][8] -> [4]Vec
+expandA _ = zero
+challenge : [32][8] -> Poly
+challenge _ = zero
+useHint   : Vec -> Vec -> Vec          // useHint u h, polyveck_use_hint(w, u, h)
+useHint _ _ = zero
+packW1    : Vec -> [768][8]
+packW1 _ = zero
+shakeTr   : [PKB][8] -> [64][8]        // shake256(out, TRBYTES, pk, CRYPTO_PUBLICKEYBYTES)
+shakeTr _ = zero
+incInit   : St
+incInit = zero
+absorb64  : St -> [64][8] -> St
+absorb64 s _ = s
+absorb2   : St -> [2][8] -> St
+absorb2 s _ = s
+absorb0   : St -> St                   // absorb of a zero-length input
+absorb0 s = s
+absorbM   : St -> [32][8] -> St        // the message, at the fixed length the proof uses
+absorbM s _ = s
+absorb768 : St -> [768][8] -> St
+absorb768 s _ = s
+finalize  : St -> St
+finalize s = s
+squeeze64 : St -> [64][8]
+squeeze64 _ = zero
+squeeze32 : St -> [32][8]
+squeeze32 _ = zero
+squeezeSt : St -> St                   // the state after a squeeze (not read again by verify)
+squeezeSt s = s
+
+// ---- proven steps, vector forms ----
+pcaddq : Poly -> Poly
+pcaddq a = [ caddq x | x <- a ]
+
+// w1 before the hint: caddq(invntt(reduce(A*NTT(z) - NTT(c)*NTT(t1 << 13)))).
+// This is the term docs/COMPOSITION.md lists for the verifier's row; ver_row_fips is about it.
+w1_pre : [4]Vec -> Vec -> Poly -> Vec -> Vec
+w1_pre a z c t1 = [ pcaddq (invntt (preduce r)) | r <- diff ]
+  where
+    zh   = [ ntt p | p <- z ]
+    az   = [ acc row zh | row <- a ]
+    ch   = ntt c
+    t1h  = [ ntt (pshiftl p) | p <- t1 ]
+    ct1  = [ pointwise ch p | p <- t1h ]
+    diff = [ psub x y | x <- az | y <- ct1 ]
+
+// mu = CRH(tr, 0, ctxlen = 0, msg), with tr = H(pk). mu[0] and mu[1] are overwritten with
+// 0 and ctxlen before the two-byte absorb, so that absorb sees [0, 0].
+mu_of : [PKB][8] -> [32][8] -> [64][8]
+mu_of pk m = squeeze64 (finalize (absorbM (absorb0 (absorb2 (absorb64 incInit (shakeTr pk)) [0, 0])) m))
+
+// crypto_sign_verify(sig, CRYPTO_BYTES, m, 32, pk), i.e. verify_ctx with ctx = NULL, ctxlen = 0.
+verify : [SIGB][8] -> [32][8] -> [PKB][8] -> [32]
+verify sig m pk =
+  if sigBad sig != 0 then -1
+  else if chkZ (sigZ sig) != 0 then -1
+  else if sigC sig == c2 then 0 else -1
+  where
+    w1  = useHint (w1_pre (expandA (pkRho pk)) (sigZ sig) (challenge (sigC sig)) (pkT1 pk)) (sigH sig)
+    c2  = squeeze32 (finalize (absorb768 (absorb64 incInit (mu_of pk m)) (packW1 w1)))

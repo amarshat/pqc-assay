@@ -39,6 +39,15 @@ The natural v2 target (optimized ≡ reference) is **PQ Code Package `mldsa-nati
   `polyveck_invntt_tomont`, `polyveck_reduce`, `polyvecl_pointwise_poly_montgomery` and
   `polyveck_pointwise_poly_montgomery` (non-aliasing). From `poly.c`, also `poly_ntt` and
   `poly_invntt_tomont`.
+- `sign.c`, `sign.h` and `packing.h` vendored 2026-10-21 from the same directory, and `randombytes.h`
+  from PQClean's `common/` at the same commit, verbatim, for the composition proof of verification
+  (`proof/saw/sign_verify.saw`). SHA-256: `sign.c`
+  `474d7a8c33b45a5e19d9f8a76f501c7ecaa6ca667171a0f40942c71456cbbec2`, `sign.h`
+  `b1157ba9d0fc7bd89029e77311373c294e52587a32c497c1bdd3c58d9c7fe964`, `packing.h`
+  `55eded057c9d78299e169ff5329915dc3beba291634186ca69f445c71167b5ea`, `randombytes.h`
+  `7ae401d4d5eeb41bfa738d1281d57da3f78f915ca94388d89f4f33cbe6a3fe1e` (pinned in
+  `scripts/check_target_identity.sh`). `packing.c`, `rounding.c` and `fips202.c` are still not
+  vendored; their functions are assumed specs in that proof (A-SIGN).
 - The `reduce.c` translation unit defines four functions:
   | Function | Signature | What it does |
   |---|---|---|

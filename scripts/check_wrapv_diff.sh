@@ -18,6 +18,7 @@ trap 'rm -rf "$TMP"' EXIT
 printf '#include "reduce.c"\n#include "ntt.c"\n' > "$TMP/c.c"
 if [ -f "$TARGET_DIR/poly.c" ]; then printf '#include "poly.c"\n' >> "$TMP/c.c"; fi
 if [ -f "$TARGET_DIR/polyvec.c" ]; then printf '#include "polyvec.c"\n' >> "$TMP/c.c"; fi
+if [ -f "$TARGET_DIR/sign.c" ]; then printf '#include "sign.c"\n' >> "$TMP/c.c"; fi
 
 "$CLANG" -S -emit-llvm -O0 -g -I "$TARGET_DIR" "$TMP/c.c" -o "$TMP/default.ll"
 "$CLANG" -S -emit-llvm -O0 -g -fwrapv -I "$TARGET_DIR" "$TMP/c.c" -o "$TMP/wrapv.ll"

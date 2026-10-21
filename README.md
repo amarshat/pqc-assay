@@ -29,11 +29,11 @@ scheme. Writeup:
 [The ML-DSA reference NTT multiplies polynomials: C functions to models, models to the ring](https://amarshat.github.io/pqc-assay/writeup/ml-dsa-ntt-multiplies.html).
 
 > **Where the proofs stop.** Each C function is proved equal to its model, and Isabelle proves that
-> a composition of those models computes the product. That `sign.c` composes the functions that way,
-> on those buffers, with inputs in the ranges the theorems assume, is read from the C, not proved.
-> `sign.c` is not vendored and nothing here is a proof about it. Every hypothesis of the product
-> theorems, and whether a proof or a source line discharges it, is listed in
-> [`docs/COMPOSITION.md`](docs/COMPOSITION.md).
+> a composition of those models computes the product. For verification, that `sign.c` composes the
+> functions that way, on those buffers, is proved, with hashing, unpacking, sampling and hints taken
+> as assumed specs. For key generation and signing it is read from the C, and so are the input
+> ranges the theorems assume. Every hypothesis of the product theorems, and whether a proof or a
+> source line discharges it, is listed in [`docs/COMPOSITION.md`](docs/COMPOSITION.md).
 
 ## Proved (ML-DSA-44)
 
@@ -55,6 +55,7 @@ Each row means a pinned tool exited 0 on the stated property, in `make verify` u
 | `negconv` is multiplication in `R_q`; the NTT locale has a model at the ML-DSA parameters | Isabelle `negconv_is_mult`, `mldsa_model` |
 | default build, polynomial layer: no signed-overflow UB in pointwise, add, sub, reduce, accumulator and the loops on the product paths, given pointwise operands within 9q (= 75423752) | SAW + z3, `make poly-nsw`, 48 min on CI's clang 17 |
 | output ranges of `polyt1_unpack` [0, 1023], `polyt0_unpack` [−4095, 4096], `polyeta_unpack` [−5, 2], `polyz_unpack` [−(2¹⁷−1), 2¹⁷], for any input bytes, default build | SAW + z3, `make saw` |
+| `sign.c`, verification: `crypto_sign_verify` returns the composition in `MLDSA_Sign.cry`, so the buffer it hands to `use_hint` is `caddq(invntt(reduce(A*ntt(z) - ntt(c)*ntt(t1 << 13))))` on the unpacked `z`, `c`, `t1` and the expanded `A`; callees outside the proofs are assumed specs with opaque outputs (A-SIGN); 32-byte messages, empty context | SAW + z3, `make saw` |
 
 ## Checked once, not gated
 
@@ -69,7 +70,7 @@ meet the mutant policy the Proved table holds to.
 
 | Item | Status |
 |---|---|
-| `sign.c` calls the functions in the order the composed models assume, on the right buffers (`v = ntt y`, `ch = ntt c`, `th = ntt(t1 << 13)`, ...) | read from the source: [`docs/COMPOSITION.md`](docs/COMPOSITION.md) gives each with its line |
+| key generation and signing in `sign.c` call the functions in the order the composed models assume, on the right buffers (`v = ntt y`, `s1hat = ntt s1`, ...) | read from the source: [`docs/COMPOSITION.md`](docs/COMPOSITION.md) gives each with its line (verification is proved, above) |
 | input ranges the theorems take, at the call sites: that `packing.c` and `poly_uniform_gamma1` get `t1`, `t0`, `s1`, `s2`, `z`, `y` from the unpack functions above; `\|A\| < 9q` (23-bit mask in `rej_uniform`), keygen's `s1`, `s2` (`rej_eta`) and `\|c\| <= 1` (`poly_challenge`) | read from the source (the three samplers are not verified) |
 | two builds are the same program apart from `nsw` / `inbounds` flags | checked by a script (`scripts/check_wrapv_diff.sh`), not proved |
 | default build: inverse NTT and the `poly_ntt` / `poly_invntt_tomont` wrappers have no signed-overflow UB | argued from the `-fwrapv` proofs and the Isabelle bounds |

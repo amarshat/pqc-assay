@@ -1,0 +1,379 @@
+// SAW proof: sign.c's verification routine composes the proven functions the way
+// model/cryptol/MLDSA_Sign.cry says.
+//
+// crypto_sign_verify (verify_ctx with ctx = NULL, ctxlen = 0) is symbolically executed with every
+// callee replaced by a spec:
+//   - the arithmetic on the product path uses specs proven here or in mldsa_ntt.saw (included
+//     below): ntt, the matrix-vector product, shiftl, pointwise, sub, reduce, invntt, caddq;
+//   - everything else (unpacking, the norm check on z, SHAKE256, the challenge sampler, matrix
+//     expansion, use_hint, pack_w1) uses an ASSUMED spec whose outputs are opaque Cryptol functions
+//     of its inputs, kept uninterpreted. Each assumed spec is listed in docs/ASSUMPTIONS.md (A-SIGN).
+// So the obligation is that the C calls these functions in this order, on these buffers, with this
+// aliasing, and returns what the composition returns. It holds for every interpretation of the
+// opaque functions, which is why none of their bodies matter.
+//
+// SCOPE: message length fixed at 32 bytes (the absorb spec for the message is per length). The
+// signer's rejection loop (goto rej) is not covered here, nor is keygen.
+
+include "mldsa_ntt.saw";
+import "../../model/cryptol/MLDSA_Sign.cry";
+
+let bytes_ro nm n = do {
+    p <- llvm_alloc_readonly (llvm_array n (llvm_int 8));
+    x <- llvm_fresh_var nm (llvm_array n (llvm_int 8));
+    llvm_points_to p (llvm_term x);
+    return (x, p);
+};
+let bytes_rw nm n = do {
+    p <- llvm_alloc (llvm_array n (llvm_int 8));
+    x <- llvm_fresh_var nm (llvm_array n (llvm_int 8));
+    llvm_points_to p (llvm_term x);
+    return (x, p);
+};
+
+// A polyvec{l,k} with one fresh variable per row: a spec used as an override can only bind a fresh
+// variable that appears on its own in a points-to, not one seen through x @ i.
+let vrow p i = llvm_elem (llvm_elem (llvm_field p "vec") i) 0;
+let vec_rows_at p nm = do {
+    x0 <- llvm_fresh_var (str_concat nm "0") (llvm_array 256 (llvm_int 32));
+    x1 <- llvm_fresh_var (str_concat nm "1") (llvm_array 256 (llvm_int 32));
+    x2 <- llvm_fresh_var (str_concat nm "2") (llvm_array 256 (llvm_int 32));
+    x3 <- llvm_fresh_var (str_concat nm "3") (llvm_array 256 (llvm_int 32));
+    llvm_points_to (vrow p 0) (llvm_term x0);
+    llvm_points_to (vrow p 1) (llvm_term x1);
+    llvm_points_to (vrow p 2) (llvm_term x2);
+    llvm_points_to (vrow p 3) (llvm_term x3);
+    return {{ [x0, x1, x2, x3] }};
+};
+let vec_rows alias nm = do {
+    p <- llvm_alloc (llvm_alias alias);
+    x <- vec_rows_at p nm;
+    return (x, p);
+};
+let vec_post p t = do {
+    llvm_points_to (vrow p 0) (llvm_term {{ t @ 0 }});
+    llvm_points_to (vrow p 1) (llvm_term {{ t @ 1 }});
+    llvm_points_to (vrow p 2) (llvm_term {{ t @ 2 }});
+    llvm_points_to (vrow p 3) (llvm_term {{ t @ 3 }});
+};
+let mrow pm i j = llvm_elem (llvm_elem (llvm_elem (llvm_elem pm i) 0) j) 0;
+let mat_fresh = do {
+    pm <- llvm_alloc (llvm_array 4 (llvm_alias "struct.polyvecl"));
+    m00 <- llvm_fresh_var "m00" (llvm_array 256 (llvm_int 32));
+    llvm_points_to (mrow pm 0 0) (llvm_term m00);
+    m01 <- llvm_fresh_var "m01" (llvm_array 256 (llvm_int 32));
+    llvm_points_to (mrow pm 0 1) (llvm_term m01);
+    m02 <- llvm_fresh_var "m02" (llvm_array 256 (llvm_int 32));
+    llvm_points_to (mrow pm 0 2) (llvm_term m02);
+    m03 <- llvm_fresh_var "m03" (llvm_array 256 (llvm_int 32));
+    llvm_points_to (mrow pm 0 3) (llvm_term m03);
+    m10 <- llvm_fresh_var "m10" (llvm_array 256 (llvm_int 32));
+    llvm_points_to (mrow pm 1 0) (llvm_term m10);
+    m11 <- llvm_fresh_var "m11" (llvm_array 256 (llvm_int 32));
+    llvm_points_to (mrow pm 1 1) (llvm_term m11);
+    m12 <- llvm_fresh_var "m12" (llvm_array 256 (llvm_int 32));
+    llvm_points_to (mrow pm 1 2) (llvm_term m12);
+    m13 <- llvm_fresh_var "m13" (llvm_array 256 (llvm_int 32));
+    llvm_points_to (mrow pm 1 3) (llvm_term m13);
+    m20 <- llvm_fresh_var "m20" (llvm_array 256 (llvm_int 32));
+    llvm_points_to (mrow pm 2 0) (llvm_term m20);
+    m21 <- llvm_fresh_var "m21" (llvm_array 256 (llvm_int 32));
+    llvm_points_to (mrow pm 2 1) (llvm_term m21);
+    m22 <- llvm_fresh_var "m22" (llvm_array 256 (llvm_int 32));
+    llvm_points_to (mrow pm 2 2) (llvm_term m22);
+    m23 <- llvm_fresh_var "m23" (llvm_array 256 (llvm_int 32));
+    llvm_points_to (mrow pm 2 3) (llvm_term m23);
+    m30 <- llvm_fresh_var "m30" (llvm_array 256 (llvm_int 32));
+    llvm_points_to (mrow pm 3 0) (llvm_term m30);
+    m31 <- llvm_fresh_var "m31" (llvm_array 256 (llvm_int 32));
+    llvm_points_to (mrow pm 3 1) (llvm_term m31);
+    m32 <- llvm_fresh_var "m32" (llvm_array 256 (llvm_int 32));
+    llvm_points_to (mrow pm 3 2) (llvm_term m32);
+    m33 <- llvm_fresh_var "m33" (llvm_array 256 (llvm_int 32));
+    llvm_points_to (mrow pm 3 3) (llvm_term m33);
+    return ({{ [[m00, m01, m02, m03], [m10, m11, m12, m13], [m20, m21, m22, m23], [m30, m31, m32, m33]] }}, pm);
+};
+let mat_post pm t = do {
+    llvm_points_to (mrow pm 0 0) (llvm_term {{ t @ 0 @ 0 }});
+    llvm_points_to (mrow pm 0 1) (llvm_term {{ t @ 0 @ 1 }});
+    llvm_points_to (mrow pm 0 2) (llvm_term {{ t @ 0 @ 2 }});
+    llvm_points_to (mrow pm 0 3) (llvm_term {{ t @ 0 @ 3 }});
+    llvm_points_to (mrow pm 1 0) (llvm_term {{ t @ 1 @ 0 }});
+    llvm_points_to (mrow pm 1 1) (llvm_term {{ t @ 1 @ 1 }});
+    llvm_points_to (mrow pm 1 2) (llvm_term {{ t @ 1 @ 2 }});
+    llvm_points_to (mrow pm 1 3) (llvm_term {{ t @ 1 @ 3 }});
+    llvm_points_to (mrow pm 2 0) (llvm_term {{ t @ 2 @ 0 }});
+    llvm_points_to (mrow pm 2 1) (llvm_term {{ t @ 2 @ 1 }});
+    llvm_points_to (mrow pm 2 2) (llvm_term {{ t @ 2 @ 2 }});
+    llvm_points_to (mrow pm 2 3) (llvm_term {{ t @ 2 @ 3 }});
+    llvm_points_to (mrow pm 3 0) (llvm_term {{ t @ 3 @ 0 }});
+    llvm_points_to (mrow pm 3 1) (llvm_term {{ t @ 3 @ 1 }});
+    llvm_points_to (mrow pm 3 2) (llvm_term {{ t @ 3 @ 2 }});
+    llvm_points_to (mrow pm 3 3) (llvm_term {{ t @ 3 @ 3 }});
+};
+
+// ---------------------------------------------------------------------------------------------
+// Proven: the vector-level functions on the verification path, restated with per-row variables
+// so they can serve as overrides. Each uses the per-polynomial spec proven in mldsa_ntt.saw, and
+// each has a mutant (coefficient 0 of row 0 bumped by one).
+let bumpv t d = {{ update t 0 (update (t @ 0) 0 ((t @ 0) @ 0 + d)) }};
+
+let vmap_rows_d alias f d = do {
+    (x, p) <- vec_rows alias "x";
+    llvm_execute_func [p];
+    vec_post p (bumpv {{ [ f r | r <- x ] }} d);
+};
+let check_vmap fn alias f ovs unint = do {
+    ov <- llvm_verify mw fn ovs true (vmap_rows_d alias f {{ 0 : [32] }}) (w4_unint_z3 unint);
+    fails (llvm_verify mw fn ovs true (vmap_rows_d alias f {{ 1 : [32] }}) (w4_unint_z3 unint));
+    return ov;
+};
+
+// caddq on the -fwrapv module (mldsa_ntt.saw proves it on the default one), then poly_caddq and
+// polyveck_caddq over it.
+let caddq_w_d d = do {
+    a <- llvm_fresh_var "a" (llvm_int 32);
+    llvm_execute_func [llvm_term a];
+    llvm_return (llvm_term {{ caddq a + d }});
+};
+caddq_ov_w <- llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_caddq" [] true (caddq_w_d {{ 0 : [32] }}) z3;
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_caddq" [] true (caddq_w_d {{ 1 : [32] }}) z3);
+let poly_caddq_d d = do {
+    (a, pa) <- poly_to_fresh "a";
+    llvm_execute_func [pa];
+    llvm_points_to (llvm_field pa "coeffs") (llvm_term (bump1 {{ pcaddq a }} d));
+};
+poly_caddq_ov <- llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_poly_caddq" [caddq_ov_w] true (poly_caddq_d {{ 0 : [32] }}) (w4_unint_z3 ["caddq"]);
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_poly_caddq" [caddq_ov_w] true (poly_caddq_d {{ 1 : [32] }}) (w4_unint_z3 ["caddq"]));
+print "VERIFIED: PQCLEAN_MLDSA44_CLEAN_poly_caddq == pcaddq (mutant rejected)";
+
+polyveck_caddq_r <- check_vmap "PQCLEAN_MLDSA44_CLEAN_polyveck_caddq" "struct.polyveck" {{ pcaddq }} [poly_caddq_ov] ["pcaddq"];
+polyvecl_ntt_r    <- check_vmap "PQCLEAN_MLDSA44_CLEAN_polyvecl_ntt" "struct.polyvecl" {{ ntt }} [poly_ntt_ov] ["ntt"];
+polyveck_ntt_r    <- check_vmap "PQCLEAN_MLDSA44_CLEAN_polyveck_ntt" "struct.polyveck" {{ ntt }} [poly_ntt_ov] ["ntt"];
+polyveck_invntt_r <- check_vmap "PQCLEAN_MLDSA44_CLEAN_polyveck_invntt_tomont" "struct.polyveck" {{ invntt }} [poly_invntt_ov] ["invntt"];
+polyveck_reduce_r <- check_vmap "PQCLEAN_MLDSA44_CLEAN_polyveck_reduce" "struct.polyveck" {{ preduce }} [poly_reduce_ov] ["preduce"];
+polyveck_shiftl_r <- check_vmap "PQCLEAN_MLDSA44_CLEAN_polyveck_shiftl" "struct.polyveck" {{ pshiftl }} [poly_shiftl_ov] ["pshiftl"];
+print "VERIFIED: per-row polyveck_caddq, polyvecl_ntt, polyveck_ntt, polyveck_invntt_tomont, polyveck_reduce, polyveck_shiftl (each mutant rejected)";
+
+
+// polyveck_sub(w1, w1, t1): output aliases the first operand.
+let vsub_rows_d d = do {
+    (u, pu) <- vec_rows "struct.polyveck" "u";
+    (v, pv) <- vec_rows "struct.polyveck" "v";
+    llvm_execute_func [pu, pu, pv];
+    vec_post pu (bumpv {{ [ psub x y | x <- u | y <- v ] }} d);
+    vec_post pv v;
+};
+polyveck_sub_r <- llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_sub" [poly_sub_alias_ov] true (vsub_rows_d {{ 0 : [32] }}) (w4_unint_z3 ["psub"]);
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_sub" [poly_sub_alias_ov] true (vsub_rows_d {{ 1 : [32] }}) (w4_unint_z3 ["psub"]));
+
+// polyveck_pointwise_poly_montgomery(t1, cp, t1): output aliases the vector operand.
+let vpw_rows_d d = do {
+    (a, pa) <- poly_to_fresh "a";
+    (v, pv) <- vec_rows "struct.polyveck" "v";
+    llvm_execute_func [pv, pa, pv];
+    vec_post pv (bumpv {{ [ pointwise a r | r <- v ] }} d);
+    llvm_points_to (llvm_field pa "coeffs") (llvm_term a);
+};
+polyveck_pwpoly_r <- llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_pointwise_poly_montgomery" [pointwise_alias_b_ov] true (vpw_rows_d {{ 0 : [32] }}) (w4_unint_z3 ["pointwise"]);
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_pointwise_poly_montgomery" [pointwise_alias_b_ov] true (vpw_rows_d {{ 1 : [32] }}) (w4_unint_z3 ["pointwise"]));
+
+// polyvec_matrix_pointwise_montgomery(w1, mat, z): w1[i] = acc(mat[i], z); mat and z unchanged.
+let matrix_rows_d d = do {
+    (a, pm) <- mat_fresh;
+    (v, pv) <- vec_rows "struct.polyvecl" "v";
+    pt <- llvm_alloc (llvm_alias "struct.polyveck");
+    llvm_execute_func [pt, pm, pv];
+    vec_post pt (bumpv {{ [ acc row v | row <- a ] }} d);
+    mat_post pm a;
+    vec_post pv v;
+};
+matrix_r <- llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyvec_matrix_pointwise_montgomery" [acc_ov] true (matrix_rows_d {{ 0 : [32] }}) (w4_unint_z3 ["acc"]);
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyvec_matrix_pointwise_montgomery" [acc_ov] true (matrix_rows_d {{ 1 : [32] }}) (w4_unint_z3 ["acc"]));
+print "VERIFIED: per-row polyveck_sub (aliased), polyveck_pointwise_poly_montgomery (aliased), polyvec_matrix_pointwise_montgomery (each mutant rejected)";
+
+// ---------------------------------------------------------------------------------------------
+// ASSUMED (docs/ASSUMPTIONS.md, A-SIGN): the callees no proof here covers. Each writes exactly the
+// outputs listed, as an opaque function of its inputs, and leaves its const inputs unchanged.
+
+let unpack_pk_spec = do {
+    prho <- llvm_alloc (llvm_array 32 (llvm_int 8));
+    pt1 <- llvm_alloc (llvm_alias "struct.polyveck");
+    (pk, ppk) <- bytes_ro "pk" 1312;
+    llvm_execute_func [prho, pt1, ppk];
+    llvm_points_to prho (llvm_term {{ pkRho pk }});
+    vec_post pt1 {{ pkT1 pk }};
+};
+unpack_pk_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_unpack_pk" unpack_pk_spec;
+
+let unpack_sig_spec = do {
+    pc <- llvm_alloc (llvm_array 32 (llvm_int 8));
+    pz <- llvm_alloc (llvm_alias "struct.polyvecl");
+    ph <- llvm_alloc (llvm_alias "struct.polyveck");
+    (sg, psg) <- bytes_ro "sig" 2420;
+    llvm_execute_func [pc, pz, ph, psg];
+    llvm_points_to pc (llvm_term {{ sigC sg }});
+    vec_post pz {{ sigZ sg }};
+    vec_post ph {{ sigH sg }};
+    llvm_return (llvm_term {{ sigBad sg }});
+};
+unpack_sig_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_unpack_sig" unpack_sig_spec;
+
+let chknorm_z_spec = do {
+    (z, pz) <- vec_rows "struct.polyvecl" "z";
+    llvm_execute_func [pz, llvm_term {{ 130994 : [32] }}];   // GAMMA1 - BETA
+    vec_post pz z;
+    llvm_return (llvm_term {{ chkZ z }});
+};
+chknorm_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_polyvecl_chknorm" chknorm_z_spec;
+
+let shake256_tr_spec = do {
+    pout <- llvm_alloc (llvm_array 64 (llvm_int 8));
+    (pk, ppk) <- bytes_ro "pk" 1312;
+    llvm_execute_func [pout, llvm_term {{ 64 : [64] }}, ppk, llvm_term {{ 1312 : [64] }}];
+    llvm_points_to pout (llvm_term {{ shakeTr pk }});
+};
+shake256_ov <- llvm_unsafe_assume_spec mw "shake256" shake256_tr_spec;
+
+// shake256incctx is { uint64_t *ctx; }; fips202.c allocates ctx in init. The state is the 26 words.
+let st_type = llvm_array 26 (llvm_int 64);
+let inc_state = do {
+    pst <- llvm_alloc (llvm_alias "struct.shake256incctx");
+    pc <- llvm_alloc st_type;
+    s <- llvm_fresh_var "s" st_type;
+    llvm_points_to (llvm_field pst "ctx") pc;
+    llvm_points_to pc (llvm_term s);
+    return (s, pst, pc);
+};
+let inc_init_spec = do {
+    pst <- llvm_alloc (llvm_alias "struct.shake256incctx");
+    llvm_execute_func [pst];
+    pc <- llvm_alloc st_type;
+    llvm_points_to (llvm_field pst "ctx") pc;
+    llvm_points_to pc (llvm_term {{ incInit }});
+};
+inc_init_ov <- llvm_unsafe_assume_spec mw "shake256_inc_init" inc_init_spec;
+
+let absorb_spec n f = do {
+    (s, pst, pc) <- inc_state;
+    (x, px) <- bytes_ro "in" n;   // const input: a read-only allocation matches either kind
+    llvm_execute_func [pst, px, llvm_term {{ `n : [64] }}];
+    llvm_points_to (llvm_field pst "ctx") pc;
+    llvm_points_to pc (llvm_term {{ f s x }});
+};
+absorb64_ov  <- llvm_unsafe_assume_spec mw "shake256_inc_absorb" (absorb_spec 64 {{ absorb64 }});
+absorb2_ov   <- llvm_unsafe_assume_spec mw "shake256_inc_absorb" (absorb_spec 2 {{ absorb2 }});
+absorbM_ov   <- llvm_unsafe_assume_spec mw "shake256_inc_absorb" (absorb_spec 32 {{ absorbM }});
+absorb768_ov <- llvm_unsafe_assume_spec mw "shake256_inc_absorb" (absorb_spec 768 {{ absorb768 }});
+let absorb0_spec = do {
+    (s, pst, pc) <- inc_state;
+    llvm_execute_func [pst, llvm_null, llvm_term {{ 0 : [64] }}];
+    llvm_points_to (llvm_field pst "ctx") pc;
+    llvm_points_to pc (llvm_term {{ absorb0 s }});
+};
+absorb0_ov <- llvm_unsafe_assume_spec mw "shake256_inc_absorb" absorb0_spec;
+
+let finalize_spec = do {
+    (s, pst, pc) <- inc_state;
+    llvm_execute_func [pst];
+    llvm_points_to (llvm_field pst "ctx") pc;
+    llvm_points_to pc (llvm_term {{ finalize s }});
+};
+finalize_ov <- llvm_unsafe_assume_spec mw "shake256_inc_finalize" finalize_spec;
+
+let squeeze_spec n f = do {
+    pout <- llvm_alloc (llvm_array n (llvm_int 8));
+    (s, pst, pc) <- inc_state;
+    llvm_execute_func [pout, llvm_term {{ `n : [64] }}, pst];
+    llvm_points_to pout (llvm_term {{ f s }});
+    llvm_points_to (llvm_field pst "ctx") pc;
+    llvm_points_to pc (llvm_term {{ squeezeSt s }});
+};
+squeeze64_ov <- llvm_unsafe_assume_spec mw "shake256_inc_squeeze" (squeeze_spec 64 {{ squeeze64 }});
+squeeze32_ov <- llvm_unsafe_assume_spec mw "shake256_inc_squeeze" (squeeze_spec 32 {{ squeeze32 }});
+
+let release_spec = do {
+    (s, pst, pc) <- inc_state;
+    llvm_execute_func [pst];
+};
+release_ov <- llvm_unsafe_assume_spec mw "shake256_inc_ctx_release" release_spec;
+
+let challenge_spec = do {
+    pcp <- llvm_alloc (llvm_alias "struct.poly");
+    (c, pc) <- bytes_rw "c" 32;
+    llvm_execute_func [pcp, pc];
+    llvm_points_to (llvm_field pcp "coeffs") (llvm_term {{ challenge c }});
+    llvm_points_to pc (llvm_term c);
+};
+challenge_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_poly_challenge" challenge_spec;
+
+let expand_spec = do {
+    pm <- llvm_alloc (llvm_array 4 (llvm_alias "struct.polyvecl"));
+    (rho, prho) <- bytes_rw "rho" 32;
+    llvm_execute_func [pm, prho];
+    mat_post pm {{ expandA rho }};
+    llvm_points_to prho (llvm_term rho);
+};
+expand_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_polyvec_matrix_expand" expand_spec;
+
+// polyveck_use_hint(w1, w1, h): output aliases the input.
+let use_hint_spec = do {
+    (u, pu) <- vec_rows "struct.polyveck" "u";
+    (h, ph) <- vec_rows "struct.polyveck" "h";
+    llvm_execute_func [pu, pu, ph];
+    vec_post pu {{ useHint u h }};
+    vec_post ph h;
+};
+use_hint_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_polyveck_use_hint" use_hint_spec;
+
+let pack_w1_spec = do {
+    pr <- llvm_alloc (llvm_array 768 (llvm_int 8));
+    (w, pw) <- vec_rows "struct.polyveck" "w";
+    llvm_execute_func [pr, pw];
+    llvm_points_to pr (llvm_term {{ packW1 w }});
+    vec_post pw w;
+};
+pack_w1_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_polyveck_pack_w1" pack_w1_spec;
+
+// ---------------------------------------------------------------------------------------------
+// The composition. f is the model the return value must equal: MLDSA_Sign::verify for the claim,
+// a perturbed composition for each mutant.
+let verify_spec f = do {
+    (sg, psg) <- bytes_ro "sig" 2420;
+    (msg, pm) <- bytes_ro "m" 32;
+    (pk, ppk) <- bytes_ro "pk" 1312;
+    llvm_execute_func [psg, llvm_term {{ 2420 : [64] }}, pm, llvm_term {{ 32 : [64] }}, ppk];
+    llvm_return (llvm_term {{ f sg msg pk }});
+};
+let verify_ovs = [unpack_pk_ov, unpack_sig_ov, chknorm_ov, shake256_ov, inc_init_ov,
+                  absorb64_ov, absorb2_ov, absorbM_ov, absorb768_ov, absorb0_ov, finalize_ov,
+                  squeeze64_ov, squeeze32_ov, release_ov, challenge_ov, expand_ov,
+                  use_hint_ov, pack_w1_ov,
+                  polyvecl_ntt_r, matrix_r, poly_ntt_ov, polyveck_shiftl_r, polyveck_ntt_r,
+                  polyveck_pwpoly_r, polyveck_sub_r, polyveck_reduce_r, polyveck_invntt_r,
+                  polyveck_caddq_r];
+let opaque = ["pkRho", "pkT1", "sigC", "sigZ", "sigH", "sigBad", "chkZ", "expandA", "challenge",
+              "useHint", "packW1", "shakeTr", "absorb64", "absorb2", "absorb0",
+              "absorbM", "absorb768", "finalize", "squeeze64", "squeeze32", "squeezeSt",
+              "ntt", "invntt", "acc", "pointwise", "psub", "preduce", "pshiftl", "pcaddq"];
+
+llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_verify" verify_ovs false
+            (verify_spec {{ verify }}) (w4_unint_z3 opaque);
+print "VERIFIED: crypto_sign_verify returns MLDSA_Sign::verify (composition of the proven arithmetic and the assumed steps)";
+
+import "MLDSA_Sign_Mutants.cry";
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_verify" verify_ovs false
+                   (verify_spec {{ verify_noshift }}) (w4_unint_z3 opaque));
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_verify" verify_ovs false
+                   (verify_spec {{ verify_swapsub }}) (w4_unint_z3 opaque));
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_verify" verify_ovs false
+                   (verify_spec {{ verify_zplain }}) (w4_unint_z3 opaque));
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_verify" verify_ovs false
+                   (verify_spec {{ verify_nocaddq }}) (w4_unint_z3 opaque));
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_verify" verify_ovs false
+                   (verify_spec {{ verify_nochk }}) (w4_unint_z3 opaque));
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_verify" verify_ovs false
+                   (verify_spec {{ verify_nomsg }}) (w4_unint_z3 opaque));
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_verify" verify_ovs false
+                   (verify_spec {{ verify_nobad }}) (w4_unint_z3 opaque));
+print "NON-VACUOUS: compositions without the shift, with the subtraction swapped, with z not transformed, without caddq, without the z norm check, without the message absorbed, or without the unpack_sig check are rejected";

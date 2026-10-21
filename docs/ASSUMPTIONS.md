@@ -974,3 +974,42 @@ Checked: `make ac2` exit 0; `Thm_Deps.all_oracles` is empty for the four theorem
 false lemma fails; a mutant C (`caddq` adding q + 1) makes `caddq_ac2_model` fail at the
 negative-input case. Scope: `reduce.c` only. `ntt.c`, `poly.c`, `polyvec.c` and `sign.c` are not
 yet covered, and the theorems are about function values, not the composition in `sign.c`.
+
+## A-SIGN: `sign.c` verification composition (recorded 2026-10-21)
+
+`proof/saw/sign_verify.saw` (in `make saw`) proves that `crypto_sign_verify` returns
+`MLDSA_Sign::verify`. It rests on the following beyond the per-function proofs it uses as overrides.
+
+1. **Vendored files.** `sign.c`, `sign.h` and `packing.h` from `crypto_sign/ml-dsa-44/clean/` and
+   `randombytes.h` from `common/`, PQClean `202a8f9`, unchanged, SHA-256 pinned in
+   `scripts/check_target_identity.sh`. `sign.c` is compiled into the same translation unit as the
+   other vendored files (`scripts/build_bitcode.sh`).
+2. **Assumed specs** (`llvm_unsafe_assume_spec`). Each callee below is not simulated. Its spec
+   says it writes exactly the listed outputs, as an opaque Cryptol function of its inputs, kept
+   uninterpreted in the proof, and leaves its inputs unchanged. What is trusted is that frame: the
+   function terminates, writes nothing else (no out-of-bounds write, no write to its const inputs),
+   and its outputs depend only on the listed inputs. Nothing is assumed about the values computed.
+   - `PQCLEAN_MLDSA44_CLEAN_unpack_pk`: writes `rho` (32 bytes) and `t1` from `pk`.
+   - `PQCLEAN_MLDSA44_CLEAN_unpack_sig`: writes `c`, `z`, `h` from `sig`, returns an int.
+   - `PQCLEAN_MLDSA44_CLEAN_polyvecl_chknorm`: called with bound `GAMMA1 - BETA`, returns an int.
+   - `shake256`: 64 bytes of output from the 1312-byte public key.
+   - `shake256_inc_init`, `shake256_inc_absorb` (lengths 64, 2, 0 with a NULL input, 32, 768),
+     `shake256_inc_finalize`, `shake256_inc_squeeze` (lengths 64 and 32),
+     `shake256_inc_ctx_release`: the state is modelled as the 26 words `fips202.c` allocates
+     behind `shake256incctx.ctx`; init allocates them, release reads them and does nothing else
+     the proof can see. The initial state `incInit` is a constant (zero) rather than opaque,
+     because SAW unfolds constants on one side of the comparison; as it only flows into opaque
+     functions this does not narrow the claim.
+   - `PQCLEAN_MLDSA44_CLEAN_poly_challenge`: writes `cp` from the 32-byte `c`.
+   - `PQCLEAN_MLDSA44_CLEAN_polyvec_matrix_expand`: writes the 4x4 matrix from `rho`.
+   - `PQCLEAN_MLDSA44_CLEAN_polyveck_use_hint`: in the aliased form `(w1, w1, h)`.
+   - `PQCLEAN_MLDSA44_CLEAN_polyveck_pack_w1`: writes 768 bytes from `w1`.
+3. **Message length 32 bytes, empty context.** The message absorb is specified at length 32, so the
+   result is for `mlen = 32` and the `crypto_sign_verify` entry point (`ctx = NULL`,
+   `ctxlen = 0`). Other lengths would need their own absorb spec or a symbolic-length one.
+4. **Not covered.** Key generation and signing (`goto rej` loop); the final 32-byte comparison is
+   simulated, not assumed. `crypto_sign_open` is not covered.
+5. **Opaque names checked live.** The proof would be weaker if SAW unfolded the opaque functions
+   to their placeholder bodies (for example `absorbM s _ = s` would make the message irrelevant).
+   Mutants that drop the message absorb, the `unpack_sig` check, or the `chknorm` check are
+   rejected, which can only happen if those functions stay uninterpreted.

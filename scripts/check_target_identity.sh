@@ -30,6 +30,10 @@ a1b2b731875c0cf33b251e063917db54c4e251a4b84cc55be780d89cdf642139  target/pqclean
 bf99a54bc1988380418054a18bd5a14d059770e70c1aac23b6d9c914539168e0  target/pqclean/fips202.h
 461a4b048c84c27e73daa7b9aaec94942cdcead3ea55dca5cac63bcf4f443d96  target/pqclean/polyvec.c
 7fc533b6536819f5d52b31c7a4fa29d15d1f0804138b4ea82ff42bd6a8aaffdf  target/pqclean/polyvec.h
+474d7a8c33b45a5e19d9f8a76f501c7ecaa6ca667171a0f40942c71456cbbec2  target/pqclean/sign.c
+b1157ba9d0fc7bd89029e77311373c294e52587a32c497c1bdd3c58d9c7fe964  target/pqclean/sign.h
+55eded057c9d78299e169ff5329915dc3beba291634186ca69f445c71167b5ea  target/pqclean/packing.h
+7ae401d4d5eeb41bfa738d1281d57da3f78f915ca94388d89f4f33cbe6a3fe1e  target/pqclean/randombytes.h
 "
 
 SHA="shasum -a 256"; command -v sha256sum >/dev/null 2>&1 && SHA="sha256sum"

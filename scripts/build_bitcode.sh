@@ -25,6 +25,9 @@ printf '#include "reduce.c"\n#include "ntt.c"\n' > "$COMBINED"
 if [ -f "$TARGET_DIR/poly.c" ]; then printf '#include "poly.c"\n' >> "$COMBINED"; fi
 # polyvec.c (ML-DSA only) for polyvecl_pointwise_acc_montgomery, the matrix-row accumulation.
 if [ -f "$TARGET_DIR/polyvec.c" ]; then printf '#include "polyvec.c"\n' >> "$COMBINED"; fi
+# sign.c (ML-DSA only) for the composition proofs: its callees in poly.c, polyvec.c and the
+# unvendored packing.c, rounding.c and fips202.c are covered by override specs, never simulated.
+if [ -f "$TARGET_DIR/sign.c" ]; then printf '#include "sign.c"\n' >> "$COMBINED"; fi
 
 WRAPV="${OUT%.bc}_wrapv.bc"
 
