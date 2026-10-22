@@ -2,11 +2,26 @@
 module KM5 where
 
 import GF2X
+import Fold
 
+// vect_mul for hqc-5: the Karatsuba product of two 901-word vectors, folded mod x^57637 - 1.
+vmul : [901][64] -> [901][64] -> [901][64]
+vmul a b = fold`{57637} (km901 a b)
+
+km2 : [2][64] -> [2][64] -> [4][64]
+km2 = kstep`{1,1} km1 km1
+km3 : [3][64] -> [3][64] -> [6][64]
+km3 = kstep`{1,2} km1 km2
+km4 : [4][64] -> [4][64] -> [8][64]
+km4 = kstep`{2,2} km2 km2
+km7 : [7][64] -> [7][64] -> [14][64]
+km7 = kstep`{3,4} km3 km4
+km8 : [8][64] -> [8][64] -> [16][64]
+km8 = kstep`{4,4} km4 km4
 km14 : [14][64] -> [14][64] -> [28][64]
-km14 = kmul
+km14 = kstep`{7,7} km7 km7
 km15 : [15][64] -> [15][64] -> [30][64]
-km15 = kmul
+km15 = kstep`{7,8} km7 km8
 km28 : [28][64] -> [28][64] -> [56][64]
 km28 = kstep`{14,14} km14 km14
 km29 : [29][64] -> [29][64] -> [58][64]

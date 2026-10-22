@@ -1,0 +1,16 @@
+session HQC = "Cryptol" +
+  description \<open>HQC v5.0.0 reference vect_mul: the lifted Karatsuba models multiply in GF(2)[x]
+    and vmul is that product mod x^n - 1, for hqc-1, hqc-3 and hqc-5.\<close>
+  options [document = false]
+  theories
+    GF2X
+    Fold
+    KM1
+    KM3
+    KM5
+    HQC_Poly
+    HQC_Seq
+    HQC_P1
+    HQC_P3
+    HQC_P5
+    HQC_Gate

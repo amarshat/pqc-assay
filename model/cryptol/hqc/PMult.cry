@@ -1,0 +1,7 @@
+/* Cryptol's own carry-less product, used only to cross-check the shift-and-XOR model in GF2X.cry.
+   Not lifted to Isabelle (its library has no pmult). */
+module PMult where
+
+// Full 2n-word carry-less product, word 0 least significant.
+kmul : {n} (fin n, n >= 1) => [n][64] -> [n][64] -> [2*n][64]
+kmul a b = reverse (split ((zero : [1]) # pmult (join (reverse a)) (join (reverse b))))

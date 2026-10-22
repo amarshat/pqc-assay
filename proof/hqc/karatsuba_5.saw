@@ -2,6 +2,7 @@
 // Run with CRYPTOLPATH=model/cryptol/hqc (make hqc).
 
 import "GF2X.cry";
+import "PMult.cry";
 import "Fold.cry";
 import "KM5.cry";
 m <- llvm_load_module "../../build/hqc/gf2x_5.bc";
@@ -15,7 +16,7 @@ let sb_14_spec = do {
     llvm_points_to ap (llvm_term a);
     llvm_points_to bp (llvm_term b);
     llvm_execute_func [rp, ap, bp, llvm_term {{ 14 : [64] }}];
-    llvm_points_to rp (llvm_term {{ kmul`{14} a b }});
+    llvm_points_to rp (llvm_term {{ km14 a b }});
 };
 let sb_14_mut_spec = do {
     rp <- llvm_alloc (llvm_array 28 (llvm_int 64));
@@ -26,7 +27,7 @@ let sb_14_mut_spec = do {
     llvm_points_to ap (llvm_term a);
     llvm_points_to bp (llvm_term b);
     llvm_execute_func [rp, ap, bp, llvm_term {{ 14 : [64] }}];
-    llvm_points_to rp (llvm_term {{ kmul`{14} a ([b@0 ^ 1] # drop`{1} b) }});
+    llvm_points_to rp (llvm_term {{ km14 a ([b@0 ^ 1] # drop`{1} b) }});
 };
 let kara_14_spec = do {
     rp <- llvm_alloc (llvm_array 28 (llvm_int 64));
@@ -54,9 +55,10 @@ let kara_14_mut_spec = do {
 };
 sb_14 <- llvm_verify m "schoolbook_mul" [] false sb_14_spec rme;
 fails (llvm_verify m "schoolbook_mul" [] false sb_14_mut_spec abc);
-kara_14 <- llvm_verify m "karatsuba_mul" [sb_14] false kara_14_spec (w4_unint_z3 ["kmul"]);
-fails (llvm_verify m "karatsuba_mul" [sb_14] false kara_14_mut_spec (w4_unint_z3 ["kmul"]));
-print "VERIFIED: hqc-5 schoolbook_mul(14) == kmul (pmult), karatsuba_mul(14) == km14";
+kara_14 <- llvm_verify m "karatsuba_mul" [sb_14] false kara_14_spec (w4_unint_z3 ["km14"]);
+fails (llvm_verify m "karatsuba_mul" [sb_14] false kara_14_mut_spec (w4_unint_z3 ["km14"]));
+prove_print rme {{ \(a : [14][64]) b -> km14 a b == kmul a b }};
+print "VERIFIED: hqc-5 schoolbook_mul(14) == km14 (== pmult, checked), karatsuba_mul(14) == km14";
 
 let sb_15_spec = do {
     rp <- llvm_alloc (llvm_array 30 (llvm_int 64));
@@ -67,7 +69,7 @@ let sb_15_spec = do {
     llvm_points_to ap (llvm_term a);
     llvm_points_to bp (llvm_term b);
     llvm_execute_func [rp, ap, bp, llvm_term {{ 15 : [64] }}];
-    llvm_points_to rp (llvm_term {{ kmul`{15} a b }});
+    llvm_points_to rp (llvm_term {{ km15 a b }});
 };
 let sb_15_mut_spec = do {
     rp <- llvm_alloc (llvm_array 30 (llvm_int 64));
@@ -78,7 +80,7 @@ let sb_15_mut_spec = do {
     llvm_points_to ap (llvm_term a);
     llvm_points_to bp (llvm_term b);
     llvm_execute_func [rp, ap, bp, llvm_term {{ 15 : [64] }}];
-    llvm_points_to rp (llvm_term {{ kmul`{15} a ([b@0 ^ 1] # drop`{1} b) }});
+    llvm_points_to rp (llvm_term {{ km15 a ([b@0 ^ 1] # drop`{1} b) }});
 };
 let kara_15_spec = do {
     rp <- llvm_alloc (llvm_array 30 (llvm_int 64));
@@ -106,9 +108,10 @@ let kara_15_mut_spec = do {
 };
 sb_15 <- llvm_verify m "schoolbook_mul" [] false sb_15_spec rme;
 fails (llvm_verify m "schoolbook_mul" [] false sb_15_mut_spec abc);
-kara_15 <- llvm_verify m "karatsuba_mul" [sb_15] false kara_15_spec (w4_unint_z3 ["kmul"]);
-fails (llvm_verify m "karatsuba_mul" [sb_15] false kara_15_mut_spec (w4_unint_z3 ["kmul"]));
-print "VERIFIED: hqc-5 schoolbook_mul(15) == kmul (pmult), karatsuba_mul(15) == km15";
+kara_15 <- llvm_verify m "karatsuba_mul" [sb_15] false kara_15_spec (w4_unint_z3 ["km15"]);
+fails (llvm_verify m "karatsuba_mul" [sb_15] false kara_15_mut_spec (w4_unint_z3 ["km15"]));
+prove_print rme {{ \(a : [15][64]) b -> km15 a b == kmul a b }};
+print "VERIFIED: hqc-5 schoolbook_mul(15) == km15 (== pmult, checked), karatsuba_mul(15) == km15";
 
 let kara_28_spec = do {
     rp <- llvm_alloc (llvm_array 56 (llvm_int 64));
@@ -427,7 +430,7 @@ let vect_mul_spec = do {
     llvm_points_to ap (llvm_term a);
     llvm_points_to bp (llvm_term b);
     llvm_execute_func [op, ap, bp];
-    llvm_points_to op (llvm_term {{ fold`{57637} (km901 a b) }});
+    llvm_points_to op (llvm_term {{ vmul a b }});
 };
 let vect_mul_mut_spec = do {
     op <- llvm_alloc (llvm_array 901 (llvm_int 64));
@@ -442,5 +445,5 @@ let vect_mul_mut_spec = do {
 };
 llvm_verify m "vect_mul" [kara_901] false vect_mul_spec (w4_unint_z3 ["km901"]);
 fails (llvm_verify m "vect_mul" [kara_901] false vect_mul_mut_spec (w4_unint_z3 ["km901"]));
-print "VERIFIED: hqc-5 vect_mul == fold`{57637} (km901 a b), for all inputs";
+print "VERIFIED: hqc-5 vect_mul == vmul = fold`{57637} (km901 a b), for all inputs";
 print "NON-VACUOUS: hqc-5 mutants (result for a different b; fold at n - 1) are rejected at every size";

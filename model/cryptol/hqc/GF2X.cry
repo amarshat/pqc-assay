@@ -3,9 +3,16 @@
    coefficient of x^i, so an n-word vector is a polynomial of degree < 64n. */
 module GF2X where
 
-// Full 2n-word carry-less product.
-kmul : {n} (fin n, n >= 1) => [n][64] -> [n][64] -> [2*n][64]
-kmul a b = reverse (split ((zero : [1]) # pmult (join (reverse a)) (join (reverse b))))
+// 64 x 64 -> 128-bit carry-less product as a shift-and-XOR loop, low word first. Written without
+// pmult so that cryptol-to-isabelle's library can carry it (PMult.cry cross-checks it against pmult).
+clmul1 : [64] -> [64] -> [2][64]
+clmul1 a b = [drop`{64} r, take`{64} r]
+  where r = foldl step (zero : [128]) [0 .. 63]
+        step : [128] -> [7] -> [128]
+        step acc i = if a ! i then acc ^ (((zero : [64]) # b) << i) else acc
+
+km1 : [1][64] -> [1][64] -> [2][64]
+km1 a b = clmul1 (a @ 0) (b @ 0)
 
 // One level of karatsuba_mul: low half n0 = n/2 words, high half n1 = n - n0 words. m0 and m1
 // stand for the products of the recursive calls (z0 from m0; z2 and zmid from m1), and the result

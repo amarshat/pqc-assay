@@ -23,17 +23,15 @@ is reachable) is recorded but not scheduled.
 
 **HQC (new main line).** HQC was selected by NIST in March 2025 and we found no proof of its
 reference arithmetic (the nearest work covers optimized assembly for the decoder's additive FFT).
-`target/hqc/` vendors HQC v5.0.0's `gf2x.c`. `make hqc` proves `vect_mul` equal to a fold mod
-x^n - 1 of a Karatsuba model for all three parameter sets, with `schoolbook_mul` equal to Cryptol's
-`pmult` at the leaves (A-HQC). Next, in order:
+`target/hqc/` vendors HQC v5.0.0's `gf2x.c`. For all three parameter sets, `make hqc` (SAW) proves
+`vect_mul` equal to `vmul`, a Karatsuba model folded mod x^n - 1. `make hqc-isabelle` proves `vmul`
+is multiplication in GF(2)[x]/(x^n - 1) for inputs of degree below n, with no oracle (A-HQC). The
+Isabelle side rests on two generic lemmas: `kstep_correct` (one Karatsuba level over correct
+products is correct) and `fold_correct`. Next, in order:
 
-1. Isabelle: the Karatsuba identity over GF(2) (`kstep` over correct products is the product) and
-   `fold` = reduction mod x^n - 1, so the result reads "`vect_mul` multiplies in GF(2)[x]/(x^n - 1)".
-   SAW's Isabelle library has no `pmult`, so the leaves need a shift-and-XOR model the translator
-   can carry.
-2. `gf.c` (GF(2^8) multiply and inverse) and the encoders that are linear over GF(2) (Reed-Muller
+1. `gf.c` (GF(2^8) multiply and inverse) and the encoders that are linear over GF(2) (Reed-Muller
    and Reed-Solomon encode), which `rme` should decide directly.
-3. Decoding (Reed-Muller, Reed-Solomon with its additive FFT), which is not linear and is the hard
+2. Decoding (Reed-Muller, Reed-Solomon with its additive FFT), which is not linear and is the hard
    part.
 
 ## v1 — the Montgomery-reduction primitive (DONE) + the reduce.c layer

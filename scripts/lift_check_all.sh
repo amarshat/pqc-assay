@@ -24,6 +24,11 @@ spec/isabelle/MLDSA_NTT.thy	model/cryptol/MLDSA_NTT.cry
 spec/isabelle/kem/MLKEM_NTT.thy	model/cryptol/MLKEM_NTT.cry
 spec/isabelle/tier2/fips204_ntt_lift.thy	implementations/rustcrypto-ml-dsa/proof/ntt/fips204_ntt_lift.cry
 spec/isabelle/tier2/barrett/Barrett_Lift.thy	implementations/rustcrypto-ml-dsa/proof/ntt/barrett_bridge.cry	barrett_bridge.thy
+spec/isabelle/hqc/GF2X.thy	model/cryptol/hqc/GF2X.cry
+spec/isabelle/hqc/Fold.thy	model/cryptol/hqc/Fold.cry
+spec/isabelle/hqc/KM1.thy	model/cryptol/hqc/KM1.cry
+spec/isabelle/hqc/KM3.thy	model/cryptol/hqc/KM3.cry
+spec/isabelle/hqc/KM5.thy	model/cryptol/hqc/KM5.cry
 "
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
@@ -34,7 +39,7 @@ while IFS=$'\t' read -r thy cry genname; do
   if [ ! -f "$thy" ]; then echo "!! manifest names a missing theory: $thy" >&2; rc=1; continue; fi
   if [ ! -f "$cry" ]; then echo "!! manifest names a missing Cryptol source: $cry" >&2; rc=1; continue; fi
   d="$TMP/$(basename "$thy" .thy)"; mkdir -p "$d"
-  if ! cryptol-to-isabelle -s "$cry" -d "$d" --all-modules >/dev/null 2>&1; then
+  if ! cryptol-to-isabelle -s "$cry" -d "$d" --cryptol-path "$(dirname "$cry")" --all-modules >/dev/null 2>&1; then
     echo "!! cryptol-to-isabelle failed on $cry" >&2; rc=1; continue
   fi
   gen="$d/${genname:-$(basename "$thy")}"

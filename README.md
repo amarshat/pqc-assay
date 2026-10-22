@@ -63,19 +63,20 @@ Each row means a pinned tool exited 0 on the stated property, in `make verify` u
 ## Proved (HQC)
 
 Target: `target/hqc/`, the official HQC v5.0.0 reference `gf2x.c`, unmodified, for hqc-1, hqc-3 and
-hqc-5. Run by `make hqc` (12 min 38 s on an Apple M2 Max, 2026-10-22); every spec has a mutant that
-must fail, 46 in all, and all are rejected.
+hqc-5. Every SAW spec has a mutant that must fail; all 46 are rejected. `make hqc` took 17 min 55 s and
+`make hqc-isabelle` about 20 s on an Apple M2 Max (2026-10-22).
 
 | Property | Checked by |
 |---|---|
-| `schoolbook_mul(s)` = the carry-less product (Cryptol `pmult`) for each leaf size the recursion reaches | SAW + rme (algebraic normal form over GF(2)) |
-| `karatsuba_mul(s)` = the Karatsuba model `km<s>` at every size it reaches, up to the full 277, 561 and 901 words, with every `tmp_buffer` access in bounds; `vect_mul`'s buffer of `16 * VEC_N_SIZE_64` words is enough | SAW + z3, children as proved overrides |
-| `vect_mul` = `fold` (reduction mod x^n − 1 stated on bits) of `km<N>`, for every input | SAW + z3 |
+| `schoolbook_mul(s)` = the Karatsuba model `km<s>` at each leaf size, and `km<s>` = Cryptol's `pmult` there (cross-check) | SAW + rme (algebraic normal form over GF(2)), `make hqc` |
+| `karatsuba_mul(s)` = `km<s>` at every size it reaches, up to the full 277, 561 and 901 words, with every `tmp_buffer` access in bounds; `vect_mul`'s buffer of `16 * VEC_N_SIZE_64` words is enough | SAW + z3, children as proved overrides, `make hqc` |
+| `vect_mul` = `vmul`, the model folded mod x^n − 1, for every input | SAW + z3, `make hqc` |
+| the Cryptol models lift to the Isabelle models used below | `make lift-check` regenerates and diffs |
+| `vmul a b` = `(a * b) mod (x^n − 1)` over GF(2), for inputs of degree below n (n = 17669, 35851, 57637) | Isabelle `HQC_P1/P3/P5.vmul_correct`, no oracle (`HQC_Gate`), `make hqc-isabelle` |
 
-The Karatsuba model is the product only where it is `pmult` (the leaves). That each level above is
-the product (the Karatsuba identity over GF(2)), and that `fold` is reduction mod x^n − 1, are not
-proved yet; until they are, the claim is "the C equals this Karatsuba model". See A-HQC in
-[`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md).
+Together: on inputs stored the way HQC stores them (no bit at or above n), the reference `vect_mul`
+multiplies in GF(2)[x]/(x^n − 1). The compiler (`-O0`), SAW, `cryptol-to-isabelle` and Isabelle are
+trusted; see A-HQC in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md).
 
 ## Checked once, not gated
 
@@ -90,7 +91,6 @@ meet the mutant policy the Proved table holds to.
 
 | Item | Status |
 |---|---|
-| HQC: the Karatsuba model equals multiplication in GF(2)[x], and `fold` is reduction mod x^n − 1 | not proved; planned in Isabelle ([`docs/ROADMAP.md`](docs/ROADMAP.md)) |
 | HQC: `gf.c`, Reed-Muller, Reed-Solomon, sampling, the KEM | not started |
 | signing in `sign.c` when the `goto rej` loop runs three or more passes | not proved (one and two passes are, above); [`docs/COMPOSITION.md`](docs/COMPOSITION.md) |
 | input ranges the theorems take, at the call sites: that `packing.c` and `poly_uniform_gamma1` get `t1`, `t0`, `s1`, `s2`, `z`, `y` from the unpack functions above; `\|A\| < 9q` (23-bit mask in `rej_uniform`), keygen's `s1`, `s2` (`rej_eta`) and `\|c\| <= 1` (`poly_challenge`) | read from the source (the three samplers are not verified) |
@@ -157,7 +157,7 @@ macOS on Apple Silicon; tool versions are pinned in `scripts/setup.sh`.
 ./scripts/setup_isabelle_cryptol.sh  # AFP + the SAW 'Cryptol' Isabelle session (slow, once)
 make verify                          # every gated step; non-zero exit = a proof failed
 make saw                             # SAW only, fast
-make hqc                             # HQC vect_mul, three parameter sets
+make hqc hqc-isabelle                # HQC vect_mul, three parameter sets
 make claim-lint                      # SAW specs have paired mutants (exemptions printed); cited paths exist
 ```
 
