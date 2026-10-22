@@ -55,7 +55,7 @@ saw: bitcode
 	$(SAW) $(SAW_SCRIPT)
 	@echo ">> SAW: unpack output ranges (t1, t0, eta, z) on the nsw bitcode"
 	$(SAW) proof/saw/poly_ranges.saw
-	@echo ">> SAW: sign.c verification composes the proven functions (assumed: hashing, unpacking, hints)"
+	@echo ">> SAW: sign.c keygen, signing, verification compose the proven functions (assumed: hashing, unpacking, hints)"
 	CRYPTOLPATH=$(CURDIR)/model/cryptol $(SAW) proof/saw/sign_compose.saw
 
 ## ML-KEM go-wide slice 1: the ML-KEM-512 reduce layer, C == Cryptol (bit-exact) plus the

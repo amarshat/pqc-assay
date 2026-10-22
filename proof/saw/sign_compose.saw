@@ -1,19 +1,21 @@
-// SAW proof: sign.c's verification and key generation compose the proven functions the way
-// model/cryptol/MLDSA_Sign.cry says.
+// SAW proof: sign.c's key generation, signing and verification compose the proven functions the
+// way model/cryptol/MLDSA_Sign.cry says.
 //
-// crypto_sign_verify (verify_ctx with ctx = NULL, ctxlen = 0) and crypto_sign_keypair are
-// symbolically executed with every callee replaced by a spec:
-//   - the arithmetic on the product path uses specs proven here or in mldsa_ntt.saw (included
-//     below): ntt, the matrix-vector product, shiftl, pointwise, sub, reduce, invntt, caddq;
-//   - everything else (unpacking, packing, the norm check on z, SHAKE256, randombytes, the
-//     samplers, matrix expansion, power2round, use_hint, pack_w1) uses an ASSUMED spec whose outputs are opaque Cryptol functions
-//     of its inputs, kept uninterpreted. Each assumed spec is listed in docs/ASSUMPTIONS.md (A-SIGN).
+// crypto_sign_keypair, crypto_sign_signature and crypto_sign_verify (the ctx = NULL, ctxlen = 0
+// entry points) are symbolically executed with every callee replaced by a spec:
+//   - the arithmetic on the product paths uses specs proven here or in mldsa_ntt.saw (included
+//     below): ntt, the matrix-vector product, shiftl, pointwise, add, sub, reduce, invntt, caddq;
+//   - everything else (unpacking, packing, the norm checks, SHAKE256, randombytes, the samplers,
+//     matrix expansion, power2round, decompose, make_hint, use_hint, pack_w1) uses an ASSUMED spec
+//     whose outputs are opaque Cryptol functions of its inputs, kept uninterpreted. Each assumed
+//     spec is listed in docs/ASSUMPTIONS.md (A-SIGN).
 // So the obligation is that the C calls these functions in this order, on these buffers, with this
 // aliasing, and returns what the composition returns. It holds for every interpretation of the
 // opaque functions, which is why none of their bodies matter.
 //
-// SCOPE: message length fixed at 32 bytes (the absorb spec for the message is per length). The
-// signer's rejection loop (goto rej) is not covered.
+// SCOPE: message length fixed at 32 bytes (the absorb spec for the message is per length). Signing
+// is proved for the schedules listed in its section (pass 0 accepted; pass 0 rejected at each of
+// the four checks and pass 1 accepted), not for every number of passes.
 
 include "mldsa_ntt.saw";
 import "../../model/cryptol/MLDSA_Sign.cry";
@@ -223,7 +225,7 @@ let chknorm_z_spec = do {
     (z, pz) <- vec_rows "struct.polyvecl" "z";
     llvm_execute_func [pz, llvm_term {{ 130994 : [32] }}];   // GAMMA1 - BETA
     vec_post pz z;
-    llvm_return (llvm_term {{ chkZ z }});
+    llvm_return (llvm_term {{ if chkZ z then 1 else 0 : [32] }});
 };
 chknorm_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_polyvecl_chknorm" chknorm_z_spec;
 
@@ -496,3 +498,226 @@ fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_keypair" keypair_ovs fa
 fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_crypto_sign_keypair" keypair_ovs false
                    (keypair_spec {{ keypair_noKL }}) (w4_unint_z3 opaque_kp));
 print "NON-VACUOUS: keypair compositions with s1 not transformed, without s2, with s1 and s2 from the same nonce, with rho and key swapped in sk, or without K and L in the seed input are rejected";
+// =============================================================================================
+// Signing: crypto_sign_signature (signature_ctx with ctx = NULL, ctxlen = 0) on a 32-byte message
+// writes MLDSA_Sign::sig_at sk m rb k, where k is the pass of the rejection loop that is accepted.
+//
+// The loop. Each `goto rej` is taken when an opaque check rejects, so its condition is symbolic and
+// SAW would unroll the loop without end. The check functions are therefore given specs that read
+// their verdict from ghost state `sched` (one bit per call, top bit first): such a spec asserts, as
+// an override precondition, that the opaque check on its actual arguments equals the verdict, and
+// returns the verdict as a concrete 1 or 0. The top-level spec sets `sched` and assumes the matching
+// fact about the model (pass 0 rejected at check j, pass 1 accepted, ...). Every branch is then
+// concrete, and every verdict is an obligation the solver discharges from that assumption.
+// One proof per schedule: pass 0 accepted, and pass 0 rejected at each of the four checks with
+// pass 1 accepted. A schedule with no top-level assumption must fail (sign_nopre below).
+
+// Proven: the vector functions signing uses that verification and key generation do not.
+polyvecl_invntt_r <- check_vmap "PQCLEAN_MLDSA44_CLEAN_polyvecl_invntt_tomont" "struct.polyvecl" {{ invntt }} [poly_invntt_ov] ["invntt"];
+polyvecl_reduce_r <- check_vmap "PQCLEAN_MLDSA44_CLEAN_polyvecl_reduce" "struct.polyvecl" {{ preduce }} [poly_reduce_ov] ["preduce"];
+
+// polyvecl_add(z, z, y): output aliases the first operand.
+let vadd_l_rows_d d = do {
+    (u, pu) <- vec_rows "struct.polyvecl" "u";
+    (v, pv) <- vec_rows "struct.polyvecl" "v";
+    llvm_execute_func [pu, pu, pv];
+    vec_post pu (bumpv {{ [ padd x y | x <- u | y <- v ] }} d);
+    vec_post pv v;
+};
+polyvecl_add_r <- llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyvecl_add" [poly_add_alias_ov] true (vadd_l_rows_d {{ 0 : [32] }}) (w4_unint_z3 ["padd"]);
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyvecl_add" [poly_add_alias_ov] true (vadd_l_rows_d {{ 1 : [32] }}) (w4_unint_z3 ["padd"]));
+
+// polyvec{l,k}_pointwise_poly_montgomery(r, cp, v) with r, cp, v distinct (sign.c:159, 169, 178).
+let vpw_na_rows_d alias d = do {
+    (a, pa) <- poly_to_fresh "a";
+    (v, pv) <- vec_rows alias "v";
+    pr <- llvm_alloc (llvm_alias alias);
+    llvm_execute_func [pr, pa, pv];
+    vec_post pr (bumpv {{ [ pointwise a r | r <- v ] }} d);
+    llvm_points_to (llvm_field pa "coeffs") (llvm_term a);
+    vec_post pv v;
+};
+polyvecl_pwpoly_r <- llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyvecl_pointwise_poly_montgomery" [pointwise_ov] true (vpw_na_rows_d "struct.polyvecl" {{ 0 : [32] }}) (w4_unint_z3 ["pointwise"]);
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyvecl_pointwise_poly_montgomery" [pointwise_ov] true (vpw_na_rows_d "struct.polyvecl" {{ 1 : [32] }}) (w4_unint_z3 ["pointwise"]));
+polyveck_pwpoly_na_r <- llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_pointwise_poly_montgomery" [pointwise_ov] true (vpw_na_rows_d "struct.polyveck" {{ 0 : [32] }}) (w4_unint_z3 ["pointwise"]);
+fails (llvm_verify mw "PQCLEAN_MLDSA44_CLEAN_polyveck_pointwise_poly_montgomery" [pointwise_ov] true (vpw_na_rows_d "struct.polyveck" {{ 1 : [32] }}) (w4_unint_z3 ["pointwise"]));
+print "VERIFIED: per-row polyvecl_invntt_tomont, polyvecl_reduce, polyvecl_add (aliased), polyvec{l,k}_pointwise_poly_montgomery (unaliased) (each mutant rejected)";
+
+// ASSUMED (A-SIGN), as for verification and key generation.
+let unpack_sk_spec = do {
+    prho <- llvm_alloc (llvm_array 32 (llvm_int 8));
+    ptr <- llvm_alloc (llvm_array 64 (llvm_int 8));
+    pkey <- llvm_alloc (llvm_array 32 (llvm_int 8));
+    pt0 <- llvm_alloc (llvm_alias "struct.polyveck");
+    ps1 <- llvm_alloc (llvm_alias "struct.polyvecl");
+    ps2 <- llvm_alloc (llvm_alias "struct.polyveck");
+    (sk, psk) <- bytes_ro "sk" 2560;
+    llvm_execute_func [prho, ptr, pkey, pt0, ps1, ps2, psk];
+    llvm_points_to prho (llvm_term {{ skRho sk }});
+    llvm_points_to ptr (llvm_term {{ skTr sk }});
+    llvm_points_to pkey (llvm_term {{ skKey sk }});
+    vec_post pt0 {{ skT0 sk }};
+    vec_post ps1 {{ skS1 sk }};
+    vec_post ps2 {{ skS2 sk }};
+};
+unpack_sk_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_unpack_sk" unpack_sk_spec;
+
+// shake256(rhoprime, 64, key, 128): key, rnd and mu are contiguous in seedbuf.
+let shake256_rhop_spec = do {
+    pout <- llvm_alloc (llvm_array 64 (llvm_int 8));
+    (x, px) <- bytes_ro "in" 128;
+    llvm_execute_func [pout, llvm_term {{ 64 : [64] }}, px, llvm_term {{ 128 : [64] }}];
+    llvm_points_to pout (llvm_term {{ shakeRhop x }});
+};
+shake256_rhop_ov <- llvm_unsafe_assume_spec mw "shake256" shake256_rhop_spec;
+
+let gamma1_spec = do {
+    pv <- llvm_alloc (llvm_alias "struct.polyvecl");
+    (seed, ps) <- bytes_ro "seed" 64;
+    n <- llvm_fresh_var "n" (llvm_int 16);
+    llvm_execute_func [pv, ps, llvm_term n];
+    vec_post pv {{ gamma1 seed n }};
+};
+gamma1_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_polyvecl_uniform_gamma1" gamma1_spec;
+
+// polyveck_decompose(w1, w0, w1): v1 aliases v.
+let decompose_spec = do {
+    (v, pv) <- vec_rows "struct.polyveck" "v";
+    p0 <- llvm_alloc (llvm_alias "struct.polyveck");
+    llvm_execute_func [pv, p0, pv];
+    vec_post pv {{ dec1 v }};
+    vec_post p0 {{ dec0 v }};
+};
+decompose_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_polyveck_decompose" decompose_spec;
+
+// pack_sig(sig, sig, z, h): c is the first 32 bytes of the output buffer.
+let pack_sig_spec = do {
+    psig <- llvm_alloc (llvm_array 2420 (llvm_int 8));
+    c <- llvm_fresh_var "c" (llvm_array 32 (llvm_int 8));
+    llvm_points_to_at_type psig (llvm_array 32 (llvm_int 8)) (llvm_term c);
+    (z, pz) <- vec_rows "struct.polyvecl" "z";
+    (h, ph) <- vec_rows "struct.polyveck" "h";
+    llvm_execute_func [psig, psig, pz, ph];
+    llvm_points_to psig (llvm_term {{ packSig c z h }});
+    vec_post pz z;
+    vec_post ph h;
+};
+pack_sig_ov <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_pack_sig" pack_sig_spec;
+
+// The four checks. `sched` counts the check calls made so far; for each step k and each check there
+// is an override that applies only when sched == k, asserts (as an override precondition) that the
+// opaque check on its actual arguments equals the verdict the plan gives step k, returns that
+// verdict as a concrete value, and sets sched to k + 1. The norm checks return 1 or 0
+// (polyvec.c:152-156, 315-319). make_hint returns a count that sign.c uses only in `n > OMEGA`
+// (sign.c:186); its override returns 81 or 0 in its place.
+sched <- declare_ghost_state "sched";
+let chk_step alias bound f k v = do {
+    llvm_ghost_value sched {{ `k : [8] }};
+    (x, px) <- vec_rows alias "v";
+    llvm_precond {{ f x == v }};
+    llvm_execute_func [px, llvm_term {{ `bound : [32] }}];
+    llvm_ghost_value sched {{ `k + 1 : [8] }};
+    vec_post px x;
+    llvm_return (llvm_term {{ if v then 1 else 0 : [32] }});
+};
+let hint_step k v = do {
+    llvm_ghost_value sched {{ `k : [8] }};
+    ph <- llvm_alloc (llvm_alias "struct.polyveck");
+    (v0, pv0) <- vec_rows "struct.polyveck" "v0";
+    (v1, pv1) <- vec_rows "struct.polyveck" "v1";
+    llvm_precond {{ hintBad v0 v1 == v }};
+    llvm_execute_func [ph, pv0, pv1];
+    llvm_ghost_value sched {{ `k + 1 : [8] }};
+    vec_post ph {{ hintH v0 v1 }};
+    vec_post pv0 v0;
+    vec_post pv1 v1;
+    llvm_return (llvm_term {{ if v then 81 else 0 : [32] }});
+};
+// plan: the verdict (True = reject) of each of the first 8 check calls, in call order.
+let sched_ovs plan = do {
+    oss <- for [0, 1, 2, 3, 4, 5, 6, 7] (\k -> do {
+        let v = nth plan k;
+        o1 <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_polyvecl_chknorm" (chk_step "struct.polyvecl" 130994 {{ chkZ }} k v);         // GAMMA1 - BETA
+        o2 <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_polyveck_chknorm" (chk_step "struct.polyveck" 95154 {{ chkK 95154 }} k v);   // GAMMA2 - BETA
+        o3 <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_polyveck_chknorm" (chk_step "struct.polyveck" 95232 {{ chkK 95232 }} k v);   // GAMMA2
+        o4 <- llvm_unsafe_assume_spec mw "PQCLEAN_MLDSA44_CLEAN_polyveck_make_hint" (hint_step k v);
+        return [o1, o2, o3, o4];
+    });
+    return (concat (nth oss 0) (concat (nth oss 1) (concat (nth oss 2) (concat (nth oss 3)
+           (concat (nth oss 4) (concat (nth oss 5) (concat (nth oss 6) (nth oss 7))))))));
+};
+
+// The composition. ncalls: how many check calls the plan makes; pre: what the model says about the
+// passes the plan describes; out: the signature the model says is written.
+let sign_spec ncalls pre out = do {
+    rb <- llvm_fresh_var "rb" (llvm_array 32 (llvm_int 8));
+    llvm_ghost_value rng rb;
+    llvm_ghost_value sched {{ 0 : [8] }};
+    (sk, psk) <- bytes_ro "sk" 2560;
+    (msg, pm) <- bytes_ro "m" 32;
+    psig <- llvm_alloc (llvm_array 2420 (llvm_int 8));
+    plen <- llvm_alloc (llvm_int 64);
+    llvm_precond {{ pre sk msg rb }};
+    llvm_execute_func [psig, plen, pm, llvm_term {{ 32 : [64] }}, psk];
+    llvm_ghost_value rng rb;
+    llvm_ghost_value sched {{ `ncalls : [8] }};
+    llvm_points_to psig (llvm_term {{ out sk msg rb }});
+    llvm_points_to plen (llvm_term {{ 2420 : [64] }});
+    llvm_return (llvm_term {{ 0 : [32] }});
+};
+let sign_ovs = [unpack_sk_ov, inc_init_ov, absorb64_ov, absorb2_ov, absorb0_ov, absorbM_ov,
+                absorb768_ov, finalize_ov, squeeze64_ov, squeeze32_ov, release_ov, randombytes_ov,
+                shake256_rhop_ov, expand_ov, gamma1_ov, decompose_ov, pack_w1_ov, challenge_ov,
+                pack_sig_ov,
+                polyvecl_ntt_r, polyveck_ntt_r, matrix_r, polyveck_reduce_r, polyveck_invntt_r,
+                polyveck_caddq_r, poly_ntt_ov, polyvecl_pwpoly_r, polyvecl_invntt_r, polyvecl_add_r,
+                polyvecl_reduce_r, polyveck_pwpoly_na_r, polyveck_sub_r, polyveck_add_r];
+let opaque_sg = concat opaque ["padd", "skRho", "skTr", "skKey", "skT0", "skS1", "skS2",
+                               "shakeRhop", "gamma1", "dec1", "dec0", "chkK", "hintH", "hintBad",
+                               "packSig"];
+let sign_fn = "PQCLEAN_MLDSA44_CLEAN_crypto_sign_signature";
+
+let no = {{ False }};
+let yes = {{ True }};
+// override lists for the five schedules (verdicts of the first 8 check calls, True = reject)
+ovs_acc <- sched_ovs [no, no, no, no, no, no, no, no];
+ovs_r1  <- sched_ovs [yes, no, no, no, no, no, no, no];
+ovs_r2  <- sched_ovs [no, yes, no, no, no, no, no, no];
+ovs_r3  <- sched_ovs [no, no, yes, no, no, no, no, no];
+ovs_r4  <- sched_ovs [no, no, no, yes, no, no, no, no];
+
+// pass 0 accepted
+llvm_verify mw sign_fn (concat sign_ovs ovs_acc) false
+            (sign_spec 4 {{ \sk m rb -> accepts sk m rb 0 }} {{ \sk m rb -> sig_at sk m rb 0 }}) (w4_unint_z3 opaque_sg);
+print "VERIFIED: crypto_sign_signature writes sig_at sk m rb 0 when pass 0 is accepted";
+
+// pass 0 rejected at check j (z norm, w0 - c*s2 norm, c*t0 norm, hint count), pass 1 accepted
+llvm_verify mw sign_fn (concat sign_ovs ovs_r1) false
+            (sign_spec 5 {{ \sk m rb -> rejects_at sk m rb 0 1 && accepts sk m rb 1 }} {{ \sk m rb -> sig_at sk m rb 1 }}) (w4_unint_z3 opaque_sg);
+llvm_verify mw sign_fn (concat sign_ovs ovs_r2) false
+            (sign_spec 6 {{ \sk m rb -> rejects_at sk m rb 0 2 && accepts sk m rb 1 }} {{ \sk m rb -> sig_at sk m rb 1 }}) (w4_unint_z3 opaque_sg);
+llvm_verify mw sign_fn (concat sign_ovs ovs_r3) false
+            (sign_spec 7 {{ \sk m rb -> rejects_at sk m rb 0 3 && accepts sk m rb 1 }} {{ \sk m rb -> sig_at sk m rb 1 }}) (w4_unint_z3 opaque_sg);
+llvm_verify mw sign_fn (concat sign_ovs ovs_r4) false
+            (sign_spec 8 {{ \sk m rb -> rejects_at sk m rb 0 4 && accepts sk m rb 1 }} {{ \sk m rb -> sig_at sk m rb 1 }}) (w4_unint_z3 opaque_sg);
+print "VERIFIED: crypto_sign_signature writes sig_at sk m rb 1 when pass 0 is rejected at any of its four checks and pass 1 is accepted";
+
+// Non-vacuity. Without the assumption the verdicts are not provable; a rejected pass followed by
+// the signature of pass 0 (nonce not advanced); and wrong compositions of one pass.
+fails (llvm_verify mw sign_fn (concat sign_ovs ovs_acc) false
+                   (sign_spec 4 {{ \sk m rb -> True }} {{ \sk m rb -> sig_at sk m rb 0 }}) (w4_unint_z3 opaque_sg));
+fails (llvm_verify mw sign_fn (concat sign_ovs ovs_r1) false
+                   (sign_spec 5 {{ \sk m rb -> rejects_at sk m rb 0 1 && accepts sk m rb 1 }} {{ \sk m rb -> sig_at sk m rb 0 }}) (w4_unint_z3 opaque_sg));
+fails (llvm_verify mw sign_fn (concat sign_ovs ovs_acc) false
+                   (sign_spec 4 {{ \sk m rb -> accepts sk m rb 0 }} {{ \sk m rb -> sig_mut 1 sk m rb 0 }}) (w4_unint_z3 opaque_sg));
+fails (llvm_verify mw sign_fn (concat sign_ovs ovs_acc) false
+                   (sign_spec 4 {{ \sk m rb -> accepts sk m rb 0 }} {{ \sk m rb -> sig_mut 2 sk m rb 0 }}) (w4_unint_z3 opaque_sg));
+fails (llvm_verify mw sign_fn (concat sign_ovs ovs_acc) false
+                   (sign_spec 4 {{ \sk m rb -> accepts sk m rb 0 }} {{ \sk m rb -> sig_mut 3 sk m rb 0 }}) (w4_unint_z3 opaque_sg));
+fails (llvm_verify mw sign_fn (concat sign_ovs ovs_acc) false
+                   (sign_spec 4 {{ \sk m rb -> accepts sk m rb 0 }} {{ \sk m rb -> sig_mut 4 sk m rb 0 }}) (w4_unint_z3 opaque_sg));
+fails (llvm_verify mw sign_fn (concat sign_ovs ovs_acc) false
+                   (sign_spec 4 {{ \sk m rb -> accepts sk m rb 0 }} {{ \sk m rb -> sig_mut 5 sk m rb 0 }}) (w4_unint_z3 opaque_sg));
+fails (llvm_verify mw sign_fn (concat sign_ovs ovs_acc) false
+                   (sign_spec 4 {{ \sk m rb -> accepts sk m rb 0 }} {{ \sk m rb -> sig_mut 6 sk m rb 0 }}) (w4_unint_z3 opaque_sg));
+print "NON-VACUOUS: signing without the check assumption, with the nonce not advanced, without y, with s1 for s2, without rnd, with the hint arguments swapped, without c*t0, or with z not reduced is rejected";

@@ -675,15 +675,20 @@ theorems about the definition we wrote.
   mechanized for the poly.c / polyvec.c functions (next entry) and stays argued for the inverse NTT
   and the transform wrappers.
 
-- **`sign.c` key generation and verification composition. DONE 2026-10-21.** `sign.c` vendored (with `sign.h`,
-  `packing.h` and `common/randombytes.h`). `proof/saw/sign_compose.saw` (in `make saw`, about 4 min
+- **`sign.c` key generation, verification and signing composition. DONE 2026-10-21 / 2026-10-22.** `sign.c` vendored (with `sign.h`,
+  `packing.h` and `common/randombytes.h`). `proof/saw/sign_compose.saw` (in `make saw`, about 42 min with signing,
   including `mldsa_ntt.saw`) proves `crypto_sign_verify` returns `MLDSA_Sign::verify`: the proven
   arithmetic is used through its specs, and hashing, unpacking, the challenge sampler, matrix
   expansion, `use_hint`, `pack_w1` and the z norm check are assumed specs with opaque outputs
   (A-SIGN). Seven wrong compositions fail. This moves the verification call-order rows of
   COMPOSITION.md from SOURCE to PROVED. Key generation the same way (`crypto_sign_keypair`, random
   bytes bound through SAW ghost state, five mutants fail). Scope: 32-byte messages, empty context.
-  Next: signing, which needs a treatment of the `goto rej` loop.
+  Signing added 2026-10-22: `crypto_sign_signature` writes `MLDSA_Sign::sig_at` for the accepted
+  pass, proved for pass 0 accepted and for pass 0 rejected at each of the four checks with pass 1
+  accepted. The loop's exit checks get specs that read a concrete verdict per call from SAW ghost
+  state and assert it against the opaque check, so the branches are concrete; the top-level spec
+  assumes the matching model fact. Eight wrong compositions fail, including one with no model
+  assumption. Three or more passes are not proved (that needs a loop invariant).
 
 - **Second C semantics for `reduce.c`. DONE 2026-10-19.** `proof/autocorres2/` (`make ac2`) runs
   AutoCorres2 on the vendored `reduce.c` and proves `montgomery_reduce`, `caddq`, `reduce32` and

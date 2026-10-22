@@ -34,8 +34,8 @@ sigH      : [SIGB][8] -> Vec
 sigH _ = zero
 sigBad    : [SIGB][8] -> [32]
 sigBad _ = zero
-chkZ      : Vec -> [32]
-chkZ _ = zero
+chkZ      : Vec -> Bit                 // polyvecl_chknorm(z, GAMMA1 - BETA) returns 1 (True) or 0
+chkZ _ = False
 expandA   : [32][8] -> [4]Vec
 expandA _ = zero
 challenge : [32][8] -> Poly
@@ -86,13 +86,16 @@ w1_pre a z c t1 = [ pcaddq (invntt (preduce r)) | r <- diff ]
 // mu = CRH(tr, 0, ctxlen = 0, msg), with tr = H(pk). mu[0] and mu[1] are overwritten with
 // 0 and ctxlen before the two-byte absorb, so that absorb sees [0, 0].
 mu_of : [PKB][8] -> [32][8] -> [64][8]
-mu_of pk m = squeeze64 (finalize (absorbM (absorb0 (absorb2 (absorb64 incInit (shakeTr pk)) [0, 0])) m))
+mu_of pk m = mu_tr (shakeTr pk) m
+
+mu_tr : [64][8] -> [32][8] -> [64][8]
+mu_tr tr m = squeeze64 (finalize (absorbM (absorb0 (absorb2 (absorb64 incInit tr) [0, 0])) m))
 
 // crypto_sign_verify(sig, CRYPTO_BYTES, m, 32, pk), i.e. verify_ctx with ctx = NULL, ctxlen = 0.
 verify : [SIGB][8] -> [32][8] -> [PKB][8] -> [32]
 verify sig m pk =
   if sigBad sig != 0 then -1
-  else if chkZ (sigZ sig) != 0 then -1
+  else if chkZ (sigZ sig) then -1
   else if sigC sig == c2 then 0 else -1
   where
     w1  = useHint (w1_pre (expandA (pkRho pk)) (sigZ sig) (challenge (sigC sig)) (pkT1 pk)) (sigH sig)
@@ -140,3 +143,73 @@ keypair rb = (pk, sk)
     t    = t_pre (expandA rho) s1 s2
     pk   = packPk rho (p2r1 t)
     sk   = packSk rho (shakeTr pk) key (p2r0 t) s1 s2
+
+// ---- signing ----
+// opaque steps
+skRho     : [SKB][8] -> [32][8]        // unpack_sk(rho, tr, key, t0, s1, s2, sk)
+skRho _ = zero
+skTr      : [SKB][8] -> [64][8]
+skTr _ = zero
+skKey     : [SKB][8] -> [32][8]
+skKey _ = zero
+skT0      : [SKB][8] -> Vec
+skT0 _ = zero
+skS1      : [SKB][8] -> Vec
+skS1 _ = zero
+skS2      : [SKB][8] -> Vec
+skS2 _ = zero
+shakeRhop : [128][8] -> [64][8]        // shake256(rhoprime, CRHBYTES, key, SEEDBYTES + RNDBYTES + CRHBYTES)
+shakeRhop _ = zero
+gamma1    : [64][8] -> [16] -> Vec     // polyvecl_uniform_gamma1(y, rhoprime, nonce)
+gamma1 _ _ = zero
+dec1      : Vec -> Vec                 // polyveck_decompose(w1, w0, w1): w1
+dec1 _ = zero
+dec0      : Vec -> Vec                 // ... and w0
+dec0 _ = zero
+chkK      : [32] -> Vec -> Bit         // polyveck_chknorm(v, bound) returns 1 (True) or 0
+chkK _ _ = False
+hintH     : Vec -> Vec -> Vec          // polyveck_make_hint(h, v0, v1): h
+hintH _ _ = zero
+hintBad   : Vec -> Vec -> Bit          // ... and whether the count it returns exceeds OMEGA
+hintBad _ _ = False
+packSig   : [32][8] -> Vec -> Vec -> [SIGB][8]   // pack_sig(sig, c, z, h)
+packSig _ _ _ = zero
+
+// One pass through sign.c's rejection loop with the given nonce: the four checks that send it
+// back to rej, in the order the C makes them (True = reject), and the signature it writes if none
+// does. sk, m, and the bytes randombytes returns are the inputs; nothing else changes between
+// passes except the nonce.
+attempt : [SKB][8] -> [32][8] -> [32][8] -> [16] -> ([4]Bit, [SIGB][8])
+attempt sk m rnd nonce = ([chkZ z, chkK 95154 w0s, chkK 95232 ct0, hintBad w0h w1], packSig ct z h)
+  where
+    mu   = mu_tr (skTr sk) m
+    rhop = shakeRhop (skKey sk # rnd # mu)
+    a    = expandA (skRho sk)
+    s1h  = [ ntt p | p <- skS1 sk ]
+    s2h  = [ ntt p | p <- skS2 sk ]
+    t0h  = [ ntt p | p <- skT0 sk ]
+    y    = gamma1 rhop nonce
+    yh   = [ ntt p | p <- y ]
+    w    = [ pcaddq (invntt (preduce (acc row yh))) | row <- a ]
+    w1   = dec1 w
+    w0   = dec0 w
+    ct   = squeeze32 (finalize (absorb768 (absorb64 incInit mu) (packW1 w1)))
+    ch   = ntt (challenge ct)
+    z    = [ preduce (padd (invntt (pointwise ch s)) e) | s <- s1h | e <- y ]
+    w0s  = [ preduce (psub u (invntt (pointwise ch s))) | u <- w0 | s <- s2h ]   // w0 - c*s2
+    ct0  = [ preduce (invntt (pointwise ch s)) | s <- t0h ]                      // c*t0
+    w0h  = [ padd u v | u <- w0s | v <- ct0 ]
+    h    = hintH w0h w1
+
+// The loop stops at the first pass whose four checks all pass. passes sk m rnd k: passes 0..k-1
+// were rejected and pass k was accepted, so crypto_sign_signature writes (attempt sk m rnd k).1.
+accepts : [SKB][8] -> [32][8] -> [32][8] -> [16] -> Bit
+accepts sk m rnd n = (attempt sk m rnd n).0 == zero
+
+// pass n is rejected at check j (1..4): checks 1..j-1 pass and check j rejects
+rejects_at : [SKB][8] -> [32][8] -> [32][8] -> [16] -> [8] -> Bit
+rejects_at sk m rnd n j = and [ if i < j - 1 then ~c else if i == j - 1 then c else True
+                              | c <- (attempt sk m rnd n).0 | i <- [0 .. 3] ]
+
+sig_at : [SKB][8] -> [32][8] -> [32][8] -> [16] -> [SIGB][8]
+sig_at sk m rnd n = (attempt sk m rnd n).1

@@ -24,7 +24,7 @@ w1_mut k a z c t1 = [ fin (invntt (preduce r)) | r <- diff ]
 verify_mut : [8] -> Bit -> [SIGB][8] -> [32][8] -> [PKB][8] -> [32]
 verify_mut k skipchk sig m pk =
   if sigBad sig != 0 then -1
-  else if (~skipchk) && (chkZ (sigZ sig) != 0) then -1
+  else if (~skipchk) && chkZ (sigZ sig) then -1
   else if sigC sig == c2 then 0 else -1
   where
     w1  = useHint (w1_mut k (expandA (pkRho pk)) (sigZ sig) (challenge (sigC sig)) (pkT1 pk)) (sigH sig)
@@ -46,7 +46,7 @@ mu_nomsg pk = squeeze64 (finalize (absorb0 (absorb2 (absorb64 incInit (shakeTr p
 verify_nomsg : [SIGB][8] -> [32][8] -> [PKB][8] -> [32]
 verify_nomsg sig m pk =
   if sigBad sig != 0 then -1
-  else if chkZ (sigZ sig) != 0 then -1
+  else if chkZ (sigZ sig) then -1
   else if sigC sig == c2 then 0 else -1
   where
     w1  = useHint (w1_pre (expandA (pkRho pk)) (sigZ sig) (challenge (sigC sig)) (pkT1 pk)) (sigH sig)
@@ -54,7 +54,7 @@ verify_nomsg sig m pk =
 
 verify_nobad : [SIGB][8] -> [32][8] -> [PKB][8] -> [32]
 verify_nobad sig m pk =
-  if chkZ (sigZ sig) != 0 then -1
+  if chkZ (sigZ sig) then -1
   else if sigC sig == c2 then 0 else -1
   where
     w1  = useHint (w1_pre (expandA (pkRho pk)) (sigZ sig) (challenge (sigC sig)) (pkT1 pk)) (sigH sig)
@@ -82,3 +82,33 @@ keypair_nos2      = keypair_mut 2
 keypair_samenonce = keypair_mut 3
 keypair_rhokey    = keypair_mut 4
 keypair_noKL      = keypair_mut 5
+
+// Signing, one step of a pass changed each (the signature only; the checks are as in attempt):
+//   1  z without y added
+//   2  s1 in place of s2 in w0 - c*s2
+//   3  rhoprime without the random bytes
+//   4  make_hint's arguments swapped
+//   5  w0 without c*t0 added before the hint
+//   6  z not reduced
+sig_mut : [8] -> [SKB][8] -> [32][8] -> [32][8] -> [16] -> [SIGB][8]
+sig_mut k sk m rnd nonce = packSig ct z h
+  where
+    mu   = mu_tr (skTr sk) m
+    rhop = shakeRhop (skKey sk # (if k == 3 then zero else rnd) # mu)
+    a    = expandA (skRho sk)
+    s1h  = [ ntt p | p <- skS1 sk ]
+    s2h  = [ ntt p | p <- if k == 2 then skS1 sk else skS2 sk ]
+    t0h  = [ ntt p | p <- skT0 sk ]
+    y    = gamma1 rhop nonce
+    yh   = [ ntt p | p <- y ]
+    w    = [ pcaddq (invntt (preduce (acc row yh))) | row <- a ]
+    w1   = dec1 w
+    w0   = dec0 w
+    ct   = squeeze32 (finalize (absorb768 (absorb64 incInit mu) (packW1 w1)))
+    ch   = ntt (challenge ct)
+    zr   = [ if k == 1 then invntt (pointwise ch s) else padd (invntt (pointwise ch s)) e | s <- s1h | e <- y ]
+    z    = if k == 6 then zr else [ preduce p | p <- zr ]
+    w0s  = [ preduce (psub u (invntt (pointwise ch s))) | u <- w0 | s <- s2h ]
+    ct0  = [ preduce (invntt (pointwise ch s)) | s <- t0h ]
+    w0h  = if k == 5 then w0s else [ padd u v | u <- w0s | v <- ct0 ]
+    h    = if k == 4 then hintH w1 w0h else hintH w0h w1

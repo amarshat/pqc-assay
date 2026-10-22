@@ -992,7 +992,8 @@ the following beyond the per-function proofs it uses as overrides.
    and its outputs depend only on the listed inputs. Nothing is assumed about the values computed.
    - `PQCLEAN_MLDSA44_CLEAN_unpack_pk`: writes `rho` (32 bytes) and `t1` from `pk`.
    - `PQCLEAN_MLDSA44_CLEAN_unpack_sig`: writes `c`, `z`, `h` from `sig`, returns an int.
-   - `PQCLEAN_MLDSA44_CLEAN_polyvecl_chknorm`: called with bound `GAMMA1 - BETA`, returns an int.
+   - `PQCLEAN_MLDSA44_CLEAN_polyvecl_chknorm`: called with bound `GAMMA1 - BETA`, returns 1 or 0
+     (`polyvec.c:152-156`); whether it returns 1 is the opaque `chkZ z`.
    - `shake256`: 64 bytes of output from the 1312-byte public key.
    - `shake256_inc_init`, `shake256_inc_absorb` (lengths 64, 2, 0 with a NULL input, 32, 768),
      `shake256_inc_finalize`, `shake256_inc_squeeze` (lengths 64 and 32),
@@ -1011,10 +1012,26 @@ the following beyond the per-function proofs it uses as overrides.
      `PQCLEAN_MLDSA44_CLEAN_polyveck_uniform_eta` (nonce 4), `PQCLEAN_MLDSA44_CLEAN_polyveck_power2round`
      in the aliased form `(t1, t0, t1)`, `PQCLEAN_MLDSA44_CLEAN_pack_pk`,
      `PQCLEAN_MLDSA44_CLEAN_pack_sk`.
+   - Signing: `PQCLEAN_MLDSA44_CLEAN_unpack_sk` (writes `rho`, `tr`, `key`, `t0`, `s1`, `s2` from
+     `sk`), `shake256` in the form `(rhoprime, 64, key, 128)` (`key`, `rnd`, `mu` are contiguous in
+     `seedbuf`), `PQCLEAN_MLDSA44_CLEAN_polyvecl_uniform_gamma1` (any nonce),
+     `PQCLEAN_MLDSA44_CLEAN_polyveck_decompose` in the aliased form `(w1, w0, w1)`,
+     `PQCLEAN_MLDSA44_CLEAN_pack_sig` in the form `(sig, sig, z, h)`, and the four loop checks:
+     `polyvecl_chknorm` (bound `GAMMA1 - BETA`), `PQCLEAN_MLDSA44_CLEAN_polyveck_chknorm` (bounds
+     `GAMMA2 - BETA` and `GAMMA2`), returning 1 or 0 (`polyvec.c:315-319`), and
+     `PQCLEAN_MLDSA44_CLEAN_polyveck_make_hint`, which writes `h` and returns a count. sign.c uses
+     that count only in `n > OMEGA` (`sign.c:186`), so its spec returns 81 when the opaque
+     `hintBad` holds and 0 otherwise, instead of the count. This is a step read from the source, not
+     proved. The checks' specs take their verdict from SAW ghost state and assert, as an override
+     precondition, that the opaque check on the actual arguments equals it; that makes the loop's
+     branches concrete without assuming anything about the verdicts beyond the top-level schedule.
 3. **Message length 32 bytes, empty context.** The message absorb is specified at length 32, so the
-   result is for `mlen = 32` and the `crypto_sign_verify` entry point (`ctx = NULL`,
-   `ctxlen = 0`). Other lengths would need their own absorb spec or a symbolic-length one.
-4. **Not covered.** Signing (`goto rej` loop) and `crypto_sign_open`. The final 32-byte
+   result is for `mlen = 32` and the `crypto_sign_verify` and `crypto_sign_signature` entry points
+   (`ctx = NULL`, `ctxlen = 0`). Other lengths would need their own absorb spec or a symbolic-length one.
+4. **Not covered.** Signing schedules with three or more passes of the `goto rej` loop, and
+   `crypto_sign_open`. Signing is proved for pass 0 accepted, and for pass 0 rejected at each of
+   the four checks with pass 1 accepted; each schedule is a precondition on the model, so the
+   result says what the C writes when the model's checks come out that way. The final 32-byte
    comparison in verification is simulated, not assumed.
 5. **A free input is needed.** Key generation has no input other than the random bytes. In the
    first version `randombytes` returned an opaque function of its length, so every term was closed,
@@ -1024,4 +1041,12 @@ the following beyond the per-function proofs it uses as overrides.
 6. **Opaque names checked live.** The proof would be weaker if SAW unfolded the opaque functions
    to their placeholder bodies (for example `absorbM s _ = s` would make the message irrelevant).
    Mutants that drop the message absorb, the `unpack_sig` check, or the `chknorm` check are
-   rejected, which can only happen if those functions stay uninterpreted.
+   rejected, which can only happen if those functions stay uninterpreted. For signing, a run with
+   the schedule's ghost verdicts but no precondition on the model must fail, and does: the check
+   specs' verdict obligations are then unprovable.
+7. **Ghost-bound variables in override preconditions.** A first version of the signing proof bound
+   the verdict from ghost state into a fresh variable and used it in the override's `llvm_precond`.
+   Under SAW 1.5.1 the obligation failed with that variable free in the counterexample, though the
+   same obligation with the verdict written as a constant passed. The verdicts are now concrete per step (one override per
+   check and step, selected by a concrete ghost counter). It failed rather than passed, so no claim
+   depended on it.

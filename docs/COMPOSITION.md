@@ -2,10 +2,10 @@
 
 The C proofs stop at function boundaries. SAW proves each C function equal to its Cryptol model.
 Isabelle proves that a particular composition of those models computes a product in
-`R_q = Z_q[X]/(X^256+1)`. For key generation and verification, that `sign.c` composes the C
-functions that way, on those buffers, is proved (`proof/saw/sign_compose.saw`), with the callees no
-proof covers replaced by assumed specs (A-SIGN in `docs/ASSUMPTIONS.md`). For signing it is read
-from the C. The input ranges are read from the C, except the unpack functions' output ranges, which are
+`R_q = Z_q[X]/(X^256+1)`. That `sign.c` composes the C functions that way, on those buffers, is
+proved (`proof/saw/sign_compose.saw`) for key generation, verification, and signing on the loop
+schedules listed below, with the callees no proof covers replaced by assumed specs (A-SIGN in
+`docs/ASSUMPTIONS.md`). The input ranges are read from the C, except the unpack functions' output ranges, which are
 proved (the split rows below). `sign.c` is vendored (2026-10-21); `packing.c`, `rounding.c` and
 `fips202.c` are not.
 
@@ -59,29 +59,42 @@ SHAKE256 of `rb` followed by K and L. Five wrong compositions must fail and do.
 | `\|A\| < 9q` (the bound is `75423752` = 9q − 1) | SOURCE: `rej_uniform` masks to 23 bits, `poly.c:324` |
 | a polynomial `f_i` exists whose NTT is row entry `i` | PROVED: `acc_mult_ring_ex` (via `ntt_int_surj`) |
 
-## Signing: `A*y` (`acc_mult_ring`)
+## Signing
+
+`sign_compose.saw` proves that `crypto_sign_signature` (32-byte message, empty context) writes
+`MLDSA_Sign::sig_at sk m rb k` and returns 0, where `rb` is whatever `randombytes` returns and `k`
+is the accepted pass of the `goto rej` loop, on five schedules: pass 0 accepted, and pass 0 rejected
+at each of the four checks (z norm, `w0 - c*s2` norm, `c*t0` norm, hint count) with pass 1
+accepted. Each schedule is an assumption about the model (`accepts`, `rejects_at`); the checks'
+specs assert their verdicts from it, so a run with no assumption fails. One pass of the model
+(`attempt`) depends only on `sk`, `m`, `rb` and the nonce. The second-pass proofs check that a
+rejected pass, whichever check rejects it, leaves what the next pass reads (`mat`, `s1`, `s2`, `t0`
+in NTT form, `mu`, `rhoprime`) unchanged and advances the nonce. Schedules with three or more passes
+are not proved. Eight wrong compositions fail.
+
+### `A*y` (`acc_mult_ring`)
 
 | Hypothesis | Discharged by |
 |---|---|
-| `z` is a copy of `y`, then `v = ntt z` | SOURCE: `sign.c:138-139` |
-| the C computes `invntt(preduce(acc u v))` per row | SOURCE: call order at `sign.c:140-142`; each call PROVED (SAW) |
+| `z` is a copy of `y`, then `v = ntt z` | PROVED: `sign_compose.saw` |
+| the C computes `invntt(preduce(acc u v))` per row | PROVED: `sign_compose.saw`, with each call's own spec PROVED (SAW); ASSUMED that the unverified callees write only their outputs (A-SIGN) |
 | `\|y\| < q` | split: PROVED that `polyz_unpack` outputs lie in `[-(2^17 - 1), 2^17]` for any input bytes (`poly_ranges.saw`); SOURCE that `poly_uniform_gamma1` fills `y` by calling it on SHAKE output (`poly.c:467`) |
 | `\|A\| < 9q` | SOURCE: `poly.c:324` |
-| `mat` still holds the expanded A on every rejection iteration | split: PROVED that the matrix loop leaves it unchanged; SOURCE that no other call between `sign.c:128` and `:140` receives `mat`; ASSUMED that the unverified calls in between (sampling, `decompose`, packing, hashing, `chknorm`) do not write out of bounds |
+| `mat` still holds the expanded A on every rejection iteration | PROVED for the second pass of the schedules above (`sign_compose.saw`), given A-SIGN for the unverified calls in between; not proved for later passes |
 | `f_i` exists | PROVED: `acc_mult_ring_ex` |
 
-## Signing: `c*s1`, `c*s2`, `c*t0` (`ntt_mult_ring`)
+### `c*s1`, `c*s2`, `c*t0` (`ntt_mult_ring`)
 
 | Hypothesis | Discharged by |
 |---|---|
-| the vector argument is `ntt s` | SOURCE: `sign.c:129-131` |
-| the challenge argument is `ntt c` | SOURCE: `sign.c:155-156` (recomputed on every iteration) |
-| the C computes `invntt(pointwise(.,.))` | SOURCE: call order at `sign.c:159-160`, `169-170`, `178-179`; each call PROVED (SAW) |
+| the vector argument is `ntt s` | PROVED: `sign_compose.saw` |
+| the challenge argument is `ntt c` | PROVED: `sign_compose.saw` |
+| the C computes `invntt(pointwise(.,.))` | PROVED: `sign_compose.saw`, each call's own spec PROVED (SAW); A-SIGN as above |
 | `\|c\| < q` | SOURCE: `poly_challenge` writes `1 - 2*(signs & 1)` or copies an earlier coefficient, `poly.c:510-511` |
 | `\|s1\|, \|s2\| < q` | split: PROVED that `polyeta_unpack` outputs lie in `[-5, 2]` (`poly_ranges.saw`); SOURCE that `unpack_sk` calls it for `s1` and `s2` (`packing.c:145,150`) |
 | `\|t0\| < q` | split: PROVED that `polyt0_unpack` outputs lie in `[-4095, 4096]` (`poly_ranges.saw`); SOURCE that `unpack_sk` calls it (`packing.c:155`) |
-| `cp` unchanged across the three calls at `sign.c:159`, `169`, `178` | split: PROVED that each pointwise loop leaves it unchanged; SOURCE that the calls in between do not receive it; ASSUMED that they do not write out of bounds |
-| `s1`, `s2`, `t0` (in NTT form) unchanged across rejection iterations | split: PROVED that the pointwise loops leave them unchanged; SOURCE that no other call after `sign.c:131` receives them; ASSUMED as above |
+| `cp` unchanged across the three calls at `sign.c:159`, `169`, `178` | PROVED: `sign_compose.saw`, given A-SIGN |
+| `s1`, `s2`, `t0` (in NTT form) unchanged across rejection iterations | PROVED for the second pass of the schedules above, given A-SIGN; not proved for later passes |
 
 ## Verification: `A*z - c*t1*2^13` (`ver_row_ring`)
 
@@ -136,14 +149,11 @@ The rows above are about the `-fwrapv` build. Carrying them to a normal build ha
 The SOURCE rows are of two kinds:
 
 - Call order and argument flow (`v = ntt y`, which buffer goes where, nothing else touches `mat`):
-  done for key generation and verification (`sign_compose.saw`, SAW on the vendored `sign.c` with
-  the existing specs as overrides). Signing has the
-  `goto rej` loop, which SAW cannot unroll when the exit depends on opaque checks; it needs either
-  a loop invariant or a spec of one iteration.
+  done (`sign_compose.saw`, SAW on the vendored `sign.c` with the existing specs as overrides).
+  For signing, on the five schedules above; covering every number of passes needs a loop
+  invariant, which SAW does not take for a `goto` loop inside one function.
 - Input ranges: the unpack functions are done (`proof/saw/poly_ranges.saw`, in `make saw`, on
   the default bitcode, with mutants one tighter at each end that must fail). The samplers are not:
   `rej_uniform` (A) and `rej_eta` (keygen `s1`, `s2`) write at a data-dependent index, and a
   one-call spec did not finish in z3 or yices within 5 to 9 minutes (measurements in the script
   header); `poly_challenge` has a rejection loop with no fixed bound.
-
-The call-order proof for signing has not been done.
