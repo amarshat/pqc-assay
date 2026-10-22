@@ -1,0 +1,25 @@
+/* Carry-less multiplication of word vectors, and one level of the Karatsuba recursion in HQC's
+   gf2x.c (target/hqc/gf2x.c, HQC v5.0.0). Word 0 is least significant, bit i of a word is the
+   coefficient of x^i, so an n-word vector is a polynomial of degree < 64n. */
+module GF2X where
+
+// Full 2n-word carry-less product.
+kmul : {n} (fin n, n >= 1) => [n][64] -> [n][64] -> [2*n][64]
+kmul a b = reverse (split ((zero : [1]) # pmult (join (reverse a)) (join (reverse b))))
+
+// One level of karatsuba_mul: low half n0 = n/2 words, high half n1 = n - n0 words. m0 and m1
+// stand for the products of the recursive calls (z0 from m0; z2 and zmid from m1), and the result
+// is assembled as karatsuba_mul's step 4 does.
+kstep : {n0, n1} (fin n0, fin n1, n1 >= n0, n0 >= 1, n0 + 1 >= n1) =>
+        ([n0][64] -> [n0][64] -> [2*n0][64]) -> ([n1][64] -> [n1][64] -> [2*n1][64]) ->
+        [n0+n1][64] -> [n0+n1][64] -> [2*(n0+n1)][64]
+kstep m0 m1 a b = (z0 # z2) ^ ((zero : [n0][64]) # mid # (zero : [n0][64]))
+  where a0 = take`{n0} a
+        a1 = drop`{n0} a
+        b0 = take`{n0} b
+        b1 = drop`{n0} b
+        ta = (a0 # (zero : [n1-n0][64])) ^ a1
+        tb = (b0 # (zero : [n1-n0][64])) ^ b1
+        z0 = m0 a0 b0
+        z2 = m1 a1 b1
+        mid = m1 ta tb ^ (z0 # (zero : [2*(n1-n0)][64])) ^ z2

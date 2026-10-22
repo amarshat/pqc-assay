@@ -15,17 +15,18 @@
   <a href="https://doi.org/10.5281/zenodo.21178811"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.21178811.svg" alt="DOI"></a>
 </p>
 
-PQC-Assay machine-checks the arithmetic functions of the unmodified PQClean reference C for
-ML-DSA-44 (FIPS 204) against a specification written from the standard. SAW proves the C equal to a Cryptol model, Galois's
-`cryptol-to-isabelle` lifts that model into Isabelle, and Isabelle proves the lifted model equal to
-the FIPS 204 mathematics. It is the toolchain Apple used for its 2026 `corecrypto` work; none of
-Apple's code or theories are used here.
+PQC-Assay machine-checks unmodified post-quantum reference C against specifications written from
+the standards. SAW proves the C equal to a Cryptol model, Galois's `cryptol-to-isabelle` lifts that
+model into Isabelle, and Isabelle proves the lifted model equal to the mathematics. It is the
+toolchain Apple used for its 2026 `corecrypto` work; none of Apple's code or theories are used here.
 
-As of October 2026 the chain reaches from individual C functions to ring arithmetic in
-`R_q = Z_q[X]/(X^256+1)`: the forward and inverse NTT compute the FIPS 204 transforms, and the
-compositions of models that ML-DSA uses for its products compute those products in `R_q`. This is
-reference C, not the optimized code that ships, and it is the arithmetic core of the scheme, not the
-scheme. Writeup:
+There are two targets. The first is ML-DSA-44 (FIPS 204) in PQClean's reference C. The chain reaches
+from the C functions to ring arithmetic in `R_q = Z_q[X]/(X^256+1)`, and `sign.c` is proved to
+compose those functions. Apple's `corecrypto` proofs already cover ML-DSA signing end to end on
+Apple's code: their loop proof covers every iteration up to a counter bound, and they verify Keccak
+and the samplers, which are assumed here. So this repo's ML-DSA work is an independent check of a
+different code base, not a first. The second target, and the current main line, is HQC (selected by
+NIST in 2025), starting with its reference polynomial multiplication. Writeup on the ML-DSA side:
 [The ML-DSA reference NTT multiplies polynomials: C functions to models, models to the ring](https://amarshat.github.io/pqc-assay/writeup/ml-dsa-ntt-multiplies.html).
 
 > **Where the proofs stop.** Each C function is proved equal to its model, and Isabelle proves that
@@ -59,6 +60,23 @@ Each row means a pinned tool exited 0 on the stated property, in `make verify` u
 | `sign.c`, key generation: `crypto_sign_keypair` writes the `pk`, `sk` of the composition in `MLDSA_Sign.cry` for whatever bytes `randombytes` returns, so `t1`, `t0` come from `power2round(caddq(invntt(reduce(A*ntt(s1))) + s2))`; same assumed-spec boundary | SAW + z3, `make saw` |
 | `sign.c`, signing: `crypto_sign_signature` writes the signature of the accepted pass of the composition in `MLDSA_Sign.cry` (`z = reduce(invntt(ntt(c)*ntt(s1)) + y)`, `w0 - c*s2`, `c*t0`, hint, packing) when pass 0 is accepted, and when pass 0 is rejected at any of its four checks and pass 1 is accepted; same assumed-spec boundary, 32-byte messages, empty context | SAW + z3, `make saw` |
 
+## Proved (HQC)
+
+Target: `target/hqc/`, the official HQC v5.0.0 reference `gf2x.c`, unmodified, for hqc-1, hqc-3 and
+hqc-5. Run by `make hqc` (12 min 38 s on an Apple M2 Max, 2026-10-22); every spec has a mutant that
+must fail, 46 in all, and all are rejected.
+
+| Property | Checked by |
+|---|---|
+| `schoolbook_mul(s)` = the carry-less product (Cryptol `pmult`) for each leaf size the recursion reaches | SAW + rme (algebraic normal form over GF(2)) |
+| `karatsuba_mul(s)` = the Karatsuba model `km<s>` at every size it reaches, up to the full 277, 561 and 901 words, with every `tmp_buffer` access in bounds; `vect_mul`'s buffer of `16 * VEC_N_SIZE_64` words is enough | SAW + z3, children as proved overrides |
+| `vect_mul` = `fold` (reduction mod x^n − 1 stated on bits) of `km<N>`, for every input | SAW + z3 |
+
+The Karatsuba model is the product only where it is `pmult` (the leaves). That each level above is
+the product (the Karatsuba identity over GF(2)), and that `fold` is reduction mod x^n − 1, are not
+proved yet; until they are, the claim is "the C equals this Karatsuba model". See A-HQC in
+[`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md).
+
 ## Checked once, not gated
 
 This row met the bar above once but is not re-run and has no mutant that must fail, so it does not
@@ -72,6 +90,8 @@ meet the mutant policy the Proved table holds to.
 
 | Item | Status |
 |---|---|
+| HQC: the Karatsuba model equals multiplication in GF(2)[x], and `fold` is reduction mod x^n − 1 | not proved; planned in Isabelle ([`docs/ROADMAP.md`](docs/ROADMAP.md)) |
+| HQC: `gf.c`, Reed-Muller, Reed-Solomon, sampling, the KEM | not started |
 | signing in `sign.c` when the `goto rej` loop runs three or more passes | not proved (one and two passes are, above); [`docs/COMPOSITION.md`](docs/COMPOSITION.md) |
 | input ranges the theorems take, at the call sites: that `packing.c` and `poly_uniform_gamma1` get `t1`, `t0`, `s1`, `s2`, `z`, `y` from the unpack functions above; `\|A\| < 9q` (23-bit mask in `rej_uniform`), keygen's `s1`, `s2` (`rej_eta`) and `\|c\| <= 1` (`poly_challenge`) | read from the source (the three samplers are not verified) |
 | two builds are the same program apart from `nsw` / `inbounds` flags | checked by a script (`scripts/check_wrapv_diff.sh`), not proved |
@@ -137,6 +157,7 @@ macOS on Apple Silicon; tool versions are pinned in `scripts/setup.sh`.
 ./scripts/setup_isabelle_cryptol.sh  # AFP + the SAW 'Cryptol' Isabelle session (slow, once)
 make verify                          # every gated step; non-zero exit = a proof failed
 make saw                             # SAW only, fast
+make hqc                             # HQC vect_mul, three parameter sets
 make claim-lint                      # SAW specs have paired mutants (exemptions printed); cited paths exist
 ```
 
@@ -150,9 +171,9 @@ pinned bitwuzla does not load on 13).
 
 | Path | What |
 |------|------|
-| `target/` | Vendored C, pinned (`target/README.md`) |
+| `target/` | Vendored C, pinned (`target/README.md`): PQClean ML-DSA-44 and ML-KEM-512, HQC v5.0.0 |
 | `model/` | Cryptol models |
-| `proof/` | SAW scripts |
+| `proof/` | SAW scripts (`proof/hqc/` for HQC, generated by `gen_hqc.py`) |
 | `spec/` | Isabelle specs and proofs |
 | `implementations/` | RustCrypto `ml-dsa` (MIR) |
 | `qseal/`, `cap/`, `cve-anchor/` | Protocol, capability and CVE work |
@@ -161,4 +182,5 @@ pinned bitwuzla does not load on 13).
 ## License
 
 Project code: [MIT](LICENSE). The vendored C in `target/` is PQClean/pq-crystals reference code
-(CC0; see [`target/README.md`](target/README.md)).
+(CC0) and the HQC reference code (public domain, `target/hqc/LICENSE`); see
+[`target/README.md`](target/README.md).

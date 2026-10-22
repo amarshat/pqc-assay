@@ -44,3 +44,5 @@ jobs:
         run: make mlkem-reduce
       - name: ML-KEM-512 forward NTT (C ntt == Cryptol model, 7 levels, wrapv + SBV unint_z3)
         run: make mlkem-ntt
+      - name: HQC v5.0.0 vect_mul (C == fold of the Karatsuba model, hqc-1/3/5, mutants rejected)
+        run: make hqc

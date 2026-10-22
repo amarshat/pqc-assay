@@ -1050,3 +1050,37 @@ the following beyond the per-function proofs it uses as overrides.
    same obligation with the verdict written as a constant passed. The verdicts are now concrete per step (one override per
    check and step, selected by a concrete ghost counter). It failed rather than passed, so no claim
    depended on it.
+
+## A-HQC: HQC `vect_mul` (recorded 2026-10-22)
+
+`make hqc` proves, for hqc-1, hqc-3 and hqc-5, that `vect_mul` in `target/hqc/gf2x.c` (HQC v5.0.0)
+writes `fold`{n} (km<N> a b)` (`model/cryptol/hqc/Fold.cry`, `KM<p>.cry`) for every pair of
+N-word inputs. What that rests on:
+
+1. **The Karatsuba model is not yet tied to polynomial multiplication above 16 words.** `km<s>` is
+   `kmul` (Cryptol `pmult`) at the leaf sizes, and `schoolbook_mul(s)` is proved equal to it. Above
+   16 words `km<s>` is one Karatsuba level (`kstep`) over the two smaller models, written to follow
+   `karatsuba_mul`'s step 4. That `kstep` over two correct products is itself the correct product
+   (the Karatsuba identity over GF(2)), and that `fold` is reduction mod x^n - 1 for products of
+   inputs with no bit at or above n, are not proved. Both are generic lemmas, planned in Isabelle.
+   Until then the result is "C equals this Karatsuba model", not "C multiplies polynomials".
+2. **Children are uninterpreted in each level's proof.** Each `karatsuba_mul(s)` proof uses the
+   proved specs of the two child sizes as overrides and keeps `km<child>` uninterpreted, so the
+   obligation is the step-4 assembly and the buffer flow. The leaf step keeps `kmul` uninterpreted
+   for the same reason (otherwise z3 bit-blasts `pmult` on both sides of an equation between equal
+   terms; it did not finish on hqc-3's 8-word leaf).
+3. **Solvers.** `schoolbook_mul` is proved with SAW's `rme` backend (algebraic normal form over
+   GF(2)), the levels and `vect_mul` with z3, and the mutants with abc. On the PQClean HQC
+   `base_mul` (not in this repo) abc, z3 and yices did not finish in over 10 minutes where `rme`
+   took 0.17 s; that measurement is from scratch work, recorded here so the choice of backend is
+   explained, not as a gated result.
+4. **tmp_buffer.** Each `karatsuba_mul(s)` spec allocates exactly the words the recursion uses
+   (8s plus the larger child's), and leaves get one word so that a child pointer at the end of its
+   parent's buffer matches an allocation. SAW checks every access against those allocations, so
+   `vect_mul`'s `TMP_BUFFER_WORDS = 16 * VEC_N_SIZE_64` is shown to suffice: 4313 of 4432 words
+   (hqc-1), 8865 of 8976 (hqc-3), 14217 of 14416 (hqc-5), counting the one-word leaf slack.
+5. **Generated files.** `proof/hqc/gen_hqc.py` writes the SAW scripts and `KM<p>.cry`;
+   `make hqc` runs it with `--check` and fails if a committed copy differs.
+6. **Compiler.** `-O0` bitcode from the host clang, as for the ML-DSA target.
+7. **Mutants.** Every spec has a `_mut_spec` that must fail: the result for a different `b` at
+   every size, and `fold` at n - 1 for `vect_mul`.

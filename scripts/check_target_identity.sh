@@ -15,6 +15,7 @@ cd "$(dirname "$0")/.."
 
 PQCLEAN_COMMIT="202a8f96315f9ed219387a50f7e40d04af037ea8"   # PQClean, crypto_sign/ml-dsa-44/clean/
 PQCRYSTALS_COMMIT="cbcd8753a43402885c90343cd6335fb54712cda1" # pq-crystals/dilithium the clean impl tracks
+HQC_COMMIT="f46e54222ffb76706678a9ec8a43cd2188a12ab1"        # gitlab.com/pqc-hqc/hqc, tag v5.0.0 (target/hqc/)
 
 # expected_sha256  path  (pinned at vendoring; see target/README.md)
 EXPECTED="
@@ -34,11 +35,20 @@ bf99a54bc1988380418054a18bd5a14d059770e70c1aac23b6d9c914539168e0  target/pqclean
 b1157ba9d0fc7bd89029e77311373c294e52587a32c497c1bdd3c58d9c7fe964  target/pqclean/sign.h
 55eded057c9d78299e169ff5329915dc3beba291634186ca69f445c71167b5ea  target/pqclean/packing.h
 7ae401d4d5eeb41bfa738d1281d57da3f78f915ca94388d89f4f33cbe6a3fe1e  target/pqclean/randombytes.h
+b13ac4224f66fac9f0bd9f1bbee6e102c1d28e86d3ba27ac2e5c5de7036658e0  target/hqc/LICENSE
+9d8a1fc01bc5f144bed3e0cd06b3828b4386fc712be4cc2efc8749d64fb36771  target/hqc/gf2x.c
+a8c4d13088bedb6467dddc271b155b592d1e8c2ae407f05109edc23a49b3a773  target/hqc/gf2x.h
+a1bc67f2fe4bb7a24acd974dbff42d10d96f1f00a3ee37b4504dd6210f5f245e  target/hqc/hqc-1/api.h
+d3120e315e7aeb9258b95da8526d9a536b324edd4c358156bc3b99ac2580c3af  target/hqc/hqc-1/parameters.h
+024ef0fddbd6b26aa9973d5e96da034e40bdeaf81b11e554d4df883a8adb9928  target/hqc/hqc-3/api.h
+9791b1e7aab57065d7734b0dc55f96c14dc0ae3e56082118794c20b79dfc3aa0  target/hqc/hqc-3/parameters.h
+27c0bebf61d47627c214d5957198f6845afcfe54e688221c89625d76a94b076b  target/hqc/hqc-5/api.h
+7276cda5b2cacfc162408f3354aba7b20088cf9e3c613c2863434ae9a18d1e45  target/hqc/hqc-5/parameters.h
 "
 
 SHA="shasum -a 256"; command -v sha256sum >/dev/null 2>&1 && SHA="sha256sum"
 
-echo ">> verifying vendored target bytes (PQClean $PQCLEAN_COMMIT, tracks pq-crystals $PQCRYSTALS_COMMIT)"
+echo ">> verifying vendored target bytes (PQClean $PQCLEAN_COMMIT, tracks pq-crystals $PQCRYSTALS_COMMIT; HQC $HQC_COMMIT)"
 fail=0
 while read -r want path; do
   [ -z "${want:-}" ] && continue

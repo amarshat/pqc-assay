@@ -112,8 +112,21 @@ reusable pipeline beat one deep). Same repo, same pinned commit as the ML-DSA ta
   (Montgomery R=2^16 over q=3329, Barrett shift 26), far below the ~2^46 wide-Barrett wall measured
   on the RustCrypto ML-DSA side, so the reduce layer is expected to discharge with plain eager SMT.
 
+## HQC target (vendored 2026-10-22 into `target/hqc/`)
+- Source: the official HQC reference implementation, <https://gitlab.com/pqc-hqc/hqc>, tag
+  `v5.0.0`, commit `f46e54222ffb76706678a9ec8a43cd2188a12ab1` (the code that followed HQC's selection
+  by NIST in March 2025). Not PQClean's HQC, which is older round-4 code with a different `gf2x.c`.
+- Files, byte for byte: `src/ref/gf2x.c` and `src/ref/gf2x.h` as `target/hqc/gf2x.{c,h}`;
+  `src/ref/hqc-<p>/parameters.h` and `src/common/hqc-<p>/api.h` as `target/hqc/hqc-<p>/` for
+  p = 1, 3, 5; `LICENSE` (public domain). SHA-256 pinned in `scripts/check_target_identity.sh`.
+- Build: `make hqc` compiles `gf2x.c` once per parameter set with `-I target/hqc/hqc-<p>`, `-O0 -g`.
+  Nothing is edited or wrapped.
+- Subsystem: polynomial multiplication in GF(2)[x] mod x^n - 1 (`schoolbook_mul`,
+  `karatsuba_mul`, `reduce`, `vect_mul`). Reed-Muller, Reed-Solomon, sampling and the KEM layer are
+  not vendored.
+
 ## Rules
 - Never edit vendored C silently. If SAW needs a transformation (e.g. isolating a function),
   document exactly what and why here, and prefer a wrapper over an edit.
-- When vendored, the files go under `target/pqclean/` (ML-DSA) or `target/pqclean-mlkem/` (ML-KEM)
-  and are treated as read-only.
+- When vendored, the files go under `target/pqclean/` (ML-DSA), `target/pqclean-mlkem/` (ML-KEM) or
+  `target/hqc/` (HQC) and are treated as read-only.

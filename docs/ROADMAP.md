@@ -2,16 +2,39 @@
 
 The whole strategy is **depth, scoped tight**. One finished proof beats three half-built ones.
 
-## Where things stand (2026-10-11)
+## Where things stand (2026-10-22)
 
-The sections below are a log in the order the work happened; this is the summary. For ML-DSA-44's
-reference C the chain now runs from the C to `R_q`: `reduce.c`, the forward and inverse NTT on signed
-inputs (v1, v1.5, fork 1), the NTT-based multiply and the `A*y` / `A*s1` rows (v4, O7 and O8), and a
-row of verification's `A*z - c*t1*2^13` (v4). Signed-overflow freedom on a normal build is
-mechanized for the forward NTT (`make ntt-nsw`) and the polynomial layer (`make poly-nsw`), and
-still argued for the inverse NTT and the transform wrappers. The README's claim table is the
-current list. Open, in rough order: a methods paper, the inverse NTT on the default build,
-ML-KEM's inverse against FIPS 203, then v2 (optimized code) and v3 (constant time).
+The sections below are a log in the order the work happened; this is the summary.
+
+**ML-DSA-44 (PQClean reference C).** The chain runs from the C to `R_q`: `reduce.c`, the forward
+and inverse NTT on signed inputs, the NTT-based multiply, the `A*y` / `A*s1` rows and verification's
+`A*z - c*t1*2^13` row. `sign.c` key generation, verification and signing (one and two passes of the
+rejection loop) are proved to compose those functions as `MLDSA_Sign.cry` says, with hashing,
+sampling, packing and hints assumed (A-SIGN). Signed-overflow freedom on a normal build is
+mechanized for the forward NTT and the polynomial layer, argued for the inverse NTT.
+
+**Change of direction.** Apple's `corecrypto` verification (May 2026, same toolchain) already covers
+ML-DSA signing end to end on Apple's code: its `ccmldsa/sign.saw` verifies the signing loop with a
+cutpoint invariant for any number of iterations up to its counter bound, and verifies Keccak and
+the samplers that we take as assumed specs. Our ML-DSA composition is a weaker result on a different
+target, so further ML-DSA work is no longer the main line. It stays in the tree, gated, and the
+known extension (SAW 1.5.1 has the same cutpoint mechanism, so signing for every number of passes
+is reachable) is recorded but not scheduled.
+
+**HQC (new main line).** HQC was selected by NIST in March 2025 and we found no proof of its
+reference arithmetic (the nearest work covers optimized assembly for the decoder's additive FFT).
+`target/hqc/` vendors HQC v5.0.0's `gf2x.c`. `make hqc` proves `vect_mul` equal to a fold mod
+x^n - 1 of a Karatsuba model for all three parameter sets, with `schoolbook_mul` equal to Cryptol's
+`pmult` at the leaves (A-HQC). Next, in order:
+
+1. Isabelle: the Karatsuba identity over GF(2) (`kstep` over correct products is the product) and
+   `fold` = reduction mod x^n - 1, so the result reads "`vect_mul` multiplies in GF(2)[x]/(x^n - 1)".
+   SAW's Isabelle library has no `pmult`, so the leaves need a shift-and-XOR model the translator
+   can carry.
+2. `gf.c` (GF(2^8) multiply and inverse) and the encoders that are linear over GF(2) (Reed-Muller
+   and Reed-Solomon encode), which `rme` should decide directly.
+3. Decoding (Reed-Muller, Reed-Solomon with its additive FFT), which is not linear and is the hard
+   part.
 
 ## v1 — the Montgomery-reduction primitive (DONE) + the reduce.c layer
 - Delivered: `montgomery_reduce` in **PQClean's reference ML-DSA C**, proven end-to-end

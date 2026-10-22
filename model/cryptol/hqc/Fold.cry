@@ -1,0 +1,18 @@
+/* The reduction mod x^n - 1 that gf2x.c's reduce computes, stated on bits. */
+module Fold where
+
+// Bits of a little-endian word vector as one bit-vector, word 0 least significant.
+toBits : {w} (fin w) => [w][64] -> [w*64]
+toBits x = join (reverse x)
+fromBits : {w} (fin w) => [w*64] -> [w][64]
+fromBits v = reverse (split v)
+
+// p mod (x^n - 1) for a product of degree < 2n: fold the bits at positions >= n onto 0..n-1.
+fold : {n, w} (fin n, fin w, w*64 >= n, n >= 1) => [2*w][64] -> [w][64]
+fold p = fromBits (drop`{w*64} (v ^ (v >> `n)) && lowMask)
+  where v = toBits p
+        lowMask = ~((~zero) << `n) : [w*64]
+
+// An n-bit polynomial stored in w words: no bit at or above n.
+reduced : {n, w} (fin n, fin w, w*64 >= n) => [w][64] -> Bit
+reduced x = (toBits x >> `n) == zero
