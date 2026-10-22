@@ -29,8 +29,8 @@ is multiplication in GF(2)[x]/(x^n - 1) for inputs of degree below n, with no or
 Isabelle side rests on two generic lemmas: `kstep_correct` (one Karatsuba level over correct
 products is correct) and `fold_correct`. Next, in order:
 
-1. `gf.c` (GF(2^8) multiply and inverse) and the encoders that are linear over GF(2) (Reed-Muller
-   and Reed-Solomon encode), which `rme` should decide directly.
+1. Done 2026-10-22: `gf.c` (SAW, z3) and Reed-Solomon encoding for all three parameter sets
+   (SAW, rme, a property spec). Reed-Muller encoding is next.
 2. Decoding (Reed-Muller, Reed-Solomon with its additive FFT), which is not linear and is the hard
    part.
 

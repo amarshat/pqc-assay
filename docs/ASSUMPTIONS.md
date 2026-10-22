@@ -1099,3 +1099,16 @@ What that rests on:
 9. **Compiler.** `-O0` bitcode from the host clang, as for the ML-DSA target.
 10. **Mutants.** Every SAW spec has a `_mut_spec` that must fail: the result for a different `b`
     at every size, and `fold` at n - 1 for `vect_mul`.
+11. **GF(2^8) and Reed-Solomon (`proof/hqc/gf.saw`, `proof/hqc/rs_<p>.saw`).**
+    - The field is defined by Cryptol's `pmult` and `pmod` modulo 0x11D (`GF256.cry`), the
+      polynomial of v5.0.0 and of the 2025-08-22 specification. The 2026-10-12 specification
+      changes it to 0x11B; these results are for v5.0.0 and will be regenerated for the next release.
+    - The Reed-Solomon spec is a property, not an algorithm: the top k bytes are the message and
+      the codeword vanishes at alpha^1 .. alpha^(2 delta) with alpha = 2. Two codewords with the same
+      message part differ in a polynomial of degree below 2 delta with 2 delta roots, so the
+      property fixes the codeword. That uniqueness argument is not mechanized.
+    - `gf.c` and `reed_solomon.c` are compiled as one unit (`build/hqc/_rs.c`) so the RS proof uses
+      a `gf_mul` proved in the same module, not an assumed one.
+    - `gf_reduce` is documented for degree at most 14; it is proved for every 16-bit input.
+    - Field facts (a^254 is the inverse of nonzero a) are checked by z3 over all 256 elements, not
+      in Isabelle.

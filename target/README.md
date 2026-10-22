@@ -116,14 +116,17 @@ reusable pipeline beat one deep). Same repo, same pinned commit as the ML-DSA ta
 - Source: the official HQC reference implementation, <https://gitlab.com/pqc-hqc/hqc>, tag
   `v5.0.0`, commit `f46e54222ffb76706678a9ec8a43cd2188a12ab1` (the code that followed HQC's selection
   by NIST in March 2025). Not PQClean's HQC, which is older round-4 code with a different `gf2x.c`.
-- Files, byte for byte: `src/ref/gf2x.c` and `src/ref/gf2x.h` as `target/hqc/gf2x.{c,h}`;
-  `src/ref/hqc-<p>/parameters.h` and `src/common/hqc-<p>/api.h` as `target/hqc/hqc-<p>/` for
-  p = 1, 3, 5; `LICENSE` (public domain). SHA-256 pinned in `scripts/check_target_identity.sh`.
+- Files, byte for byte: `src/ref/gf2x.c`, `gf2x.h`, `gf.c`, `gf.h` and `reed_solomon.c` as
+  `target/hqc/`; `src/common/fft.h` and `crypto_memset.h` (declarations only, for
+  `reed_solomon.c`); `src/ref/hqc-<p>/parameters.h`, `src/ref/hqc-<p>/reed_solomon.h` and
+  `src/common/hqc-<p>/api.h` as `target/hqc/hqc-<p>/` for p = 1, 3, 5; `LICENSE` (public domain).
+  SHA-256 pinned in `scripts/check_target_identity.sh`.
 - Build: `make hqc` compiles `gf2x.c` once per parameter set with `-I target/hqc/hqc-<p>`, `-O0 -g`.
   Nothing is edited or wrapped.
 - Subsystem: polynomial multiplication in GF(2)[x] mod x^n - 1 (`schoolbook_mul`,
-  `karatsuba_mul`, `reduce`, `vect_mul`). Reed-Muller, Reed-Solomon, sampling and the KEM layer are
-  not vendored.
+  `karatsuba_mul`, `reduce`, `vect_mul`), GF(2^8) arithmetic (`gf.c`), and Reed-Solomon encoding
+  (`reed_solomon_encode`; the decoder is vendored with it but not verified). Reed-Muller, sampling
+  and the KEM layer are not vendored.
 
 ## Rules
 - Never edit vendored C silently. If SAW needs a transformation (e.g. isolating a function),

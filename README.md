@@ -63,7 +63,7 @@ Each row means a pinned tool exited 0 on the stated property, in `make verify` u
 ## Proved (HQC)
 
 Target: `target/hqc/`, the official HQC v5.0.0 reference `gf2x.c`, unmodified, for hqc-1, hqc-3 and
-hqc-5. Every SAW spec has a mutant that must fail; all 46 are rejected. `make hqc` took 17 min 55 s and
+hqc-5. Every SAW spec has a mutant that must fail; all 63 are rejected. `make hqc` took 19 min 18 s and
 `make hqc-isabelle` about 20 s on an Apple M2 Max (2026-10-22).
 
 | Property | Checked by |
@@ -73,9 +73,14 @@ hqc-5. Every SAW spec has a mutant that must fail; all 46 are rejected. `make hq
 | `vect_mul` = `vmul`, the model folded mod x^n − 1, for every input | SAW + z3, `make hqc` |
 | the Cryptol models lift to the Isabelle models used below | `make lift-check` regenerates and diffs |
 | `vmul a b` = `(a * b) mod (x^n − 1)` over GF(2), for inputs of degree below n (n = 17669, 35851, 57637) | Isabelle `HQC_P1/P3/P5.vmul_correct`, no oracle (`HQC_Gate`), `make hqc-isabelle` |
+| `gf.c`: `gf_carryless_mul` = `pmult`, `gf_reduce` = `pmod` by 0x11D for every 16-bit input, `gf_mul`, `gf_square`, and `gf_inverse` = a^254 (the inverse of every nonzero a) in GF(2^8) | SAW + z3, `make hqc` |
+| `reed_solomon_encode` writes a Reed-Solomon codeword: the message in the top k bytes, and the codeword polynomial vanishes at α^1 … α^2δ (α = 2), which fixes the parity bytes; [46,16], [56,24], [90,32] | SAW + rme, `make hqc` |
 
 Together: on inputs stored the way HQC stores them (no bit at or above n), the reference `vect_mul`
-multiplies in GF(2)[x]/(x^n − 1). The compiler (`-O0`), SAW, `cryptol-to-isabelle` and Isabelle are
+multiplies in GF(2)[x]/(x^n − 1). The GF(2^8) and Reed-Solomon rows use the field of v5.0.0 and of
+the 2025-08-22 HQC specification (0x11D); the 2026-10-12 specification changes the field polynomial
+to 0x11B, so those two rows will be regenerated when code for it is published. `vect_mul` does not
+depend on it. The compiler (`-O0`), SAW, `cryptol-to-isabelle` and Isabelle are
 trusted; see A-HQC in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md).
 
 ## Checked once, not gated
@@ -91,7 +96,7 @@ meet the mutant policy the Proved table holds to.
 
 | Item | Status |
 |---|---|
-| HQC: `gf.c`, Reed-Muller, Reed-Solomon, sampling, the KEM | not started |
+| HQC: Reed-Muller encoding, both decoders, sampling, the KEM | not started |
 | signing in `sign.c` when the `goto rej` loop runs three or more passes | not proved (one and two passes are, above); [`docs/COMPOSITION.md`](docs/COMPOSITION.md) |
 | input ranges the theorems take, at the call sites: that `packing.c` and `poly_uniform_gamma1` get `t1`, `t0`, `s1`, `s2`, `z`, `y` from the unpack functions above; `\|A\| < 9q` (23-bit mask in `rej_uniform`), keygen's `s1`, `s2` (`rej_eta`) and `\|c\| <= 1` (`poly_challenge`) | read from the source (the three samplers are not verified) |
 | two builds are the same program apart from `nsw` / `inbounds` flags | checked by a script (`scripts/check_wrapv_diff.sh`), not proved |

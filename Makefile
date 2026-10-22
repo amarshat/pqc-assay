@@ -66,6 +66,12 @@ hqc:
 	@mkdir -p build/hqc
 	@python3 proof/hqc/gen_hqc.py --check
 	@for p in 1 3 5; do $(CLANG) -c -emit-llvm -O0 -g -I target/hqc/hqc-$$p -I target/hqc -o build/hqc/gf2x_$$p.bc target/hqc/gf2x.c || exit 1; done
+	@$(CLANG) -c -emit-llvm -O0 -g -I target/hqc/hqc-1 -I target/hqc -o build/hqc/gf_1.bc target/hqc/gf.c
+	@echo ">> SAW: HQC gf.c, GF(2^8) multiply, square, reduce, inverse (same field in all parameter sets)"
+	CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/gf.saw
+	@printf '#include "gf.c"\n#include "reed_solomon.c"\n' > build/hqc/_rs.c
+	@for p in 1 3 5; do $(CLANG) -c -emit-llvm -O0 -g -I target/hqc/hqc-$$p -I target/hqc -o build/hqc/rs_$$p.bc build/hqc/_rs.c || exit 1; done
+	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p reed_solomon_encode is a Reed-Solomon codeword"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/rs_$$p.saw || exit 1; done
 	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p vect_mul == fold (Karatsuba model)"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/karatsuba_$$p.saw || exit 1; done
 
 ## Out of band, a measurement: which SAW backends prove the schoolbook leaf (scripts/hqc_solver_study.sh).

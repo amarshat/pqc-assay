@@ -44,6 +44,14 @@ d3120e315e7aeb9258b95da8526d9a536b324edd4c358156bc3b99ac2580c3af  target/hqc/hqc
 9791b1e7aab57065d7734b0dc55f96c14dc0ae3e56082118794c20b79dfc3aa0  target/hqc/hqc-3/parameters.h
 27c0bebf61d47627c214d5957198f6845afcfe54e688221c89625d76a94b076b  target/hqc/hqc-5/api.h
 7276cda5b2cacfc162408f3354aba7b20088cf9e3c613c2863434ae9a18d1e45  target/hqc/hqc-5/parameters.h
+1a754338d50cdd5f723e3067d593a3d969fa412e9e0b0df9cd2b97f51ca9d278  target/hqc/gf.c
+d99bde43376d8532eaef3a99ba6647cbf990d14eb5e728147759df5668a8e3b6  target/hqc/gf.h
+9e01d64d7b91dd5f8a91a9a9ead64d24cfb9240c94929be9cdd2fcf232b4551c  target/hqc/reed_solomon.c
+35582ebecd5ff2fb8be628453178d4672e1bdec4532b699a06e9d6b6c85f60da  target/hqc/fft.h
+95094245695db2847fc591523467f7005c0c32f1d663d52737a48a29b39bda6d  target/hqc/crypto_memset.h
+0261e1f19e20251d3308bab300eff3eb33f00eb57c931d8bda41854ee28ca25b  target/hqc/hqc-1/reed_solomon.h
+353c8e9a8846087229f444be055c4291f710d571f995a098228cd3a1b5d2e39b  target/hqc/hqc-3/reed_solomon.h
+93256f74d61759aa4c3cdde932341ab3396d43c4da5afb19b1528ee5a3b74757  target/hqc/hqc-5/reed_solomon.h
 "
 
 SHA="shasum -a 256"; command -v sha256sum >/dev/null 2>&1 && SHA="sha256sum"

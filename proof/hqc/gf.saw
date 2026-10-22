@@ -1,0 +1,60 @@
+// HQC v5.0.0 target/hqc/gf.c: GF(2^8) arithmetic against GF256.cry (pmult/pmod modulo 0x11D).
+// The field parameters (PARAM_M = 8, PARAM_GF_POLY = 0x11D) are the same in hqc-1, hqc-3 and hqc-5;
+// the bitcode is built with hqc-1's parameters.h. Run with CRYPTOLPATH=model/cryptol/hqc (make hqc).
+
+import "GF256.cry";
+m <- llvm_load_module "../../build/hqc/gf_1.bc";
+
+// gf_carryless_mul writes the 16-bit carry-less product, low byte first.
+let clmul8_spec post = do {
+    cp <- llvm_alloc (llvm_array 2 (llvm_int 8));
+    a <- llvm_fresh_var "a" (llvm_int 8);
+    b <- llvm_fresh_var "b" (llvm_int 8);
+    llvm_execute_func [cp, llvm_term a, llvm_term b];
+    llvm_points_to cp (llvm_term (post a b));
+};
+let clmul8_ok a b = {{ [drop`{8} r, take`{8} r] where r = (zero : [1]) # pmult a b }};
+clmul8 <- llvm_verify m "gf_carryless_mul" [] false (clmul8_spec clmul8_ok) z3;
+fails (llvm_verify m "gf_carryless_mul" [] false (clmul8_spec (\a b -> clmul8_ok a {{ b ^ 1 }})) z3);
+
+// gf_reduce: documented for degree at most 14 (products); it is correct for every 16-bit input.
+let reduce_spec post = do {
+    x <- llvm_fresh_var "x" (llvm_int 16);
+    llvm_execute_func [llvm_term x];
+    llvm_return (llvm_term (post x));
+};
+reduce <- llvm_verify m "gf_reduce" [] false (reduce_spec (\x -> {{ zext (gfRed x) : [16] }})) z3;
+fails (llvm_verify m "gf_reduce" [] false (reduce_spec (\x -> {{ zext (gfRed (x ^ 1)) : [16] }})) z3);
+
+// gf_mul and gf_square read the low byte of their 16-bit arguments; the result is a field element.
+let mul_spec post = do {
+    a <- llvm_fresh_var "a" (llvm_int 16);
+    b <- llvm_fresh_var "b" (llvm_int 16);
+    llvm_execute_func [llvm_term a, llvm_term b];
+    llvm_return (llvm_term (post a b));
+};
+gfmul <- llvm_verify m "gf_mul" [clmul8, reduce] false
+           (mul_spec (\a b -> {{ zext (gfMul (drop a) (drop b)) : [16] }})) z3;
+fails (llvm_verify m "gf_mul" [clmul8, reduce] false
+           (mul_spec (\a b -> {{ zext (gfMul (drop a) (drop (b ^ 1))) : [16] }})) z3);
+
+let square_spec post = do {
+    a <- llvm_fresh_var "a" (llvm_int 16);
+    llvm_execute_func [llvm_term a];
+    llvm_return (llvm_term (post a));
+};
+gfsq <- llvm_verify m "gf_square" [reduce] false (square_spec (\a -> {{ zext (gfMul (drop a) (drop a)) : [16] }})) z3;
+fails (llvm_verify m "gf_square" [reduce] false (square_spec (\a -> {{ zext (gfMul (drop a) (drop (a ^ 1))) : [16] }})) z3);
+
+// gf_inverse is a^254 by an addition chain; a^254 is the inverse of every nonzero a, and 0 maps to 0.
+let inverse_spec post = do {
+    a <- llvm_fresh_var "a" (llvm_int 16);
+    llvm_execute_func [llvm_term a];
+    llvm_return (llvm_term (post a));
+};
+llvm_verify m "gf_inverse" [gfmul, gfsq] false (inverse_spec (\a -> {{ zext (gfPow (drop a) 254) : [16] }})) z3;
+fails (llvm_verify m "gf_inverse" [gfmul, gfsq] false (inverse_spec (\a -> {{ zext (gfPow (drop a) 253) : [16] }})) z3);
+prove_print z3 {{ \(a : GF) -> if a == 0 then gfPow a 254 == 0 else gfMul a (gfPow a 254) == 1 }};
+
+print "VERIFIED: gf.c gf_carryless_mul == pmult, gf_reduce == pmod 0x11D (all 16-bit inputs), gf_mul, gf_square, gf_inverse == a^254 = a^-1 (a /= 0)";
+print "NON-VACUOUS: a perturbed spec of each of the five functions is rejected";

@@ -1,0 +1,19 @@
+/* GF(2^8) as HQC defines it: polynomials over GF(2) modulo x^8 + x^4 + x^3 + x^2 + 1 (0x11D),
+   with Cryptol's pmult and pmod as the definition of the arithmetic. */
+module GF256 where
+
+type GF = [8]
+
+gfPoly : [9]
+gfPoly = <| x^^8 + x^^4 + x^^3 + x^^2 + 1 |>   // 0x11D
+
+gfMul : GF -> GF -> GF
+gfMul a b = pmod (pmult a b) gfPoly
+
+// Reduction of a product (degree <= 14, held in 16 bits).
+gfRed : [16] -> GF
+gfRed x = pmod x gfPoly
+
+gfPow : GF -> [8] -> GF
+gfPow a e = foldl (\acc i -> if e ! i then gfMul acc (pw2 i) else acc) 1 [0 .. 7]
+  where pw2 i = iterate (\x -> gfMul x x) a @ i
