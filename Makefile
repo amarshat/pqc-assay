@@ -112,7 +112,7 @@ hqc-rme-scaling: hqc
 
 hqc-isabelle:
 	@python3 proof/hqc/gen_hqc.py --check
-	@echo ">> Isabelle (HQC): vmul (reference) and vmulA (AVX2, hqc-1/3) == (a * b) mod (x^n - 1) in GF(2)[x], oracle-free"
+	@echo ">> Isabelle (HQC): vmul (reference) and vmulA (AVX2) == (a * b) mod (x^n - 1) in GF(2)[x], three sets, oracle-free"
 	$(ISABELLE) build -b -d spec/isabelle/hqc -v HQC
 
 ## ML-KEM go-wide slice 1: the ML-KEM-512 reduce layer, C == Cryptol (bit-exact) plus the
