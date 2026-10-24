@@ -63,9 +63,9 @@ Each row means a pinned tool exited 0 on the stated property, in `make verify` u
 ## Proved (HQC)
 
 Target: `target/hqc/`, the official HQC v5.0.0 reference `gf2x.c`, unmodified, for hqc-1, hqc-3 and
-hqc-5. Every SAW spec has a mutant that must fail; all 69 are rejected. `make hqc` took 19 min 18 s
-before the Reed-Muller and concatenated-encoder steps were added (2026-10-22); those take 84 s,
-134 s and 347 s for the three sets (2026-10-24); `make hqc-isabelle` about 20 s; Apple M2 Max.
+hqc-5. Every SAW spec has a mutant that must fail; all 69 are rejected. `make hqc` took 27 min 57 s
+(2026-10-24, all steps; the encoder scripts alone take 84 s, 134 s and 347 s) and `make hqc-isabelle`
+about 30 s on an Apple M2 Max.
 
 | Property | Checked by |
 |---|---|
