@@ -92,7 +92,9 @@ Target: `target/hqc/avx2/`, the x86-64 `gf2x.c` of the same v5.0.0 commit (unmod
 normalized in three documented places, A-HQC item 12), cross-compiled at `-O0` with Homebrew clang 22.
 `make hqc-avx` runs SAW at `-v 3`; the three scripts took 377 s (hqc-1), 2666 s (hqc-3) and 2520 s
 (hqc-5) on the same machine (2026-10-24, hqc-5 measured on its own after the full run passed); all
-23 mutants are rejected.
+23 mutants are rejected. `make hqc-avx-poison` (out of band) reruns the same proofs on bitcode
+whose poison lanes are all ones instead of zero; it passed on 2026-10-24 (1283, 1732, 2367 s), so the
+lanes the IR normalization fixes do not reach the result (A-HQC item 12).
 
 | Property | Checked by |
 |---|---|

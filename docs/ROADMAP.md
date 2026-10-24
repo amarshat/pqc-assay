@@ -37,9 +37,8 @@ at every level. `make hqc-isabelle` proves the three models are multiplication m
 input of degree below n. Verifying it found
 an out-of-bounds read in `toom_3_mult` (hqc-1 and hqc-3; benign in effect), reported to the HQC
 team by email on 2026-10-24 (A-HQC item 12 describes the slack the proof needs; "Open findings").
-Next: rerun the AVX2 proofs with a second constant (all ones) in the zeroed poison lanes, so that
-"the lanes are overwritten before use" is checked rather than read from the source (done for
-`karat_mult_1` only); then either the decoders or the additive-FFT multiplier of Chen, Chiu, Peng
+Done 2026-10-24: the AVX2 proofs rerun with all-ones poison lanes (`make hqc-avx-poison`, all three
+sets pass). Next: either the decoders or the additive-FFT multiplier of Chen, Chiu, Peng
 and Yang (TCHES 2026, ePrint 2026/014; public-domain artifact with portable reference C), whose
 SAW half fits this pipeline and whose Isabelle half needs the subspace-evaluation math.
 

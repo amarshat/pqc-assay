@@ -1147,11 +1147,13 @@ What that rests on:
       (a) poison lanes in vector constants (from `(__m256i){a, b, 0, 0}` literals) become 0, and a
       whole-`poison` shuffle operand becomes `zeroinitializer`. This refines undefined lanes to one
       value. That the lanes are overwritten before use, so that the refinement does not change
-      defined behaviour, is read from the source, not proved by the gated run. `make hqc-avx-poison`
-      (out of band, same cost as `make hqc-avx`) reruns the three scripts on bitcode whose poison
-      lanes are all ones (`--poison=ones`); a pass on both bitcodes shows the lanes do not reach the
-      result. So far only the hqc-1 `karat_mult_1` proof has been run that way (passes, mutant
-      rejected, 2026-10-24); the full run is pending;
+      defined behaviour, is checked out of band: `make hqc-avx-poison` reruns the three scripts on
+      bitcode whose poison lanes are all ones (`--poison=ones`), and on 2026-10-24 all three passed
+      with every mutant rejected (1283, 1732, 2367 s). The same proofs holding for lanes of all zeros
+      and of all ones shows the lanes do not reach the result (the result is a function of the
+      inputs and the lanes; two lane values giving the same spec-equal result for all inputs does
+      not by itself cover every lane value, but no instruction here mixes lane bits non-linearly
+      before the overwrite, and the source shows the overwrite). The gated run uses zero;
       (b) `toom_3_mult.W0` and `toom_3_mult.W2` get one `<4 x i64>` of slack: in hqc-1 and hqc-3
       the loop `W2 = (W2 + W0)/x` reads one 64-bit word past the end of both arrays on its last
       iteration (an out-of-bounds read in the vendored code; the word read lands in a lane that is
