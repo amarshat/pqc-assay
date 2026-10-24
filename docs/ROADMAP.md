@@ -42,6 +42,14 @@ sets pass). Next: either the decoders or the additive-FFT multiplier of Chen, Ch
 and Yang (TCHES 2026, ePrint 2026/014; public-domain artifact with portable reference C), whose
 SAW half fits this pipeline and whose Isabelle half needs the subspace-evaluation math.
 
+Standing milestone (set 2026-10-24, from a public challenge after the AVX2 result): the additive-FFT
+multiplier of Chen, Chiu, Peng and Yang (TCHES 2026, ePrint 2026/014), in two parts, in this order.
+(1) Prove that the additive FFT and the CRT reconstruction compute exactly binary polynomial
+multiplication modulo x^n - 1 for every valid HQC input (the Cryptol model and its Isabelle proof).
+(2) Prove that the actual C, including its GF(2^64) arithmetic and memory operations, implements
+that model (SAW, stage by stage, reference variant first, then AVX2). Not started; the assessment and
+plan are in private notes until work begins.
+
 1. Done 2026-10-22: `gf.c` (SAW, z3) and Reed-Solomon encoding for all three parameter sets
    (SAW, rme, a property spec). Done 2026-10-24: Reed-Muller encoding for all three sets (SAW, z3,
    the affine-function property of RM(1,7)) and `code_encode` on top of both encoders, so the
