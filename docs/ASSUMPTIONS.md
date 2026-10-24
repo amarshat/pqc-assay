@@ -1225,4 +1225,25 @@ What that rests on:
       executed, not assumed, but nothing is claimed about it (the buffer is a local).
     - The composition is proved: `code_encode` is verified against the code with the callees as
       proved overrides, not read from the source. Nothing is claimed about `code_decode`.
+15. **Source-level mutants, a measurement (`scripts/hqc_c_mutants.sh`, `make hqc-c-mutants`, run
+    2026-10-24).** The gated mutants of item 10 perturb the specification. This script instead makes
+    a one-line change to a copy of the C (target/ is never edited), compiles it as the gated run does,
+    and runs the unchanged hqc-1 script against it, with 1200 s per run; a run that reaches the limit
+    is "no result", never "caught". It does not gate anything.
+     - Reference `gf2x.c`, `karatsuba_1.saw`: dropping the high-word half of a schoolbook term; dropping
+       `z0` from the Karatsuba middle term; placing the recursive child's buffer at `7 * n` instead of
+       `8 * n` (an overlap); shifting by `PARAM_N - 1` instead of `PARAM_N` in `reduce`; dropping the
+       final mask in `reduce`. The last four are caught in 147 to 159 s, each at the level the change
+       belongs to (`karatsuba_mul(17)`, the child override, `vect_mul`, `vect_mul`). The schoolbook
+       mutant gets no result in 1200 s under the script's `rme` leaf tactic, and is caught in 54 s with
+       that one tactic swapped to `abc`: `rme` builds a canonical form, so it proves a true equality in
+       seconds but did not refute a false one in 20 minutes (the gated leaf mutant of item 10 uses `abc`
+       for the same reason).
+     - AVX2 `hqc-1/gf2x.c`, `avx_1.saw`: replacing the prefix XOR of `divide_by_x_plus_one_256` by a
+       copy. No result in 1200 s on an Apple M2 Max: the script's earlier levels pass and z3 is still
+       inside the `toom_3_mult` obligation at the limit. (Recorded as measured; a longer run is noted
+       here if it finishes.)
+     - What this shows: a wrong program at four of the five reference levels makes the unchanged
+       script fail where the change is; it says nothing about C bugs of other shapes, and a refutation
+       can cost more than the proof.
 

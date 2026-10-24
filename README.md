@@ -63,7 +63,11 @@ Each row means a pinned tool exited 0 on the stated property, in `make verify` u
 ## Proved (HQC)
 
 Target: `target/hqc/`, the official HQC v5.0.0 reference `gf2x.c`, unmodified, for hqc-1, hqc-3 and
-hqc-5. Every SAW spec has a mutant that must fail; all 69 are rejected. `make hqc` took 27 min 57 s
+hqc-5. Every SAW spec has a mutant that must fail; all 69 are rejected. Out of band, `make hqc-c-mutants`
+runs the unchanged hqc-1 scripts against six one-line source mutants of copies of the C: four of the five
+reference mutants are caught in 147 to 159 s at the level the change belongs to, the schoolbook mutant is
+caught in 54 s with the leaf tactic swapped from `rme` to `abc` (no result in 1200 s under `rme`), and the
+AVX2 mutant got no result in 1200 s (A-HQC item 15 in `docs/ASSUMPTIONS.md`). `make hqc` took 27 min 57 s
 (2026-10-24, all steps; the encoder scripts alone take 84 s, 134 s and 347 s) and `make hqc-isabelle`
 about 30 s on an Apple M2 Max; on an otherwise idle Apple M4 Pro (macOS 15.8) `make hqc` took 21 min 30 s
 the same day, exit 0.

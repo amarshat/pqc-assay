@@ -59,6 +59,10 @@ plan are in private notes until work begins.
    return nothing in 600 s; bitwuzla, measured on the M2 Max once the binary's `mpfr` was installed,
    also returns nothing in 600 s (the M4 Pro has no Homebrew, so bitwuzla does not load there). rme
    scaling (`make hqc-rme-scaling`, sizes 8, 9, 17, 18, 34, 35 words): 4, 7, 31, 37, 220, 362 s on the
+   Source-level mutants (`make hqc-c-mutants`, 2026-10-24): five reference one-liners, four caught in
+   147 to 159 s at their own level, the schoolbook one caught in 54 s with the leaf tactic swapped to
+   abc (rme: no result in 1200 s); the AVX2 prefix-XOR mutant no result in 1200 s (A-HQC item 15).
+   rme scaling, continued:
    M2 Max (64 GB, not idle); 4, 6, 24, 30, 492 s on the idle M4 Pro, where the 35-word run was killed
    by the system (SIGKILL) at 517 s: on the M2 Max that run peaks at 30.8 GB resident
    (`/usr/bin/time -l`, 396 s), more than the M4 Pro has. `make hqc` on the idle M4 Pro: 21 min 30 s, exit 0.
