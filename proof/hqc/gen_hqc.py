@@ -319,15 +319,16 @@ K5_STATICS = ([f'{a}{ij}' for ij in ('01', '02', '03', '04', '12', '13', '14', '
 
 
 def avx_scratch(p):
-    """(global, words) for every static array toom_3_mult (and karat_mult_5) uses. W0 and W2 carry the
-    one vector of slack scripts/hqc_avx_ir.py adds."""
+    """(global, words) for every static array toom_3_mult (and karat_mult_5) uses. For hqc-1 and hqc-3,
+    W0 and W2 carry the one vector of slack scripts/hqc_avx_ir.py --slack adds; hqc-5 has no slack."""
     T = AVX[p]['tvec']
+    s4 = 0 if p == 5 else 4
     if p == 5:                               # arrays sized T + 2 vectors, tmp 2 (T + 2) + 3, ro256 tTM3R / 2
         uv, w, tmp, ro = 4 * (T + 2), 8 * (T + 2), 4 * (2 * (T + 2) + 3), 4 * ((PARAM_N_MULT[5] + 384) // 64 // 2)
     else:                                    # arrays sized T vectors, tmp 4 T, ro256 6 T
         uv, w, tmp, ro = 4 * T, 8 * T, 16 * T, 24 * T
     g = [(f'toom_3_mult.{n}', uv) for n in ('U0', 'V0', 'U1', 'V1', 'U2', 'V2')]
-    g += [('toom_3_mult.W0', w + 4), ('toom_3_mult.W1', w), ('toom_3_mult.W2', w + 4), ('toom_3_mult.W3', w), ('toom_3_mult.W4', w),
+    g += [('toom_3_mult.W0', w + s4), ('toom_3_mult.W1', w), ('toom_3_mult.W2', w + s4), ('toom_3_mult.W3', w), ('toom_3_mult.W4', w),
           ('toom_3_mult.tmp', tmp), ('toom_3_mult.ro256', ro)]
     if p == 5:
         g += [(f'karat_mult_5.{n}', 64) for n in K5_STATICS[0]] + [(f'karat_mult_5.{n}', 128) for n in K5_STATICS[1]]

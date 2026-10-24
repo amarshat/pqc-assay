@@ -35,9 +35,11 @@ Toom-3 / multi-way Karatsuba model down to `pclmulqdq`, for all three parameter 
 at every level. `make hqc-isabelle` proves the three models are multiplication mod x^n - 1
 (`AVX_P<p>.vmulA_correct`, oracle-free), so the reference and AVX2 `vect_mul` agree on every
 input of degree below n. Verifying it found
-an out-of-bounds read in `toom_3_mult` (hqc-1 and hqc-3; benign in effect); it is being reported
-to the HQC team before this work is published (A-HQC item 12 describes the slack the proof needs).
-Next: per-level timings for the write-up; then the decoders, which are the hard part.
+an out-of-bounds read in `toom_3_mult` (hqc-1 and hqc-3; benign in effect), reported to the HQC
+team by email on 2026-10-24 (A-HQC item 12 describes the slack the proof needs; "Open findings").
+Next: rerun the AVX2 proofs with a second constant (all ones) in the zeroed poison lanes, so that
+"the lanes are overwritten before use" is checked rather than read from the source (done for
+`karat_mult_1` only); then the decoders, which are the hard part.
 
 1. Done 2026-10-22: `gf.c` (SAW, z3) and Reed-Solomon encoding for all three parameter sets
    (SAW, rme, a property spec). Done 2026-10-24: Reed-Muller encoding for all three sets (SAW, z3,

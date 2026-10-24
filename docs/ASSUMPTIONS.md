@@ -749,6 +749,18 @@ hardest. Each is a real gap, not a formality.
   evidence property covers reassembly of already-decoded fragments only.
 
 ## Open findings (handle per CONTRIBUTING.md → Responsible disclosure)
+- **OF-5 (2026-10-24, found by SAW while verifying the HQC v5.0.0 AVX2 multiplier): `toom_3_mult`
+  in `src/x86_64/common/hqc-1/gf2x.c` and `hqc-3/gf2x.c` reads one 64-bit word past the end of its
+  static arrays `W0` and `W2`.** The interpolation step `W2 = (W2 + W0)/x` loads 256 bits from a
+  one-word offset, so its last iteration reads word `8 * T_TM3R_3W_256` of arrays that have
+  `8 * T_TM3R_3W_256` words. The word read lands in a lane the code zeroes before use; the SAW proof
+  (A-HQC item 12, with one vector of slack on the two arrays and symbolic contents in it) shows the
+  result does not depend on it. It is undefined behaviour in a `-O3 -flto` build and a sanitizer
+  with global redzones would flag it. hqc-5's `toom_3_mult` sizes its arrays with `+ 2` and its proof
+  runs without slack. Fix: one more vector in the two declarations, or stop the loop one vector early.
+  - Reported by email to the HQC team on 2026-10-24. Awaiting their response. Not a security issue
+    as far as we can tell: the word read is the first word of the next static array in the same
+    object, and it does not reach the output.
 - **OF-3 (2026-08-22, found in an audit of the submitted artifact): the Q-SEAL property-5 ProVerif
   result was vacuous.** In `qseal/proof/proverif/property5.pv` the channel `internalCb` is declared private and
   no process ever performs `out(internalCb, ...)`. `internalObserved` is the only process that emits
@@ -1132,21 +1144,27 @@ What that rests on:
     - **IR normalization** (`scripts/hqc_avx_ir.py`, run by `make hqc-avx`). The C is not edited;
       three things in the bitcode are, and each is a trusted step:
       (a) poison lanes in vector constants (from `(__m256i){a, b, 0, 0}` literals) become 0, and a
-      whole-`poison` shuffle operand becomes `zeroinitializer`; the lanes are overwritten before use,
-      so this refines undefined lanes without changing defined behaviour;
+      whole-`poison` shuffle operand becomes `zeroinitializer`. This refines undefined lanes to one
+      value. That the lanes are overwritten before use, so that the refinement does not change
+      defined behaviour, is read from the source, not proved by the gated run. `make hqc-avx-poison`
+      (out of band, same cost as `make hqc-avx`) reruns the three scripts on bitcode whose poison
+      lanes are all ones (`--poison=ones`); a pass on both bitcodes shows the lanes do not reach the
+      result. So far only the hqc-1 `karat_mult_1` proof has been run that way (passes, mutant
+      rejected, 2026-10-24); the full run is pending;
       (b) `toom_3_mult.W0` and `toom_3_mult.W2` get one `<4 x i64>` of slack: in hqc-1 and hqc-3
       the loop `W2 = (W2 + W0)/x` reads one 64-bit word past the end of both arrays on its last
       iteration (an out-of-bounds read in the vendored code; the word read lands in a lane that is
       zeroed before use, so the result does not depend on it). SAW stops at the read; with the slack
       the proof goes through and shows the output is independent of the extra word (it is
       symbolic). The proof therefore covers the C only on the assumption that the over-read does
-      not fault, which is what happens with the surrounding static arrays. hqc-5 does not have the
-      over-read and gets the slack for uniformity;
+      not fault, which is what happens with the surrounding static arrays. hqc-5's arrays keep
+      their declared size (the Makefile passes `--slack` only for hqc-1 and hqc-3) and its proof
+      passes, so for hqc-5 SAW witnesses that `toom_3_mult` stays in bounds;
       (c) two constant GEPs with a negative index (`&ro256[T] - 2`), which Crucible rejects, are
       rewritten as the same address in bytes from the array base.
     - **Intrinsics.** `llvm.x86.pclmulqdq` is implemented by SAW 1.5.1 and trusted. Three others
       have no semantics in SAW and are given theirs as assumed specs: `llvm.x86.avx.ldu.dq.256`
-      loads 32 bytes; `llvm.x86.avx2.psrli.q` and `pslli.q` shift each 64-bit lane (a count of 64
+      loads 32 bytes; `llvm.x86.avx2.psrli.q` and `llvm.x86.avx2.pslli.q` shift each 64-bit lane (a count of 64
       or more gives 0, as in Cryptol). The counts used are 5/59, 11/53 and 37/27.
     - **Scratch state.** The static scratch arrays of `toom_3_mult` and `karat_mult_5` start with
       arbitrary (symbolic) contents in every spec, so the result is shown not to depend on them.
@@ -1163,7 +1181,10 @@ What that rests on:
       and every `fails` mutant was rejected).
     - **Composition with the reference.** `HQC_P<p>.vmul_correct` and `AVX_P<p>.vmulA_correct`
       give the same polynomial for inputs of degree below n, so (with the two SAW results) the
-      reference `vect_mul` and the AVX2 `vect_mul` agree on such inputs, for all three sets.
+      reference `vect_mul` and the AVX2 `vect_mul` agree on such inputs, for all three sets, on the
+      `VEC_N_SIZE_BYTES` bytes the AVX2 function writes: the reference writes `VEC_N_SIZE_64` whole
+      words, the AVX2 `reduce` copies `VEC_N_SIZE_BYTES` bytes and leaves the rest of the 284-,
+      572- or 936-word output buffer as the caller had it.
 13. **Reed-Muller encoding (`proof/hqc/code_<p>.saw`, recorded 2026-10-24).** `target/hqc/reed_muller.c`
     (with `reed_muller.h`, `data_structures.h`) is vendored from the same commit.
     - The spec is a property (`RM.cry`): the RM(1,7) codeword of a message byte m is the vector of

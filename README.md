@@ -86,6 +86,31 @@ to 0x11B, so those two rows will be regenerated when code for it is published. `
 depend on it. The compiler (`-O0`), SAW, `cryptol-to-isabelle` and Isabelle are
 trusted; see A-HQC in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md).
 
+### The AVX2 implementation
+
+Target: `target/hqc/avx2/`, the x86-64 `gf2x.c` of the same v5.0.0 commit (unmodified; the bitcode is
+normalized in three documented places, A-HQC item 12), cross-compiled at `-O0` with Homebrew clang 22.
+`make hqc-avx` runs SAW at `-v 3`; the three scripts took 377 s (hqc-1), 2666 s (hqc-3) and 2520 s
+(hqc-5) on the same machine (2026-10-24, hqc-5 measured on its own after the full run passed); all
+23 mutants are rejected.
+
+| Property | Checked by |
+|---|---|
+| `karat_mult_1` (nine `pclmulqdq`, 4 words) = the reference leaf model `km4` | SAW + rme, `make hqc-avx` |
+| `karat_mult_2/4/8` (and `_16` for hqc-3/5) = `km8` … `km64`, each with the level below as a proved override | SAW + z3, `make hqc-avx` |
+| `karat_mult3` (hqc-1/3, three-way) = `k3step`, `karat_mult_5` (hqc-5, five-way, 35 static arrays allocated uninitialised) = `k5step` | SAW + z3, `make hqc-avx` |
+| `toom_3_mult` = `toom3` (hqc-1/3, y = x^64) or `toom5` (hqc-5, y = x^256), its 13 static arrays starting with arbitrary contents; for hqc-1/3 two of them carry one vector of IR slack because of the over-read reported as OF-5 (A-HQC item 12), for hqc-5 none | SAW + z3, `make hqc-avx` |
+| `vect_mul` writes the `VEC_N_SIZE_BYTES` bytes of `vmulA a b` = `fold` of the Toom product, for every input | SAW + z3, `make hqc-avx` |
+| the AVX2 Cryptol models lift to the Isabelle models used below | `make lift-check` |
+| `vmulA a b` = `(a * b) mod (x^n − 1)` over GF(2), for inputs of degree below n; `k3step`, `k5step`, `toom3` (any third size ≥ 4) and `toom5` are proved as generic lemmas | Isabelle `AVX_P1/P3/P5.vmulA_correct`, no oracle (`HQC_Gate`), `make hqc-isabelle` |
+
+Together with the reference rows: on inputs of degree below n the reference and the AVX2 `vect_mul`
+compute the same polynomial, so they agree on the `VEC_N_SIZE_BYTES` bytes the AVX2 function writes
+(the reference writes `VEC_N_SIZE_64` whole words; the AVX2 one leaves the rest of its 284-, 572- or
+936-word output buffer untouched). SAW's `pclmulqdq` semantics are trusted and three AVX intrinsics
+(unaligned load, per-lane shifts) have assumed specs; A-HQC item 12 lists them with the IR
+normalizations.
+
 ## Checked once, not gated
 
 This row met the bar above once but is not re-run and has no mutant that must fail, so it does not
@@ -165,7 +190,7 @@ macOS on Apple Silicon; tool versions are pinned in `scripts/setup.sh`.
 ./scripts/setup_isabelle_cryptol.sh  # AFP + the SAW 'Cryptol' Isabelle session (slow, once)
 make verify                          # every gated step; non-zero exit = a proof failed
 make saw                             # SAW only, fast
-make hqc hqc-isabelle                # HQC vect_mul, three parameter sets
+make hqc hqc-avx hqc-isabelle        # HQC: reference and AVX2 vect_mul, field ops, encoders; three parameter sets
 make claim-lint                      # SAW specs have paired mutants (exemptions printed); cited paths exist
 ```
 

@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: hqc hqc-avx hqc-isabelle hqc-solvers ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: hqc hqc-avx hqc-avx-poison hqc-isabelle hqc-solvers hqc-rme-scaling ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -85,7 +85,7 @@ hqc-avx:
 	@mkdir -p build/hqc
 	@python3 proof/hqc/gen_hqc.py --check
 	@test -x $(AVX_LLVM_BIN)llvm-dis || { echo "!! $(AVX_LLVM_BIN)llvm-dis not found; set AVX_CLANG to a clang with llvm-dis/llvm-as beside it"; exit 1; }
-	@for p in 1 3 5; do $(AVX_CLANG) --target=x86_64-apple-darwin -isysroot $$(xcrun --show-sdk-path) -D_FORTIFY_SOURCE=0 -O0 -mavx -mavx2 -mbmi -mpclmul -I target/hqc/avx2/hqc-$$p -I target/hqc/hqc-$$p -I target/hqc/avx2 -I target/hqc -c -emit-llvm -o build/hqc/avx_$$p.raw.bc target/hqc/avx2/hqc-$$p/gf2x.c || exit 1; python3 scripts/hqc_avx_ir.py $(AVX_LLVM_BIN) build/hqc/avx_$$p.raw.bc build/hqc/avx_$$p.bc || exit 1; done
+	@for p in 1 3 5; do $(AVX_CLANG) --target=x86_64-apple-darwin -isysroot $$(xcrun --show-sdk-path) -D_FORTIFY_SOURCE=0 -O0 -mavx -mavx2 -mbmi -mpclmul -I target/hqc/avx2/hqc-$$p -I target/hqc/hqc-$$p -I target/hqc/avx2 -I target/hqc -c -emit-llvm -o build/hqc/avx_$$p.raw.bc target/hqc/avx2/hqc-$$p/gf2x.c || exit 1; python3 scripts/hqc_avx_ir.py $(AVX_LLVM_BIN) build/hqc/avx_$$p.raw.bc build/hqc/avx_$$p.bc $$([ $$p = 5 ] || echo --slack) || exit 1; done
 	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p AVX2 vect_mul == vmulBytes (karat_mult ladder, karat_mult3/5, toom_3_mult, reduce)"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) -v 3 proof/hqc/avx_$$p.saw || exit 1; echo "VERIFIED: hqc-$$p AVX2 vect_mul == vmulBytes (saw exit 0: every llvm_verify in proof/hqc/avx_$$p.saw passed and every mutant was rejected)"; done
 ## -v 3 (warnings and errors, no info): at the default level SAW prints, for each rejected mutant, the
 ## solver's model of the uninterpreted child function as a term; for the hqc-3 vect_mul mutant that
@@ -97,6 +97,18 @@ hqc-avx:
 ## Out of band, a measurement: which SAW backends prove the schoolbook leaf (scripts/hqc_solver_study.sh).
 hqc-solvers: hqc
 	./scripts/hqc_solver_study.sh 1 8 600
+
+## Out of band: the same AVX2 proofs on bitcode whose poison lanes are all ones instead of zero. A pass on
+## both bitcodes shows the lanes do not reach the result (hqc_avx_ir.py item 1). Same cost as hqc-avx.
+hqc-avx-poison:
+	@mkdir -p build/hqc/poison
+	@test -x $(AVX_LLVM_BIN)llvm-dis || { echo "!! $(AVX_LLVM_BIN)llvm-dis not found; set AVX_CLANG"; exit 1; }
+	@for p in 1 3 5; do $(AVX_CLANG) --target=x86_64-apple-darwin -isysroot $$(xcrun --show-sdk-path) -D_FORTIFY_SOURCE=0 -O0 -mavx -mavx2 -mbmi -mpclmul -I target/hqc/avx2/hqc-$$p -I target/hqc/hqc-$$p -I target/hqc/avx2 -I target/hqc -c -emit-llvm -o build/hqc/poison/avx_$$p.raw.bc target/hqc/avx2/hqc-$$p/gf2x.c || exit 1; python3 scripts/hqc_avx_ir.py $(AVX_LLVM_BIN) build/hqc/poison/avx_$$p.raw.bc build/hqc/poison/avx_$$p.bc --poison=ones $$([ $$p = 5 ] || echo --slack) || exit 1; sed 's|../../build/hqc/avx_'$$p'.bc|avx_'$$p'.bc|' proof/hqc/avx_$$p.saw > build/hqc/poison/avx_$$p.saw; done
+	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p AVX2 proofs on all-ones poison lanes"; (cd build/hqc/poison && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) -v 3 avx_$$p.saw) || exit 1; echo "VERIFIED: hqc-$$p AVX2 proofs pass with all-ones poison lanes (saw exit 0)"; done
+
+## Out of band, a measurement: how rme scales with the leaf size (scripts/hqc_rme_scaling.sh).
+hqc-rme-scaling: hqc
+	./scripts/hqc_rme_scaling.sh 1 "8 9 17 18 34 35" 1200
 
 hqc-isabelle:
 	@python3 proof/hqc/gen_hqc.py --check
