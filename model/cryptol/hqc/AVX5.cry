@@ -6,6 +6,7 @@ module AVX5 where
 import GF2X
 import KM5
 import AVXK
+import Toom5
 import Fold
 
 km16 : [16][64] -> [16][64] -> [32][64]
@@ -17,51 +18,9 @@ km64 = kstep`{32,32} km32 km32
 km320 : [320][64] -> [320][64] -> [640][64]
 km320 = k5step`{64} km64
 
-// Prefix XOR over 256-bit blocks: exact division by (1 + x^256) (divide_by_x_plus_one_256, hqc-5).
-pxorv : {n} (fin n, n >= 1) => [4*n][64] -> [4*n][64]
-pxorv t = join (drop`{1} (scanl (^) zero (split`{n} t)))
-
-// toom_3_mult for hqc-5: 936-word inputs, three 312-word thirds padded to 320 for the 5-way
-// Karatsuba. Points 0, 1, y, 1 + y, infinity with y = x^256 (one 256-bit block).
+// toom_3_mult: 936 words = three thirds of 78 blocks, each padded by two blocks for karat_mult_5.
 tm5 : [936][64] -> [936][64] -> [1872][64]
-tm5 a b = r0 ^ r1 ^ r2 ^ r3 ^ r4
-  where
-    m = km320
-    pad : [312][64] -> [320][64]
-    pad x = x # zero
-    u0 = pad (take`{312} a)
-    u1 = pad (take`{312,312} (drop`{312} a))
-    u2 = pad (drop`{624} a)
-    v0 = pad (take`{312} b)
-    v1 = pad (take`{312,312} (drop`{312} b))
-    v2 = pad (drop`{624} b)
-    su = u0 ^ u1 ^ u2
-    sv = v0 ^ v1 ^ v2
-    w1 = m sv su
-    w0a = take`{320} ((zero : [4][64]) # u1) ^ take`{320} ((zero : [8][64]) # u2)
-    w4a = take`{320} ((zero : [4][64]) # v1) ^ take`{320} ((zero : [8][64]) # v2)
-    w3a = su ^ w0a
-    w2a = sv ^ w4a
-    w0b = w0a ^ u0
-    w4b = w4a ^ v0
-    p3 = m w3a w2a
-    p2 = m w0b w4b
-    p4 = m u2 v2
-    p0 = m u0 v0
-    q3 = p3 ^ p2
-    q1 = w1 ^ (take`{624} p0 # (zero : [16][64]))
-    q2 = drop`{4} (p2 ^ p0) # (zero : [4][64])
-    t1 = ((q2 ^ q3 ^ p4) # (zero : [12][64])) ^ ((zero : [12][64]) # take`{624} p4 # (zero : [16][64]))
-    d2 = pxorv`{160} (take`{640} t1)
-    t2 = drop`{4} (q3 ^ q1) # (zero : [4][64])
-    d3 = pxorv`{160} t2
-    e1 = q1 ^ d2 ^ p4
-    e2 = d2 ^ d3
-    r0 = take`{624} p0 # (zero : [1248][64])
-    r1 = (zero : [312][64]) # take`{624} e1 # (zero : [936][64])
-    r2 = (zero : [624][64]) # e2 # (zero : [608][64])
-    r3 = (zero : [936][64]) # d3 # (zero : [296][64])
-    r4 = (zero : [1248][64]) # take`{624} p4
+tm5 = toom5 km320
 
 // vect_mul: the Toom product folded mod x^57637 - 1, as 901 words; vmulBytes is the 7205 bytes the
 // C writes (little-endian words).

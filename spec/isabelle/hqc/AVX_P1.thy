@@ -4,7 +4,8 @@ theory AVX_P1
 begin
 
 text \<open>The AVX2 hqc-1 model: each Karatsuba size multiplies (\<open>kstep_correct\<close>), the
-  km96 level multiplies (k3step_correct), the Toom-3 product multiplies (toom3_correct), and vmulA is the product mod x^n - 1.\<close>
+  km96 level multiplies (k3step_correct), the Toom-3 product multiplies
+  (toom3_correct), and vmulA is the product mod x^n - 1.\<close>
 
 lemma km8_correct: "Pl (L (km8 a b)) = Pl (L a) * Pl (L b)"
   unfolding km8_def

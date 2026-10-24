@@ -6,7 +6,7 @@ enable_experimental;
 import "GF2X.cry";
 import "KM5.cry";
 import "AVXK.cry";
-import "Toom.cry";
+import "Toom5.cry";
 import "Fold.cry";
 import "AVX5.cry";
 m <- llvm_load_module "../../build/hqc/avx_5.bc";

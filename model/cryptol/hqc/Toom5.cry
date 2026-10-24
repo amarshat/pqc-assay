@@ -1,0 +1,64 @@
+/* Toom-Cook 3 as the hqc-5 AVX2 toom_3_mult computes it, at 256-bit granularity: the 936-word
+   operand is three thirds of 78 256-bit blocks (312 words), each padded by two blocks (to 320) for
+   the 5-way Karatsuba m below, evaluated at 0, 1, y, 1 + y and infinity with y = x^256 (one block).
+   Interpolation divides by y (drop one block) and by 1 + y (prefix XOR of blocks). Separate
+   functions with concrete sizes (the Isabelle proof then has numerals, not symbolic lengths); the
+   shapes follow the C (where it truncates a product to 2 thirds, so does the model). */
+module Toom5 where
+
+// Prefix XOR over 256-bit blocks: exact division by 1 + x^256 (divide_by_x_plus_one_256).
+pxorv : {n} (fin n, n >= 1) => [4*n][64] -> [4*n][64]
+pxorv t = join (drop`{1} (scanl (^) zero (split`{n} t)))
+
+// The three 312-word thirds, each padded by two blocks.
+vU0 : [936][64] -> [320][64]
+vU0 a = take`{312} a # zero
+vU1 : [936][64] -> [320][64]
+vU1 a = take`{312} (drop`{312} a) # zero
+vU2 : [936][64] -> [320][64]
+vU2 a = drop`{624} a # zero
+
+// U(1), and (u1 + u2 y) y = u1 y + u2 y^2.
+vS : [936][64] -> [320][64]
+vS a = vU0 a ^ vU1 a ^ vU2 a
+vY : [936][64] -> [320][64]
+vY a = take`{320} ((zero : [4][64]) # vU1 a) ^ take`{320} ((zero : [8][64]) # vU2 a)
+
+// Interpolation from W(0) = p0, W(1) = w1, W(y) = p2, W(1 + y) = p3, W(inf) = p4 (640 words each).
+// W(1) + W(0), with W(0) taken to 2 thirds (the C adds W0 over 2 T_TM3R_3W_256 blocks only).
+vQ1 : [640][64] -> [640][64] -> [640][64]
+vQ1 w1 p0 = w1 ^ (take`{624} p0 # zero)
+// (W(y) + W(0)) / y
+vQ2 : [640][64] -> [640][64] -> [640][64]
+vQ2 p0 p2 = drop`{4} (p2 ^ p0) # zero
+// W2 + W3 = (Q2 + W(1 + y) + W(y) + W(inf) (1 + y^3)) / (1 + y)
+vD2 : [640][64] -> [640][64] -> [640][64] -> [640][64] -> [640][64]
+vD2 p0 p2 p3 p4 = pxorv`{160} (vQ2 p0 p2 ^ p3 ^ p2 ^ p4 ^ ((zero : [12][64]) # take`{624} p4 # (zero : [4][64])))
+// W3 = (W(1 + y) + W(y) + W(1) + W(0)) / (y (1 + y))
+vD3 : [640][64] -> [640][64] -> [640][64] -> [640][64] -> [640][64]
+vD3 w1 p0 p2 p3 = pxorv`{160} (drop`{4} (p3 ^ p2 ^ vQ1 w1 p0) # zero)
+// W1 = W(1) + W(0) + (W2 + W3) + W(inf);  W2 = (W2 + W3) + W3
+vE1 : [640][64] -> [640][64] -> [640][64] -> [640][64] -> [640][64] -> [640][64]
+vE1 w1 p0 p2 p3 p4 = vQ1 w1 p0 ^ vD2 p0 p2 p3 p4 ^ p4
+vE2 : [640][64] -> [640][64] -> [640][64] -> [640][64] -> [640][64] -> [640][64]
+vE2 w1 p0 p2 p3 p4 = vD2 p0 p2 p3 p4 ^ vD3 w1 p0 p2 p3
+
+// W0 + W1 Y + W2 Y^2 + W3 Y^3 + W4 Y^4 with Y = x^19968 (312 words), in 1872 words; W0, W1 and W4
+// enter with 2 thirds (624 words), W2 and W3 in full, as the C recomposes them.
+vR : [640][64] -> [640][64] -> [640][64] -> [640][64] -> [640][64] -> [1872][64]
+vR w0 w1 w2 w3 w4 = r0 ^ r1 ^ r2 ^ r3 ^ r4
+  where
+    r0 = take`{624} w0 # (zero : [1248][64])
+    r1 = (zero : [312][64]) # take`{624} w1 # (zero : [936][64])
+    r2 = (zero : [624][64]) # w2 # (zero : [608][64])
+    r3 = (zero : [936][64]) # w3 # (zero : [296][64])
+    r4 = (zero : [1248][64]) # take`{624} w4
+
+toom5 : ([320][64] -> [320][64] -> [640][64]) -> [936][64] -> [936][64] -> [1872][64]
+toom5 m a b = vR p0 (vE1 w1 p0 p2 p3 p4) (vE2 w1 p0 p2 p3 p4) (vD3 w1 p0 p2 p3) p4
+  where
+    w1 = m (vS b) (vS a)
+    p3 = m (vS a ^ vY a) (vS b ^ vY b)
+    p2 = m (vY a ^ vU0 a) (vY b ^ vU0 b)
+    p4 = m (vU2 a) (vU2 b)
+    p0 = m (vU0 a) (vU0 b)

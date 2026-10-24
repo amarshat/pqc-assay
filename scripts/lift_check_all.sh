@@ -34,6 +34,7 @@ spec/isabelle/hqc/AVXK.thy	model/cryptol/hqc/AVXK.cry
 spec/isabelle/hqc/AVX1.thy	model/cryptol/hqc/AVX1.cry
 spec/isabelle/hqc/AVX3.thy	model/cryptol/hqc/AVX3.cry
 spec/isabelle/hqc/AVX5.thy	model/cryptol/hqc/AVX5.cry
+spec/isabelle/hqc/Toom5.thy	model/cryptol/hqc/Toom5.cry
 "
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT

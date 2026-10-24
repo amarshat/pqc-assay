@@ -1116,10 +1116,12 @@ What that rests on:
     `src/x86_64/common/hqc-<p>/gf2x.c` of the same v5.0.0 commit. `make hqc-avx` proves, for each
     parameter set, that its `vect_mul` writes `vmulBytes a b`: the bytes of `fold`{n}` applied to a
     Toom-3 / Karatsuba model (`AVX<p>.cry`, `AVXK.cry`, `Toom.cry`) whose leaf is `pclmulqdq`.
-    `make hqc-isabelle` proves `AVX_P1.vmulA_correct` and `AVX_P3.vmulA_correct`: the word-level
-    model is `(a * b) mod (x^n - 1)` for inputs of degree below n. The hqc-5 Toom step
-    (256-bit granularity, `tm5`) is proved in SAW but its Isabelle lemma is not written yet; for
-    hqc-5 the Isabelle chain stops at `km320_correct` (the 5-way Karatsuba level).
+    `make hqc-isabelle` proves `AVX_P<p>.vmulA_correct` for the three sets: the word-level model
+    is `(a * b) mod (x^n - 1)` for inputs of degree below n. The Toom step is `Toom.cry` (hqc-1
+    and hqc-3, y = x^64, generic in the third size) and `Toom5.cry` (hqc-5, y = x^256, the
+    sizes written out: 312-word thirds padded to 320, 640-word products), each split into small
+    functions with one Isabelle lemma per function (`AVX_Toom`, `AVX_Toom5`); the exact divisions
+    by y and 1 + y are `Pl_tl`/`Pl_drop4` and `Pl_pxl`/`Pl_pxb`.
     - **Bitcode.** The C is cross-compiled for x86_64 (`--target=x86_64-apple-darwin`, the host
       SDK) at `-O0` with `-mavx -mavx2 -mbmi -mpclmul -D_FORTIFY_SOURCE=0`. Upstream builds it with
       `-O3 -flto`. The proof is about the `-O0` IR, as for every other target here.

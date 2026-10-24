@@ -19,7 +19,7 @@ ML \<open>
     check "HQC_P5.vmul_correct" @{thm HQC_P5.vmul_correct};
     check "AVX_P1.vmulA_correct" @{thm AVX_P1.vmulA_correct};
     check "AVX_P3.vmulA_correct" @{thm AVX_P3.vmulA_correct};
-    check "AVX_P5.km320_correct" @{thm AVX_P5.km320_correct}
+    check "AVX_P5.vmulA_correct" @{thm AVX_P5.vmulA_correct}
   end
 \<close>
 
