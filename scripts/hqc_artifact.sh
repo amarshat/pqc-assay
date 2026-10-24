@@ -83,6 +83,20 @@ Section 8 (solvers): `scripts/hqc_solver_study.sh`, `scripts/hqc_rme_scaling.sh`
 `ASSUMPTIONS-HQC.md`, OF-5. Appendix: the theorem statements in the theories named above.
 MD
 
+# HQC-only Makefile: the variable header and the hqc* targets (the full Makefile names other targets).
+python3 - "$OUT" <<'PY'
+import re, sys
+out = sys.argv[1]; s = open('Makefile').read()
+header = s[:s.index('\n## ')]                      # variables up to the first target comment
+blocks = re.split(r'\n(?=## )', s)
+keep = [b for b in blocks if re.search(r'^hqc[-\w]*:', b, re.M)]
+tail = ('## Every committed lifted theory equals cryptol-to-isabelle of its Cryptol source.\nlift-check:\n'
+        '\t./scripts/lift_check_all.sh\n\nclean:\n\trm -rf build\n')
+phony = '.PHONY: hqc hqc-avx hqc-avx-poison hqc-isabelle hqc-solvers hqc-rme-scaling lift-check clean'
+header = re.sub(r'^\.PHONY:.*$', phony, header, flags=re.M)
+open(f'{out}/Makefile', 'w').write(header.rstrip('\n') + '\n\n' + '\n\n'.join(b.strip('\n') for b in keep) + '\n\n' + tail)
+PY
+
 # Scrub: nothing author-identifying may remain ("hadamard" matches 'amar' and is excluded).
 if grep -rIl -i -E 'akshat|amarshat|mpsc\.io|zenodo' "$OUT" | grep -v '^$'; then
   echo "!! identifying strings remain (above)" >&2; exit 1
