@@ -3,7 +3,7 @@ theory HQC_Gate
 begin
 
 text \<open>Build-time gate: the vmul theorems (reference) and vmulA theorems (AVX2) depend on no oracle and no proof hole. In particular
-  no \<open>by eval\<close> (code generator) and no \<open>sorry\<close> anywhere in their dependency cone.\<close>
+  no \<open>by eval\<close> (code generator) and no skipped proof anywhere in their dependency cone.\<close>
 
 ML \<open>
   let
