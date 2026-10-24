@@ -1149,11 +1149,10 @@ What that rests on:
       value. That the lanes are overwritten before use, so that the refinement does not change
       defined behaviour, is checked out of band: `make hqc-avx-poison` reruns the three scripts on
       bitcode whose poison lanes are all ones (`--poison=ones`), and on 2026-10-24 all three passed
-      with every mutant rejected (1283, 1732, 2367 s). The same proofs holding for lanes of all zeros
-      and of all ones shows the lanes do not reach the result (the result is a function of the
-      inputs and the lanes; two lane values giving the same spec-equal result for all inputs does
-      not by itself cover every lane value, but no instruction here mixes lane bits non-linearly
-      before the overwrite, and the source shows the overwrite). The gated run uses zero;
+      with every mutant rejected (1283, 1732, 2367 s). Two lane values giving the same, spec-equal
+      result for all inputs is evidence, not a proof, that the lanes do not reach the result (a
+      proof would need symbolic lanes, which a constant cannot carry); the source shows the
+      overwrite. The gated run uses zero;
       (b) `toom_3_mult.W0` and `toom_3_mult.W2` get one `<4 x i64>` of slack: in hqc-1 and hqc-3
       the loop `W2 = (W2 + W0)/x` reads one 64-bit word past the end of both arrays on its last
       iteration (an out-of-bounds read in the vendored code; the word read lands in a lane that is
