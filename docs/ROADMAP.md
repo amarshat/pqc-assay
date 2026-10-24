@@ -52,7 +52,8 @@ SAW half fits this pipeline and whose Isabelle half needs the subspace-evaluatio
    also returns nothing in 600 s (the M4 Pro has no Homebrew, so bitwuzla does not load there). rme
    scaling (`make hqc-rme-scaling`, sizes 8, 9, 17, 18, 34, 35 words): 4, 7, 31, 37, 220, 362 s on the
    M2 Max (64 GB, not idle); 4, 6, 24, 30, 492 s on the idle M4 Pro, where the 35-word run was killed
-   by the system (SIGKILL) at 517 s. `make hqc` on the idle M4 Pro: 21 min 30 s, exit 0.
+   by the system (SIGKILL) at 517 s: on the M2 Max that run peaks at 30.8 GB resident
+   (`/usr/bin/time -l`, 396 s), more than the M4 Pro has. `make hqc` on the idle M4 Pro: 21 min 30 s, exit 0.
 2. Decoding (Reed-Muller, Reed-Solomon with its additive FFT), which is not linear and is the hard
    part.
 
