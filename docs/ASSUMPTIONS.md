@@ -762,6 +762,11 @@ hardest. Each is a real gap, not a formality.
   - Reported by email to the HQC team on 2026-10-24. Awaiting their response. Not a security issue
     as far as we can tell: the word read is the first word of the next static array in the same
     object, and it does not reach the output.
+  - AddressSanitizer does not catch it as written: `_mm256_lddqu_si256` lowers to the
+    `llvm.x86.avx.ldu.dq.256` intrinsic, which ASan does not instrument. The upstream hqc-1 AVX2
+    KAT test built with `-O2 -fsanitize=address` for x86-64 and run under Rosetta on macOS 15 gives
+    0 reports and matching answers (2026-10-24); with `_mm256_loadu_si256` substituted for `lddqu`
+    in `gf2x.c`, ASan reports a 32-byte global-buffer-overflow in the first key generation.
 - **OF-3 (2026-08-22, found in an audit of the submitted artifact): the Q-SEAL property-5 ProVerif
   result was vacuous.** In `qseal/proof/proverif/property5.pv` the channel `internalCb` is declared private and
   no process ever performs `out(internalCb, ...)`. `internalObserved` is the only process that emits
