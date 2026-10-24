@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: hqc hqc-isabelle hqc-solvers ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: hqc hqc-avx hqc-isabelle hqc-solvers ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -74,13 +74,23 @@ hqc:
 	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p reed_solomon_encode is a Reed-Solomon codeword"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/rs_$$p.saw || exit 1; done
 	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p vect_mul == fold (Karatsuba model)"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/karatsuba_$$p.saw || exit 1; done
 
+## The AVX2 build of the same function (target/hqc/avx2, x86_64, pclmulqdq): SAW proves vect_mul ==
+## vmulBytes, the Toom-3 / multi-way Karatsuba model folded mod x^n - 1. The bitcode is cross-compiled
+## for x86_64 at -O0 and normalized by scripts/hqc_avx_ir.py (docs/ASSUMPTIONS.md, A-HQC-AVX).
+LLVM_BIN := $(dir $(shell command -v $(CLANG)))
+hqc-avx:
+	@mkdir -p build/hqc
+	@python3 proof/hqc/gen_hqc.py --check
+	@for p in 1 3 5; do $(CLANG) --target=x86_64-apple-darwin -isysroot $$(xcrun --show-sdk-path) -D_FORTIFY_SOURCE=0 -O0 -mavx -mavx2 -mbmi -mpclmul -I target/hqc/avx2/hqc-$$p -I target/hqc/hqc-$$p -I target/hqc/avx2 -I target/hqc -c -emit-llvm -o build/hqc/avx_$$p.raw.bc target/hqc/avx2/hqc-$$p/gf2x.c || exit 1; python3 scripts/hqc_avx_ir.py $(LLVM_BIN) build/hqc/avx_$$p.raw.bc build/hqc/avx_$$p.bc || exit 1; done
+	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p AVX2 vect_mul == vmulBytes (karat_mult ladder, karat_mult3/5, toom_3_mult, reduce)"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/avx_$$p.saw || exit 1; done
+
 ## Out of band, a measurement: which SAW backends prove the schoolbook leaf (scripts/hqc_solver_study.sh).
 hqc-solvers: hqc
 	./scripts/hqc_solver_study.sh 1 8 600
 
 hqc-isabelle:
 	@python3 proof/hqc/gen_hqc.py --check
-	@echo ">> Isabelle (HQC): vmul == (a * b) mod (x^n - 1) in GF(2)[x], hqc-1/3/5, oracle-free"
+	@echo ">> Isabelle (HQC): vmul (reference) and vmulA (AVX2, hqc-1/3) == (a * b) mod (x^n - 1) in GF(2)[x], oracle-free"
 	$(ISABELLE) build -b -d spec/isabelle/hqc -v HQC
 
 ## ML-KEM go-wide slice 1: the ML-KEM-512 reduce layer, C == Cryptol (bit-exact) plus the

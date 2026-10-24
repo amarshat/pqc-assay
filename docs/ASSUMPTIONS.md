@@ -1112,3 +1112,44 @@ What that rests on:
     - `gf_reduce` is documented for degree at most 14; it is proved for every 16-bit input.
     - Field facts (a^254 is the inverse of nonzero a) are checked by z3 over all 256 elements, not
       in Isabelle.
+12. **The AVX2 implementation (A-HQC-AVX, recorded 2026-10-24).** `target/hqc/avx2/` vendors
+    `src/x86_64/common/hqc-<p>/gf2x.c` of the same v5.0.0 commit. `make hqc-avx` proves, for each
+    parameter set, that its `vect_mul` writes `vmulBytes a b`: the bytes of `fold`{n}` applied to a
+    Toom-3 / Karatsuba model (`AVX<p>.cry`, `AVXK.cry`, `Toom.cry`) whose leaf is `pclmulqdq`.
+    `make hqc-isabelle` proves `AVX_P1.vmulA_correct` and `AVX_P3.vmulA_correct`: the word-level
+    model is `(a * b) mod (x^n - 1)` for inputs of degree below n. The hqc-5 Toom step
+    (256-bit granularity, `tm5`) is proved in SAW but its Isabelle lemma is not written yet; for
+    hqc-5 the Isabelle chain stops at `km320_correct` (the 5-way Karatsuba level).
+    - **Bitcode.** The C is cross-compiled for x86_64 (`--target=x86_64-apple-darwin`, the host
+      SDK) at `-O0` with `-mavx -mavx2 -mbmi -mpclmul -D_FORTIFY_SOURCE=0`. Upstream builds it with
+      `-O3 -flto`. The proof is about the `-O0` IR, as for every other target here.
+    - **IR normalization** (`scripts/hqc_avx_ir.py`, run by `make hqc-avx`). The C is not edited;
+      three things in the bitcode are, and each is a trusted step:
+      (a) poison lanes in vector constants (from `(__m256i){a, b, 0, 0}` literals) become 0, and a
+      whole-`poison` shuffle operand becomes `zeroinitializer`; the lanes are overwritten before use,
+      so this refines undefined lanes without changing defined behaviour;
+      (b) `toom_3_mult.W0` and `toom_3_mult.W2` get one `<4 x i64>` of slack: in hqc-1 and hqc-3
+      the loop `W2 = (W2 + W0)/x` reads one 64-bit word past the end of both arrays on its last
+      iteration (an out-of-bounds read in the vendored code; the word read lands in a lane that is
+      zeroed before use, so the result does not depend on it). SAW stops at the read; with the slack
+      the proof goes through and shows the output is independent of the extra word (it is
+      symbolic). The proof therefore covers the C only on the assumption that the over-read does
+      not fault, which is what happens with the surrounding static arrays. hqc-5 does not have the
+      over-read and gets the slack for uniformity;
+      (c) two constant GEPs with a negative index (`&ro256[T] - 2`), which Crucible rejects, are
+      rewritten as the same address in bytes from the array base.
+    - **Intrinsics.** `llvm.x86.pclmulqdq` is implemented by SAW 1.5.1 and trusted. Three others
+      have no semantics in SAW and are given theirs as assumed specs: `llvm.x86.avx.ldu.dq.256`
+      loads 32 bytes; `llvm.x86.avx2.psrli.q` and `pslli.q` shift each 64-bit lane (a count of 64
+      or more gives 0, as in Cryptol). The counts used are 5/59, 11/53 and 37/27.
+    - **Scratch state.** The static scratch arrays of `toom_3_mult` and `karat_mult_5` start with
+      arbitrary (symbolic) contents in every spec, so the result is shown not to depend on them.
+      Static arrays whose contents are read before being written in a call would show up here.
+    - **Output.** `vect_mul` writes `VEC_N_SIZE_BYTES` bytes (2209, 4482, 7205) with `memcpy`, so
+      the SAW spec is a byte view (`vmulBytes`), defined from `vmulA` by splitting words
+      little-endian. The Isabelle theorem is about `vmulA`.
+    - **Mutants.** Every spec has a mutant (bit 0 of the result flipped) that must fail, at every
+      Karatsuba size, the multi-way level, Toom and `vect_mul`.
+    - **Composition with the reference.** `HQC_P<p>.vmul_correct` and `AVX_P<p>.vmulA_correct`
+      give the same polynomial for inputs of degree below n, so (with the two SAW results) the
+      reference `vect_mul` and the AVX2 `vect_mul` agree on such inputs, for hqc-1 and hqc-3.

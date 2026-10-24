@@ -127,6 +127,11 @@ reusable pipeline beat one deep). Same repo, same pinned commit as the ML-DSA ta
   `karatsuba_mul`, `reduce`, `vect_mul`), GF(2^8) arithmetic (`gf.c`), and Reed-Solomon encoding
   (`reed_solomon_encode`; the decoder is vendored with it but not verified). Reed-Muller, sampling
   and the KEM layer are not vendored.
+- AVX2 (vendored 2026-10-24 into `target/hqc/avx2/`): `src/x86_64/common/hqc-<p>/gf2x.c` and
+  `parameters.h` for p = 1, 3, 5, and `src/x86_64/common/gf2x.h`, byte for byte from the same
+  commit; SHA-256 pinned in `scripts/check_target_identity.sh`. `make hqc-avx` cross-compiles each
+  for x86_64 at `-O0` and then rewrites three things in the bitcode (never the C) with
+  `scripts/hqc_avx_ir.py`; what and why is in `docs/ASSUMPTIONS.md`, A-HQC item 12.
 
 ## Rules
 - Never edit vendored C silently. If SAW needs a transformation (e.g. isolating a function),

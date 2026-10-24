@@ -52,6 +52,13 @@ d99bde43376d8532eaef3a99ba6647cbf990d14eb5e728147759df5668a8e3b6  target/hqc/gf.
 0261e1f19e20251d3308bab300eff3eb33f00eb57c931d8bda41854ee28ca25b  target/hqc/hqc-1/reed_solomon.h
 353c8e9a8846087229f444be055c4291f710d571f995a098228cd3a1b5d2e39b  target/hqc/hqc-3/reed_solomon.h
 93256f74d61759aa4c3cdde932341ab3396d43c4da5afb19b1528ee5a3b74757  target/hqc/hqc-5/reed_solomon.h
+520299dee42260aa13ed9b3bd7e19d8a87f553f60e81ca0b1738efc19e1468aa  target/hqc/avx2/gf2x.h
+f66470b16dc27541a10766297bd5baa8c031241c73d2551c0dcfacef1bad4276  target/hqc/avx2/hqc-1/gf2x.c
+4a4c9bb9c5bc46d2bc2ea4edccff3ae7562d90068be3c4b1a67d54e3f12a5fa3  target/hqc/avx2/hqc-3/gf2x.c
+61cd83cac56be72d4c2e5980b0c04602d51d862a40ac41de98a06f7e053b5f4a  target/hqc/avx2/hqc-5/gf2x.c
+67d797df231275bfe2ab49ba7dffc1d8779fee349ffc6b6eab4703dc00e1e2d2  target/hqc/avx2/hqc-1/parameters.h
+6f8fc90e9977fb2c56aa29a072ba0ac63d83dd46019f5ce2306c96b2c16adf0b  target/hqc/avx2/hqc-3/parameters.h
+151c83ea287d686c391c062f6d31ad1fe40ea2310fb221ff8f46e269a3793acf  target/hqc/avx2/hqc-5/parameters.h
 "
 
 SHA="shasum -a 256"; command -v sha256sum >/dev/null 2>&1 && SHA="sha256sum"

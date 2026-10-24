@@ -1,0 +1,75 @@
+/* The multi-way Karatsuba levels of the HQC v5.0.0 AVX2 gf2x.c (target/hqc/avx2): karat_mult3
+   splits into three t-word parts (six products), karat_mult_5 into five (fifteen products). Each is
+   one level over a product m of the parts, like kstep in GF2X.cry. */
+module AVXK where
+
+// One 3-way Karatsuba level (karat_mult3): six products of t-word thirds.
+k3step : {t} (fin t, t >= 1) => ([t][64] -> [t][64] -> [2*t][64]) -> [3*t][64] -> [3*t][64] -> [6*t][64]
+k3step m a b = sh0 d0 ^ sh1 (d3 ^ d0 ^ d1) ^ sh2 (d4 ^ d0 ^ d2 ^ d1) ^ sh3 (d5 ^ d1 ^ d2) ^ sh4 d2
+  where
+    a0 = take`{t} a
+    a1 = take`{t,t} (drop`{t} a)
+    a2 = drop`{2*t} a
+    b0 = take`{t} b
+    b1 = take`{t,t} (drop`{t} b)
+    b2 = drop`{2*t} b
+    d0 = m a0 b0
+    d1 = m a1 b1
+    d2 = m a2 b2
+    d3 = m (a0 ^ a1) (b0 ^ b1)
+    d4 = m (a0 ^ a2) (b0 ^ b2)
+    d5 = m (a1 ^ a2) (b1 ^ b2)
+    sh0 x = x # (zero : [4*t][64])
+    sh1 x = (zero : [t][64]) # x # (zero : [3*t][64])
+    sh2 x = (zero : [2*t][64]) # x # (zero : [2*t][64])
+    sh3 x = (zero : [3*t][64]) # x # (zero : [t][64])
+    sh4 x = (zero : [4*t][64]) # x
+
+// One 5-way Karatsuba level (karat_mult_5): 15 products of t-word fifths. Coefficient k of the
+// product is the sum of a_i b_j over i + j = k, with a_i b_j (i < j) = x_ij + d_i + d_j.
+k5step : {t} (fin t, t >= 1) => ([t][64] -> [t][64] -> [2*t][64]) -> [5*t][64] -> [5*t][64] -> [10*t][64]
+k5step m a b = sh0 c0 ^ sh1 c1 ^ sh2 c2 ^ sh3 c3 ^ sh4 c4 ^ sh5 c5 ^ sh6 c6 ^ sh7 c7 ^ sh8 c8
+  where
+    a0 = take`{t} a
+    a1 = take`{t,3*t} (drop`{t} a)
+    a2 = take`{t,2*t} (drop`{2*t} a)
+    a3 = take`{t,t} (drop`{3*t} a)
+    a4 = drop`{4*t} a
+    b0 = take`{t} b
+    b1 = take`{t,3*t} (drop`{t} b)
+    b2 = take`{t,2*t} (drop`{2*t} b)
+    b3 = take`{t,t} (drop`{3*t} b)
+    b4 = drop`{4*t} b
+    d0 = m a0 b0
+    d1 = m a1 b1
+    d2 = m a2 b2
+    d3 = m a3 b3
+    d4 = m a4 b4
+    x01 = m (a0 ^ a1) (b0 ^ b1)
+    x02 = m (a0 ^ a2) (b0 ^ b2)
+    x03 = m (a0 ^ a3) (b0 ^ b3)
+    x04 = m (a0 ^ a4) (b0 ^ b4)
+    x12 = m (a2 ^ a1) (b2 ^ b1)
+    x13 = m (a3 ^ a1) (b3 ^ b1)
+    x14 = m (a4 ^ a1) (b4 ^ b1)
+    x23 = m (a2 ^ a3) (b2 ^ b3)
+    x24 = m (a2 ^ a4) (b2 ^ b4)
+    x34 = m (a3 ^ a4) (b3 ^ b4)
+    c0 = d0
+    c1 = x01 ^ d0 ^ d1
+    c2 = x02 ^ d0 ^ d2 ^ d1
+    c3 = x03 ^ d0 ^ d3 ^ x12 ^ d1 ^ d2
+    c4 = x04 ^ d0 ^ d4 ^ x13 ^ d1 ^ d3 ^ d2
+    c5 = x14 ^ d1 ^ d4 ^ x23 ^ d2 ^ d3
+    c6 = x24 ^ d2 ^ d4 ^ d3
+    c7 = x34 ^ d3 ^ d4
+    c8 = d4
+    sh0 x = x # (zero : [8*t][64])
+    sh1 x = (zero : [1*t][64]) # x # (zero : [7*t][64])
+    sh2 x = (zero : [2*t][64]) # x # (zero : [6*t][64])
+    sh3 x = (zero : [3*t][64]) # x # (zero : [5*t][64])
+    sh4 x = (zero : [4*t][64]) # x # (zero : [4*t][64])
+    sh5 x = (zero : [5*t][64]) # x # (zero : [3*t][64])
+    sh6 x = (zero : [6*t][64]) # x # (zero : [2*t][64])
+    sh7 x = (zero : [7*t][64]) # x # (zero : [1*t][64])
+    sh8 x = (zero : [8*t][64]) # x

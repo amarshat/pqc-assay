@@ -29,6 +29,11 @@ spec/isabelle/hqc/Fold.thy	model/cryptol/hqc/Fold.cry
 spec/isabelle/hqc/KM1.thy	model/cryptol/hqc/KM1.cry
 spec/isabelle/hqc/KM3.thy	model/cryptol/hqc/KM3.cry
 spec/isabelle/hqc/KM5.thy	model/cryptol/hqc/KM5.cry
+spec/isabelle/hqc/Toom.thy	model/cryptol/hqc/Toom.cry
+spec/isabelle/hqc/AVXK.thy	model/cryptol/hqc/AVXK.cry
+spec/isabelle/hqc/AVX1.thy	model/cryptol/hqc/AVX1.cry
+spec/isabelle/hqc/AVX3.thy	model/cryptol/hqc/AVX3.cry
+spec/isabelle/hqc/AVX5.thy	model/cryptol/hqc/AVX5.cry
 "
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT

@@ -13,4 +13,14 @@ session HQC = "Cryptol" +
     HQC_P1
     HQC_P3
     HQC_P5
+    Toom
+    AVXK
+    AVX1
+    AVX3
+    AVX5
+    AVX_Seq
+    AVX_Toom
+    AVX_P1
+    AVX_P3
+    AVX_P5
     HQC_Gate

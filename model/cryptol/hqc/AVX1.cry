@@ -1,0 +1,30 @@
+/* The AVX2 vect_mul of HQC v5.0.0 for hqc-1 (target/hqc/avx2/hqc-1/gf2x.c): a Karatsuba ladder
+   over 256-bit vectors (karat_mult_1 .. karat_mult_8 on 4 .. 32 words), the 3-way level karat_mult3
+   on 96 words, Toom-3 on 282 words, and the fold mod x^17669 - 1. The sizes below 16 words are
+   the generated KM1.cry (the same shift-and-XOR leaf as the reference model). */
+module AVX1 where
+
+import GF2X
+import KM1
+import AVXK
+import Toom
+import Fold
+
+km16 : [16][64] -> [16][64] -> [32][64]
+km16 = kstep`{8,8} km8 km8
+km32 : [32][64] -> [32][64] -> [64][64]
+km32 = kstep`{16,16} km16 km16
+km96 : [96][64] -> [96][64] -> [192][64]
+km96 = k3step`{32} km32
+
+// toom_3_mult: 282 words = three 94-word thirds, each padded to 96 for karat_mult3.
+tm1 : [282][64] -> [282][64] -> [568][64]
+tm1 = toom3`{94} km96
+
+// vect_mul: the Toom product of the first 282 words of each 284-word input, folded mod x^17669 - 1,
+// as 277 words; vmulBytes is the 2209 bytes the C writes (little-endian words).
+vmulA : [284][64] -> [284][64] -> [277][64]
+vmulA a b = fold`{17669} (take`{554} (tm1 (take`{282} a) (take`{282} b)))
+
+vmulBytes : [284][64] -> [284][64] -> [2209][8]
+vmulBytes a b = take`{2209} (join [ reverse (split`{8} x) | x <- vmulA a b ])

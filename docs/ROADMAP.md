@@ -29,6 +29,16 @@ is multiplication in GF(2)[x]/(x^n - 1) for inputs of degree below n, with no or
 Isabelle side rests on two generic lemmas: `kstep_correct` (one Karatsuba level over correct
 products is correct) and `fold_correct`. Next, in order:
 
+**HQC, the AVX2 implementation (2026-10-24).** `target/hqc/avx2/` vendors the x86_64 `gf2x.c` of
+the same release, the code deployments run. `make hqc-avx` (SAW) proves its `vect_mul` equal to a
+Toom-3 / multi-way Karatsuba model down to `pclmulqdq`, for all three parameter sets, with mutants
+at every level. `make hqc-isabelle` proves the hqc-1 and hqc-3 models are multiplication mod
+x^n - 1 (`AVX_P1/P3.vmulA_correct`, oracle-free), so the reference and AVX2 `vect_mul` agree. The
+hqc-5 Toom step works at 256-bit granularity and its Isabelle lemma is next. Verifying it found
+an out-of-bounds read in `toom_3_mult` (hqc-1 and hqc-3; benign in effect); it is being reported
+to the HQC team before this work is published (A-HQC item 12 describes the slack the proof needs).
+Next: the hqc-5 Toom lemma, the Reed-Muller encoder, per-level timings for the write-up.
+
 1. Done 2026-10-22: `gf.c` (SAW, z3) and Reed-Solomon encoding for all three parameter sets
    (SAW, rme, a property spec). Reed-Muller encoding is next.
 2. Decoding (Reed-Muller, Reed-Solomon with its additive FFT), which is not linear and is the hard
