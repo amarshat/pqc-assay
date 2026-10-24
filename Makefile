@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: hqc hqc-avx hqc-avx-poison hqc-isabelle hqc-solvers hqc-rme-scaling ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: hqc hqc-avx hqc-avx-poison hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -105,6 +105,11 @@ hqc-avx-poison:
 	@test -x $(AVX_LLVM_BIN)llvm-dis || { echo "!! $(AVX_LLVM_BIN)llvm-dis not found; set AVX_CLANG"; exit 1; }
 	@for p in 1 3 5; do $(AVX_CLANG) --target=x86_64-apple-darwin -isysroot $$(xcrun --show-sdk-path) -D_FORTIFY_SOURCE=0 -O0 -mavx -mavx2 -mbmi -mpclmul -I target/hqc/avx2/hqc-$$p -I target/hqc/hqc-$$p -I target/hqc/avx2 -I target/hqc -c -emit-llvm -o build/hqc/poison/avx_$$p.raw.bc target/hqc/avx2/hqc-$$p/gf2x.c || exit 1; python3 scripts/hqc_avx_ir.py $(AVX_LLVM_BIN) build/hqc/poison/avx_$$p.raw.bc build/hqc/poison/avx_$$p.bc --poison=ones $$([ $$p = 5 ] || echo --slack) || exit 1; sed 's|../../build/hqc/avx_'$$p'.bc|avx_'$$p'.bc|' proof/hqc/avx_$$p.saw > build/hqc/poison/avx_$$p.saw; done
 	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p AVX2 proofs on all-ones poison lanes"; (cd build/hqc/poison && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) -v 3 avx_$$p.saw) || exit 1; echo "VERIFIED: hqc-$$p AVX2 proofs pass with all-ones poison lanes (saw exit 0)"; done
+
+## Out of band, a measurement: one-line mutants of the C under proof (copies, target/ untouched) run
+## against the unchanged hqc-1 scripts; each must make saw exit non-zero (scripts/hqc_c_mutants.sh).
+hqc-c-mutants: hqc
+	./scripts/hqc_c_mutants.sh all
 
 ## Out of band, a measurement: how rme scales with the leaf size (scripts/hqc_rme_scaling.sh).
 hqc-rme-scaling: hqc
