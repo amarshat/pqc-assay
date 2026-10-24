@@ -20,7 +20,7 @@ ROOT="$(pwd)"; export PATH="$ROOT/.tools/bin:$PATH"
 WHICH="${1:-all}"; LIMIT="${LIMIT:-1200}"
 AVX_CLANG="${AVX_CLANG:-/opt/homebrew/opt/llvm@22/bin/clang}"
 M="$ROOT/build/hqc/cmut"; rm -rf "$M"; mkdir -p "$M"
-printf '%-22s %-9s %-7s %s\n' mutant verdict seconds "first failure reported by saw"
+printf '%-22s %-9s %-7s %s\n' mutant verdict seconds "last failure reported by saw"
 
 run_mutant() {  # name  kind(ref|avx)  sed-expression  [sed-expression on the proof script]
   local name=$1 kind=$2 expr=$3 sexpr="${4:-}" d="$M/${1//\//_}" src dst bc script
@@ -50,7 +50,8 @@ run_mutant() {  # name  kind(ref|avx)  sed-expression  [sed-expression on the pr
   done
   wait "$pid" 2>/dev/null; local rc=$?
   local secs=$(( $(date +%s) - start ))
-  local why; why=$(grep -m1 -E 'Subgoal failed: [a-z_0-9]+|Symbolic execution failed|error:' "$d/saw.log" | cut -c1-70)
+  # The last failure line: the earlier ones belong to the script's own gated mutants, which must fail.
+  local why; why=$(grep -E 'Subgoal failed: [a-z_0-9]+|Symbolic execution failed|error: in [a-zA-Z]' "$d/saw.log" | tail -1 | cut -c1-70)
   if [ $timed_out -eq 1 ]; then printf '%-22s %-9s %-7s %s\n' "$name" no-result "$secs" "killed at the limit; last line: $(tail -1 "$d/saw.log" | cut -c1-50)"
   elif [ $rc -ne 0 ]; then printf '%-22s %-9s %-7s %s\n' "$name" caught "$secs" "${why:-exit $rc}"
   else printf '%-22s %-9s %-7s %s\n' "$name" MISSED "$secs" "saw exit 0"; fi
