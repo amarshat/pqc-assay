@@ -65,7 +65,8 @@ Each row means a pinned tool exited 0 on the stated property, in `make verify` u
 Target: `target/hqc/`, the official HQC v5.0.0 reference `gf2x.c`, unmodified, for hqc-1, hqc-3 and
 hqc-5. Every SAW spec has a mutant that must fail; all 69 are rejected. `make hqc` took 27 min 57 s
 (2026-10-24, all steps; the encoder scripts alone take 84 s, 134 s and 347 s) and `make hqc-isabelle`
-about 30 s on an Apple M2 Max.
+about 30 s on an Apple M2 Max; on an otherwise idle Apple M4 Pro (macOS 15.8) `make hqc` took 21 min 30 s
+the same day, exit 0.
 
 | Property | Checked by |
 |---|---|

@@ -46,10 +46,13 @@ SAW half fits this pipeline and whose Isabelle half needs the subspace-evaluatio
    (SAW, rme, a property spec). Done 2026-10-24: Reed-Muller encoding for all three sets (SAW, z3,
    the affine-function property of RM(1,7)) and `code_encode` on top of both encoders, so the
    encoder of the concatenated code is verified against the defining properties of both codes.
-   Solver study on the hqc-1 schoolbook leaf (`make hqc-solvers`, 600 s cap, M2 Max): rme proves it
-   in 6 s; abc, z3, yices, cvc5 and bitwuzla (measured 2026-10-24, once the binary's `mpfr` was
-   installed) return nothing in 600 s. rme scaling (`make hqc-rme-scaling`): 4, 7, 31, 37, 220, 362 s
-   at 8, 9, 17, 18, 34, 35 words.
+   Solver study on the hqc-1 schoolbook leaf (`make hqc-solvers`, 600 s cap): on an otherwise idle
+   Apple M4 Pro (24 GB, macOS 15.8, 2026-10-24) rme proves it in 4 s and abc, z3, yices and cvc5
+   return nothing in 600 s; bitwuzla, measured on the M2 Max once the binary's `mpfr` was installed,
+   also returns nothing in 600 s (the M4 Pro has no Homebrew, so bitwuzla does not load there). rme
+   scaling (`make hqc-rme-scaling`, sizes 8, 9, 17, 18, 34, 35 words): 4, 7, 31, 37, 220, 362 s on the
+   M2 Max (64 GB, not idle); 4, 6, 24, 30, 492 s on the idle M4 Pro, where the 35-word run was killed
+   by the system (SIGKILL) at 517 s. `make hqc` on the idle M4 Pro: 21 min 30 s, exit 0.
 2. Decoding (Reed-Muller, Reed-Solomon with its additive FFT), which is not linear and is the hard
    part.
 
