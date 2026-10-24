@@ -1155,7 +1155,12 @@ What that rests on:
       the SAW spec is a byte view (`vmulBytes`), defined from `vmulA` by splitting words
       little-endian. The Isabelle theorem is about `vmulA`.
     - **Mutants.** Every spec has a mutant (bit 0 of the result flipped) that must fail, at every
-      Karatsuba size, the multi-way level, Toom and `vect_mul`.
+      Karatsuba size, the multi-way level, Toom and `vect_mul`. `make hqc-avx` runs SAW at `-v 3`
+      because at the default level SAW prints each rejected mutant's solver model, including the
+      model of the uninterpreted child function, as a term; for the hqc-3 `vect_mul` mutant that
+      print exhausted the machine's memory. At `-v 3` the scripts' own `print` lines are not shown,
+      so make echoes the VERIFIED line on SAW's exit status (0 only if every `llvm_verify` passed
+      and every `fails` mutant was rejected).
     - **Composition with the reference.** `HQC_P<p>.vmul_correct` and `AVX_P<p>.vmulA_correct`
       give the same polynomial for inputs of degree below n, so (with the two SAW results) the
       reference `vect_mul` and the AVX2 `vect_mul` agree on such inputs, for all three sets.
