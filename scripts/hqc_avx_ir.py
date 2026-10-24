@@ -46,7 +46,7 @@ def main():
     ll = re.sub(r'<(\d+) x i(32|64)> poison', vec, ll)
     ll = re.sub(r'i64 poison', lane64, ll)
     ll = re.sub(r'i32 poison', lane32, ll)
-    assert not re.search(r'\bpoison\b', ll), 'unexpected poison form left'
+    assert not re.search(r'\bpoison\b', re.sub(r'^;.*$', '', ll, flags=re.M)), 'unexpected poison form left'
     n_slack = 0
     if slack:
         ll, n_slack = re.subn(r'^(@toom_3_mult\.(?:W0|W2) = internal global )\[(\d+) x <4 x i64>\]',
