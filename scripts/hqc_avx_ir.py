@@ -42,7 +42,7 @@ def main():
     lane32, lane64 = ('i32 -1', 'i64 -1') if ones else ('i32 0', 'i64 0')
     vec = (lambda m: f'<{m.group(1)} x i{m.group(2)}> <{", ".join([f"i{m.group(2)} -1"] * int(m.group(1)))}>') if ones else (lambda m: f'<{m.group(1)} x i{m.group(2)}> zeroinitializer')
     ll = subprocess.run([f'{bindir}/llvm-dis', src, '-o', '-'], check=True, capture_output=True, text=True).stdout
-    n_poison = len(re.findall(r'\bpoison\b', ll))
+    n_poison = len(re.findall(r'\bpoison\b', re.sub(r'^;.*$', '', ll, flags=re.M)))
     ll = re.sub(r'<(\d+) x i(32|64)> poison', vec, ll)
     ll = re.sub(r'i64 poison', lane64, ll)
     ll = re.sub(r'i32 poison', lane32, ll)
