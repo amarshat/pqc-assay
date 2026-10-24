@@ -47,6 +47,10 @@ SAW half fits this pipeline and whose Isabelle half needs the subspace-evaluatio
    (SAW, rme, a property spec). Done 2026-10-24: Reed-Muller encoding for all three sets (SAW, z3,
    the affine-function property of RM(1,7)) and `code_encode` on top of both encoders, so the
    encoder of the concatenated code is verified against the defining properties of both codes.
+   Solver study on the hqc-1 schoolbook leaf (`make hqc-solvers`, 600 s cap, M2 Max): rme proves it
+   in 6 s; abc, z3, yices, cvc5 and bitwuzla (measured 2026-10-24, once the binary's `mpfr` was
+   installed) return nothing in 600 s. rme scaling (`make hqc-rme-scaling`): 4, 7, 31, 37, 220, 362 s
+   at 8, 9, 17, 18, 34, 35 words.
 2. Decoding (Reed-Muller, Reed-Solomon with its additive FFT), which is not linear and is the hard
    part.
 
