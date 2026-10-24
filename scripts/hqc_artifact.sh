@@ -63,7 +63,7 @@ beside it). For the bitwuzla row of the solver study, Homebrew `gmp` and `mpfr`.
 | Command | What it checks | Time (Apple M2 Max) |
 |---|---|---|
 | `make hqc` | reference `vect_mul` = Karatsuba model (SAW), GF(2^8), Reed-Solomon, Reed-Muller and `code_encode` against their code properties; every spec's mutant rejected | about 25 min |
-| `make hqc-avx` | AVX2 `vect_mul` = Toom/Karatsuba model, three sets, mutants rejected | 377 s + 2666 s + 2520 s |
+| `make hqc-avx` | AVX2 `vect_mul` = Toom/Karatsuba model, three sets, mutants rejected | 263 s + 1167 s + 2062 s (58 min) |
 | `make hqc-isabelle` | the lifted models compute (a*b) mod (x^n - 1), oracle-free (`HQC_Gate`) | about 30 s |
 | `make lift-check` | every committed lifted theory equals `cryptol-to-isabelle` of its Cryptol source | about 1 min |
 | `scripts/check_target_identity.sh` | the vendored bytes match the pinned hashes | seconds |
