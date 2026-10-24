@@ -132,9 +132,10 @@ A proof is only meaningful relative to what it assumes. This file is the honest 
     recorded in the script header; the inverse link stays argued.
   - *the polynomial layer* (2026-10-11): `proof/saw/poly_nsw.saw` runs the poly.c / polyvec.c
     functions on the multiplication paths on the default bitcode; see A-ROW item 3 for what it
-    covers. It uses z3 only. The pinned bitwuzla 0.9.1 binary that `ntt_nsw.saw` needs does not
-    load on the macOS 13 development machine (built for macOS 15, links Homebrew's mpfr), so
-    `make ntt-nsw` was not re-run there.
+    covers. It uses z3 only. The pinned bitwuzla 0.9.1 binary that `ntt_nsw.saw` needs links
+    Homebrew's `libgmp` and `libmpfr`; until 2026-10-24 the development machine lacked `mpfr`, which
+    is why earlier notes said the binary "does not load on macOS 13". With `brew install mpfr` it
+    loads there. `make ntt-nsw` was still not re-run on it (12.5 h).
 - Anything not listed as proven is, explicitly, NOT proven.
 
 ## v2 (Rust / RustCrypto `ml-dsa`) assumptions

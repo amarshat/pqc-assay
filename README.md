@@ -197,8 +197,8 @@ make claim-lint                      # SAW specs have paired mutants (exemptions
 The full `make verify` took 3 h 20 min in `verify.yml` run 38100891287 on 2026-10-11 (macos-15
 runner, Apple clang 17.0.0, manual dispatch); the workflow caches Isabelle heaps, so warm runs are
 shorter. `verify.yml` runs on every push that touches `spec/`, `afp/`, `proof/`, `model/`,
-`target/`, `scripts/` or the Makefile, so the badge reflects the last such commit. `make ntt-nsw`, `make barrett-solver` and `make ac2` (after `scripts/setup_autocorres2.sh`, which needs a clang >= 15) are out of band, and `ntt-nsw` needs macOS 15 (the
-pinned bitwuzla does not load on 13).
+`target/`, `scripts/` or the Makefile, so the badge reflects the last such commit. `make ntt-nsw`, `make barrett-solver` and `make ac2` (after `scripts/setup_autocorres2.sh`, which needs a clang >= 15) are out of band; `ntt-nsw` and the bitwuzla rows need Homebrew `gmp` and `mpfr` beside the pinned
+bitwuzla (`scripts/setup.sh` says so if they are missing).
 
 ## Layout
 

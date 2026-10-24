@@ -139,6 +139,13 @@ elif [[ ! -x "$BITWUZLA_HOME/bin/bitwuzla" ]]; then
   found="$(find "$BITWUZLA_HOME" -type f -name bitwuzla | head -1)"
   mkdir -p "$BITWUZLA_HOME/bin"; [[ "$found" != "$BITWUZLA_HOME/bin/bitwuzla" ]] && cp "$found" "$BITWUZLA_HOME/bin/bitwuzla"
 fi
+# The macOS arm64 bitwuzla build is not fully static: it links Homebrew's libgmp and libmpfr by
+# absolute path. Without them the binary dies at load ("Library not loaded: .../libmpfr.6.dylib").
+if [[ -n "$BITWUZLA_ASSET" && "$UNAME_S" == "Darwin" ]]; then
+  for lib in /opt/homebrew/opt/gmp/lib/libgmp.10.dylib /opt/homebrew/opt/mpfr/lib/libmpfr.6.dylib; do
+    [[ -f "$lib" ]] || echo "!! WARNING: bitwuzla needs $lib; run: brew install gmp mpfr" >&2
+  done
+fi
 [[ -n "$BITWUZLA_ASSET" ]] && link "$BITWUZLA_HOME/bin/bitwuzla" "bitwuzla"
 [[ "$UNAME_S" == "Darwin" ]] && xattr -dr com.apple.quarantine "$BITWUZLA_HOME" 2>/dev/null || true
 if [[ -n "$BITWUZLA_ASSET" ]] && command -v codesign >/dev/null; then
