@@ -1124,7 +1124,10 @@ What that rests on:
     by y and 1 + y are `Pl_tl`/`Pl_drop4` and `Pl_pxl`/`Pl_pxb`.
     - **Bitcode.** The C is cross-compiled for x86_64 (`--target=x86_64-apple-darwin`, the host
       SDK) at `-O0` with `-mavx -mavx2 -mbmi -mpclmul -D_FORTIFY_SOURCE=0`. Upstream builds it with
-      `-O3 -flto`. The proof is about the `-O0` IR, as for every other target here.
+      `-O3 -flto`. The proof is about the `-O0` IR, as for every other target here. The compiler
+      is Homebrew clang 22.1.8 (`AVX_CLANG` in the Makefile, default `/opt/homebrew/opt/llvm@22`),
+      not the Apple clang 17 used for the other targets: the IR rewrite below works on the textual
+      IR and needs `llvm-dis`/`llvm-as`, which Apple's toolchain does not ship.
     - **IR normalization** (`scripts/hqc_avx_ir.py`, run by `make hqc-avx`). The C is not edited;
       three things in the bitcode are, and each is a trusted step:
       (a) poison lanes in vector constants (from `(__m256i){a, b, 0, 0}` literals) become 0, and a
@@ -1154,4 +1157,4 @@ What that rests on:
       Karatsuba size, the multi-way level, Toom and `vect_mul`.
     - **Composition with the reference.** `HQC_P<p>.vmul_correct` and `AVX_P<p>.vmulA_correct`
       give the same polynomial for inputs of degree below n, so (with the two SAW results) the
-      reference `vect_mul` and the AVX2 `vect_mul` agree on such inputs, for hqc-1 and hqc-3.
+      reference `vect_mul` and the AVX2 `vect_mul` agree on such inputs, for all three sets.

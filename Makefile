@@ -77,11 +77,15 @@ hqc:
 ## The AVX2 build of the same function (target/hqc/avx2, x86_64, pclmulqdq): SAW proves vect_mul ==
 ## vmulBytes, the Toom-3 / multi-way Karatsuba model folded mod x^n - 1. The bitcode is cross-compiled
 ## for x86_64 at -O0 and normalized by scripts/hqc_avx_ir.py (docs/ASSUMPTIONS.md, A-HQC-AVX).
-LLVM_BIN := $(dir $(shell command -v $(CLANG)))
+## The AVX2 bitcode needs a clang whose bindir also has llvm-dis/llvm-as (scripts/hqc_avx_ir.py rewrites
+## the IR as text). Apple's clang ships neither, so this target uses Homebrew llvm@22, like AC2_CLANG.
+AVX_CLANG ?= /opt/homebrew/opt/llvm@22/bin/clang
+AVX_LLVM_BIN := $(dir $(AVX_CLANG))
 hqc-avx:
 	@mkdir -p build/hqc
 	@python3 proof/hqc/gen_hqc.py --check
-	@for p in 1 3 5; do $(CLANG) --target=x86_64-apple-darwin -isysroot $$(xcrun --show-sdk-path) -D_FORTIFY_SOURCE=0 -O0 -mavx -mavx2 -mbmi -mpclmul -I target/hqc/avx2/hqc-$$p -I target/hqc/hqc-$$p -I target/hqc/avx2 -I target/hqc -c -emit-llvm -o build/hqc/avx_$$p.raw.bc target/hqc/avx2/hqc-$$p/gf2x.c || exit 1; python3 scripts/hqc_avx_ir.py $(LLVM_BIN) build/hqc/avx_$$p.raw.bc build/hqc/avx_$$p.bc || exit 1; done
+	@test -x $(AVX_LLVM_BIN)llvm-dis || { echo "!! $(AVX_LLVM_BIN)llvm-dis not found; set AVX_CLANG to a clang with llvm-dis/llvm-as beside it"; exit 1; }
+	@for p in 1 3 5; do $(AVX_CLANG) --target=x86_64-apple-darwin -isysroot $$(xcrun --show-sdk-path) -D_FORTIFY_SOURCE=0 -O0 -mavx -mavx2 -mbmi -mpclmul -I target/hqc/avx2/hqc-$$p -I target/hqc/hqc-$$p -I target/hqc/avx2 -I target/hqc -c -emit-llvm -o build/hqc/avx_$$p.raw.bc target/hqc/avx2/hqc-$$p/gf2x.c || exit 1; python3 scripts/hqc_avx_ir.py $(AVX_LLVM_BIN) build/hqc/avx_$$p.raw.bc build/hqc/avx_$$p.bc || exit 1; done
 	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p AVX2 vect_mul == vmulBytes (karat_mult ladder, karat_mult3/5, toom_3_mult, reduce)"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/avx_$$p.saw || exit 1; done
 
 ## Out of band, a measurement: which SAW backends prove the schoolbook leaf (scripts/hqc_solver_study.sh).
