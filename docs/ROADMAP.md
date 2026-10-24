@@ -39,7 +39,9 @@ an out-of-bounds read in `toom_3_mult` (hqc-1 and hqc-3; benign in effect), repo
 team by email on 2026-10-24 (A-HQC item 12 describes the slack the proof needs; "Open findings").
 Next: rerun the AVX2 proofs with a second constant (all ones) in the zeroed poison lanes, so that
 "the lanes are overwritten before use" is checked rather than read from the source (done for
-`karat_mult_1` only); then the decoders, which are the hard part.
+`karat_mult_1` only); then either the decoders or the additive-FFT multiplier of Chen, Chiu, Peng
+and Yang (TCHES 2026, ePrint 2026/014; public-domain artifact with portable reference C), whose
+SAW half fits this pipeline and whose Isabelle half needs the subspace-evaluation math.
 
 1. Done 2026-10-22: `gf.c` (SAW, z3) and Reed-Solomon encoding for all three parameter sets
    (SAW, rme, a property spec). Done 2026-10-24: Reed-Muller encoding for all three sets (SAW, z3,
