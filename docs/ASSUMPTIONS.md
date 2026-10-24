@@ -1099,7 +1099,7 @@ What that rests on:
 9. **Compiler.** `-O0` bitcode from the host clang, as for the ML-DSA target.
 10. **Mutants.** Every SAW spec has a `_mut_spec` that must fail: the result for a different `b`
     at every size, and `fold` at n - 1 for `vect_mul`.
-11. **GF(2^8) and Reed-Solomon (`proof/hqc/gf.saw`, `proof/hqc/rs_<p>.saw`).**
+11. **GF(2^8) and Reed-Solomon (`proof/hqc/gf.saw`, `proof/hqc/code_<p>.saw`).**
     - The field is defined by Cryptol's `pmult` and `pmod` modulo 0x11D (`GF256.cry`), the
       polynomial of v5.0.0 and of the 2025-08-22 specification. The 2026-10-12 specification
       changes it to 0x11B; these results are for v5.0.0 and will be regenerated for the next release.
@@ -1107,8 +1107,9 @@ What that rests on:
       the codeword vanishes at alpha^1 .. alpha^(2 delta) with alpha = 2. Two codewords with the same
       message part differ in a polynomial of degree below 2 delta with 2 delta roots, so the
       property fixes the codeword. That uniqueness argument is not mechanized.
-    - `gf.c` and `reed_solomon.c` are compiled as one unit (`build/hqc/_rs.c`) so the RS proof uses
-      a `gf_mul` proved in the same module, not an assumed one.
+    - `gf.c`, `reed_solomon.c`, `reed_muller.c`, `crypto_memset.c` and `code.c` are compiled as one
+      unit (`build/hqc/_code.c`) so the RS proof uses a `gf_mul` proved in the same module, not an
+      assumed one, and the `code_encode` proof (item 14) uses the RS and RM specs proved there.
     - `gf_reduce` is documented for degree at most 14; it is proved for every 16-bit input.
     - Field facts (a^254 is the inverse of nonzero a) are checked by z3 over all 256 elements, not
       in Isabelle.
@@ -1158,7 +1159,7 @@ What that rests on:
     - **Composition with the reference.** `HQC_P<p>.vmul_correct` and `AVX_P<p>.vmulA_correct`
       give the same polynomial for inputs of degree below n, so (with the two SAW results) the
       reference `vect_mul` and the AVX2 `vect_mul` agree on such inputs, for all three sets.
-13. **Reed-Muller encoding (`proof/hqc/rm_<p>.saw`, recorded 2026-10-24).** `target/hqc/reed_muller.c`
+13. **Reed-Muller encoding (`proof/hqc/code_<p>.saw`, recorded 2026-10-24).** `target/hqc/reed_muller.c`
     (with `reed_muller.h`, `data_structures.h`) is vendored from the same commit.
     - The spec is a property (`RM.cry`): the RM(1,7) codeword of a message byte m is the vector of
       the 128 values of the affine function x -> m7 + m0 x0 + ... + m6 x6 over F_2^7, bit j of the
@@ -1174,4 +1175,21 @@ What that rests on:
     - Whether the HQC specification document's generator matrix for RM(1,7) matches this code is a
       question about the document (see upstream issue 27); the property proved here is the
       standard definition of RM(1,7) and does not depend on the document's presentation.
+
+14. **The concatenated encoder `code_encode` (`proof/hqc/code_<p>.saw`, recorded 2026-10-24).**
+    `target/hqc/code.c`, `code.h` and `crypto_memset.c` are vendored from the same commit.
+    - The property: the output `e` (`VEC_N1N2_SIZE_64` words) satisfies `e == rmEncode c`,
+      `drop c == msg` and `isRS c` for `c = rmExtract e`, i.e. `e` is the Reed-Muller encoding of a
+      word that is a Reed-Solomon codeword with the k message bytes on top. `rmExtract` reads each
+      byte back from the first copy of its codeword (value at 0 is m7, value at e_i is m7 + m_i).
+    - The proof uses the `reed_solomon_encode` and `reed_muller_encode` specs of items 11 and 13 as
+      overrides, rewrites with the lemma `rmExtract (rmEncode c) == c` (proved by z3 in the same
+      script, `rm_inv`), and discharges the rest with `isRS` and `rmEncode` uninterpreted: after the
+      rewrite the goal is the two callees' postconditions. The mutant flips bit 0 of the output.
+    - `code_encode` zeroizes its Reed-Solomon buffer through `memset_volatile`, a `volatile` function
+      pointer initialised to `memset` (`crypto_memset.c`). The spec allocates that global with its
+      initializer; SAW resolves the indirect call to its `memset` override. The zeroization is
+      executed, not assumed, but nothing is claimed about it (the buffer is a local).
+    - The composition is proved: `code_encode` is verified against the code with the callees as
+      proved overrides, not read from the source. Nothing is claimed about `code_decode`.
 

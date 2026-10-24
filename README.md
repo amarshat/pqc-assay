@@ -63,9 +63,9 @@ Each row means a pinned tool exited 0 on the stated property, in `make verify` u
 ## Proved (HQC)
 
 Target: `target/hqc/`, the official HQC v5.0.0 reference `gf2x.c`, unmodified, for hqc-1, hqc-3 and
-hqc-5. Every SAW spec has a mutant that must fail; all 66 are rejected. `make hqc` took 19 min 18 s
-before the Reed-Muller step was added (2026-10-22) and that step takes 64 s, 106 s and 246 s for the
-three sets (2026-10-24); `make hqc-isabelle` about 20 s; Apple M2 Max.
+hqc-5. Every SAW spec has a mutant that must fail; all 69 are rejected. `make hqc` took 19 min 18 s
+before the Reed-Muller and concatenated-encoder steps were added (2026-10-22); those take 84 s,
+134 s and 347 s for the three sets (2026-10-24); `make hqc-isabelle` about 20 s; Apple M2 Max.
 
 | Property | Checked by |
 |---|---|
@@ -77,6 +77,7 @@ three sets (2026-10-24); `make hqc-isabelle` about 20 s; Apple M2 Max.
 | `gf.c`: `gf_carryless_mul` = `pmult`, `gf_reduce` = `pmod` by 0x11D for every 16-bit input, `gf_mul`, `gf_square`, and `gf_inverse` = a^254 (the inverse of every nonzero a) in GF(2^8) | SAW + z3, `make hqc` |
 | `reed_solomon_encode` writes a Reed-Solomon codeword: the message in the top k bytes, and the codeword polynomial vanishes at α^1 … α^2δ (α = 2), which fixes the parity bytes; [46,16], [56,24], [90,32] | SAW + rme, `make hqc` |
 | `reed_muller_encode` writes the duplicated RM(1,7) code: for each of the n1 message bytes, n2/128 copies of the 128 values of the affine function the byte defines over F_2^7 (a property, not the C's generator masks); n2/128 = 3, 5, 5 | SAW + z3, `make hqc` |
+| `code_encode` (the concatenated code) writes the Reed-Muller encoding of a Reed-Solomon codeword that carries the k message bytes, with the two encoders as proved overrides and the zeroizing `memset` executed | SAW + z3, `make hqc` |
 
 Together: on inputs stored the way HQC stores them (no bit at or above n), the reference `vect_mul`
 multiplies in GF(2)[x]/(x^n − 1). The GF(2^8) and Reed-Solomon rows use the field of v5.0.0 and of

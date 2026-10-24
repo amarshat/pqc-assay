@@ -69,11 +69,9 @@ hqc:
 	@$(CLANG) -c -emit-llvm -O0 -g -I target/hqc/hqc-1 -I target/hqc -o build/hqc/gf_1.bc target/hqc/gf.c
 	@echo ">> SAW: HQC gf.c, GF(2^8) multiply, square, reduce, inverse (same field in all parameter sets)"
 	CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/gf.saw
-	@printf '#include "gf.c"\n#include "reed_solomon.c"\n' > build/hqc/_rs.c
-	@for p in 1 3 5; do $(CLANG) -c -emit-llvm -O0 -g -I target/hqc/hqc-$$p -I target/hqc -o build/hqc/rs_$$p.bc build/hqc/_rs.c || exit 1; done
-	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p reed_solomon_encode is a Reed-Solomon codeword"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/rs_$$p.saw || exit 1; done
-	@for p in 1 3 5; do $(CLANG) -c -emit-llvm -O0 -g -I target/hqc/hqc-$$p -I target/hqc -o build/hqc/rm_$$p.bc target/hqc/reed_muller.c || exit 1; done
-	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p reed_muller_encode is the duplicated RM(1,7) code (affine-function property)"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/rm_$$p.saw || exit 1; done
+	@printf '#include "gf.c"\n#include "reed_solomon.c"\n#include "reed_muller.c"\n#include "crypto_memset.c"\n#include "code.c"\n' > build/hqc/_code.c
+	@for p in 1 3 5; do $(CLANG) -c -emit-llvm -O0 -g -I target/hqc/hqc-$$p -I target/hqc -o build/hqc/code_$$p.bc build/hqc/_code.c || exit 1; done
+	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p reed_solomon_encode, reed_muller_encode and code_encode against the code properties"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/code_$$p.saw || exit 1; done
 	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p vect_mul == fold (Karatsuba model)"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/karatsuba_$$p.saw || exit 1; done
 
 ## The AVX2 build of the same function (target/hqc/avx2, x86_64, pclmulqdq): SAW proves vect_mul ==

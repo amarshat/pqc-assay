@@ -37,11 +37,12 @@ at every level. `make hqc-isabelle` proves the three models are multiplication m
 input of degree below n. Verifying it found
 an out-of-bounds read in `toom_3_mult` (hqc-1 and hqc-3; benign in effect); it is being reported
 to the HQC team before this work is published (A-HQC item 12 describes the slack the proof needs).
-Next: the concatenated encoder `code_encode` on top of the RS and RM results, per-level timings for the write-up.
+Next: per-level timings for the write-up; then the decoders, which are the hard part.
 
 1. Done 2026-10-22: `gf.c` (SAW, z3) and Reed-Solomon encoding for all three parameter sets
    (SAW, rme, a property spec). Done 2026-10-24: Reed-Muller encoding for all three sets (SAW, z3,
-   the affine-function property of RM(1,7); 64 s, 106 s, 246 s).
+   the affine-function property of RM(1,7)) and `code_encode` on top of both encoders, so the
+   encoder of the concatenated code is verified against the defining properties of both codes.
 2. Decoding (Reed-Muller, Reed-Solomon with its additive FFT), which is not linear and is the hard
    part.
 
