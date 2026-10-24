@@ -63,8 +63,9 @@ Each row means a pinned tool exited 0 on the stated property, in `make verify` u
 ## Proved (HQC)
 
 Target: `target/hqc/`, the official HQC v5.0.0 reference `gf2x.c`, unmodified, for hqc-1, hqc-3 and
-hqc-5. Every SAW spec has a mutant that must fail; all 63 are rejected. `make hqc` took 19 min 18 s and
-`make hqc-isabelle` about 20 s on an Apple M2 Max (2026-10-22).
+hqc-5. Every SAW spec has a mutant that must fail; all 66 are rejected. `make hqc` took 19 min 18 s
+before the Reed-Muller step was added (2026-10-22) and that step takes 64 s, 106 s and 246 s for the
+three sets (2026-10-24); `make hqc-isabelle` about 20 s; Apple M2 Max.
 
 | Property | Checked by |
 |---|---|
@@ -75,6 +76,7 @@ hqc-5. Every SAW spec has a mutant that must fail; all 63 are rejected. `make hq
 | `vmul a b` = `(a * b) mod (x^n − 1)` over GF(2), for inputs of degree below n (n = 17669, 35851, 57637) | Isabelle `HQC_P1/P3/P5.vmul_correct`, no oracle (`HQC_Gate`), `make hqc-isabelle` |
 | `gf.c`: `gf_carryless_mul` = `pmult`, `gf_reduce` = `pmod` by 0x11D for every 16-bit input, `gf_mul`, `gf_square`, and `gf_inverse` = a^254 (the inverse of every nonzero a) in GF(2^8) | SAW + z3, `make hqc` |
 | `reed_solomon_encode` writes a Reed-Solomon codeword: the message in the top k bytes, and the codeword polynomial vanishes at α^1 … α^2δ (α = 2), which fixes the parity bytes; [46,16], [56,24], [90,32] | SAW + rme, `make hqc` |
+| `reed_muller_encode` writes the duplicated RM(1,7) code: for each of the n1 message bytes, n2/128 copies of the 128 values of the affine function the byte defines over F_2^7 (a property, not the C's generator masks); n2/128 = 3, 5, 5 | SAW + z3, `make hqc` |
 
 Together: on inputs stored the way HQC stores them (no bit at or above n), the reference `vect_mul`
 multiplies in GF(2)[x]/(x^n − 1). The GF(2^8) and Reed-Solomon rows use the field of v5.0.0 and of
@@ -96,7 +98,7 @@ meet the mutant policy the Proved table holds to.
 
 | Item | Status |
 |---|---|
-| HQC: Reed-Muller encoding, both decoders, sampling, the KEM | not started |
+| HQC: both decoders, sampling, the KEM | not started |
 | signing in `sign.c` when the `goto rej` loop runs three or more passes | not proved (one and two passes are, above); [`docs/COMPOSITION.md`](docs/COMPOSITION.md) |
 | input ranges the theorems take, at the call sites: that `packing.c` and `poly_uniform_gamma1` get `t1`, `t0`, `s1`, `s2`, `z`, `y` from the unpack functions above; `\|A\| < 9q` (23-bit mask in `rej_uniform`), keygen's `s1`, `s2` (`rej_eta`) and `\|c\| <= 1` (`poly_challenge`) | read from the source (the three samplers are not verified) |
 | two builds are the same program apart from `nsw` / `inbounds` flags | checked by a script (`scripts/check_wrapv_diff.sh`), not proved |

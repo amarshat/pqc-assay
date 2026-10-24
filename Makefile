@@ -72,6 +72,8 @@ hqc:
 	@printf '#include "gf.c"\n#include "reed_solomon.c"\n' > build/hqc/_rs.c
 	@for p in 1 3 5; do $(CLANG) -c -emit-llvm -O0 -g -I target/hqc/hqc-$$p -I target/hqc -o build/hqc/rs_$$p.bc build/hqc/_rs.c || exit 1; done
 	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p reed_solomon_encode is a Reed-Solomon codeword"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/rs_$$p.saw || exit 1; done
+	@for p in 1 3 5; do $(CLANG) -c -emit-llvm -O0 -g -I target/hqc/hqc-$$p -I target/hqc -o build/hqc/rm_$$p.bc target/hqc/reed_muller.c || exit 1; done
+	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p reed_muller_encode is the duplicated RM(1,7) code (affine-function property)"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/rm_$$p.saw || exit 1; done
 	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p vect_mul == fold (Karatsuba model)"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/karatsuba_$$p.saw || exit 1; done
 
 ## The AVX2 build of the same function (target/hqc/avx2, x86_64, pclmulqdq): SAW proves vect_mul ==

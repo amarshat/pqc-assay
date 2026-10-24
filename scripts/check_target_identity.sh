@@ -59,6 +59,12 @@ f66470b16dc27541a10766297bd5baa8c031241c73d2551c0dcfacef1bad4276  target/hqc/avx
 67d797df231275bfe2ab49ba7dffc1d8779fee349ffc6b6eab4703dc00e1e2d2  target/hqc/avx2/hqc-1/parameters.h
 6f8fc90e9977fb2c56aa29a072ba0ac63d83dd46019f5ce2306c96b2c16adf0b  target/hqc/avx2/hqc-3/parameters.h
 151c83ea287d686c391c062f6d31ad1fe40ea2310fb221ff8f46e269a3793acf  target/hqc/avx2/hqc-5/parameters.h
+9c81e85b45c1e3d8a9e8288e9c25d538ca1574a740665c41c522b8ccbfafe1ad  target/hqc/reed_muller.c
+05a4f24eee801f55507f41e1f9e4550b81c35710227fa8ca8faf7918595cd18b  target/hqc/reed_muller.h
+c2bb3b7be30a125abdfdbd60de6321c9b4edd52f01d54bdfcfcee78fa632c8b1  target/hqc/data_structures.h
+c207b7708c2e7b894c31b1d31166534af73bc07d855b4d99d3e956862c7626af  target/hqc/code.c
+afbd3a2e0baf952a5a0d08175deb94e6f89236c207132f3ce6ff613064cbe8d3  target/hqc/code.h
+906d712f2e4b67f172c7cc5596c23d618c3004eb9173e1f4f94cc8bbf2b89c24  target/hqc/crypto_memset.c
 "
 
 SHA="shasum -a 256"; command -v sha256sum >/dev/null 2>&1 && SHA="sha256sum"

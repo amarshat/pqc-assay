@@ -1,0 +1,31 @@
+/* HQC's inner code, the duplicated first-order Reed-Muller code RM(1,7), as a property rather than
+   as the generator matrix the C uses. A message byte m = (m7 .. m0) encodes to the 128 evaluations
+   of the affine Boolean function x |-> m7 + m0 x0 + ... + m6 x6 over x in F_2^7, bit j of the
+   codeword being the value at the point whose binary digits are those of j. The codeword is
+   repeated mult = n2/128 times (3 for hqc-1, 5 for hqc-3 and hqc-5), and the n1 message bytes
+   give n1 * n2 bits, stored little-endian in 64-bit words as the C does. */
+module RM where
+
+// Bit j of the RM(1,7) codeword of m.
+rmBit : [8] -> [7] -> Bit
+rmBit m j = (m ! 7) ^ (foldr (^) False [ (m ! i) && (j ! i) | i <- [0 .. 6] : [7][3] ])
+
+// The codeword as a 128-bit value, bit j (counted from the least significant) being rmBit m j.
+rmCodeword : [8] -> [128]
+rmCodeword m = reverse [ rmBit m j | j <- [0 .. 127] : [128][7] ]
+
+// The same as two little-endian 64-bit words.
+rmWords : [8] -> [2][64]
+rmWords m = reverse (split`{2} (rmCodeword m))
+
+// reed_muller_encode: each message byte, in order, as mult copies of its codeword.
+rmEncode : {n1, mult} (fin n1, fin mult) => [n1][8] -> [n1 * (mult * 2)][64]
+rmEncode msg = join [ join [ rmWords b | _ <- (zero : [mult]) ] | b <- msg ]
+
+// The message a codeword carries: the value at 0 is m7, and the value at the unit point e_i is
+// m7 + m_i. Reading the first copy only; rmExtract (rmEncode msg) == msg.
+rmExtract : {n1, mult} (fin n1, fin mult, mult >= 1) => [n1 * (mult * 2)][64] -> [n1][8]
+rmExtract w = [ byteOf (join (reverse (take`{2, mult * 2 - 2} blk))) | blk <- split`{n1, mult * 2} w ]
+  where
+    byteOf : [128] -> [8]
+    byteOf c = [c ! 0] # [ (c ! 0) ^ (c ! ((1 : [7]) << i)) | i <- reverse ([0 .. 6] : [7][7]) ]

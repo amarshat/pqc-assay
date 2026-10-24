@@ -1158,3 +1158,20 @@ What that rests on:
     - **Composition with the reference.** `HQC_P<p>.vmul_correct` and `AVX_P<p>.vmulA_correct`
       give the same polynomial for inputs of degree below n, so (with the two SAW results) the
       reference `vect_mul` and the AVX2 `vect_mul` agree on such inputs, for all three sets.
+13. **Reed-Muller encoding (`proof/hqc/rm_<p>.saw`, recorded 2026-10-24).** `target/hqc/reed_muller.c`
+    (with `reed_muller.h`, `data_structures.h`) is vendored from the same commit.
+    - The spec is a property (`RM.cry`): the RM(1,7) codeword of a message byte m is the vector of
+      the 128 values of the affine function x -> m7 + m0 x0 + ... + m6 x6 over F_2^7, bit j of the
+      codeword being the value at the point with binary digits j. The C's generator rows (the masks
+      0xaaaaaaaa, 0xcccccccc, ... and the word pattern for bits 5 and 6) are not restated; SAW
+      shows they produce that function. The duplicated code repeats each codeword n2/128 times
+      (3, 5, 5) and the n1 bytes (46, 56, 90) give n1 * n2 = 17664, 35840, 57600 bits.
+    - The input is the first n1 bytes of the `VEC_N1_SIZE_64`-word message array, as the C reads
+      it; the output is the `VEC_N1N2_SIZE_64` words (276, 560, 900) as little-endian bytes. The
+      bit order inside a codeword (bit j of the 128-bit value is bit j mod 64 of word j / 64) is
+      part of the spec; it is what `reed_muller_decode` and the specification's byte layout assume.
+    - The mutant flips bit 0 of the output.
+    - Whether the HQC specification document's generator matrix for RM(1,7) matches this code is a
+      question about the document (see upstream issue 27); the property proved here is the
+      standard definition of RM(1,7) and does not depend on the document's presentation.
+
