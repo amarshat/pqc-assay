@@ -14,7 +14,7 @@ rm -rf "$OUT" dist/hqc-artifact.zip; mkdir -p "$OUT"
 
 git archive HEAD Makefile LICENSE model/cryptol/hqc proof/hqc spec/isabelle/hqc target/hqc target/README.md \
   scripts/setup.sh scripts/setup_isabelle_cryptol.sh scripts/hqc_avx_ir.py scripts/hqc_solver_study.sh \
-  scripts/hqc_rme_scaling.sh scripts/saw_mutant_pairs.py scripts/check_target_identity.sh scripts/lift_check_all.sh \
+  scripts/hqc_rme_scaling.sh scripts/hqc_c_mutants.sh scripts/saw_mutant_pairs.py scripts/check_target_identity.sh scripts/lift_check_all.sh \
   | tar -x -C "$OUT"
 
 python3 - "$OUT" <<'PY'
@@ -69,6 +69,7 @@ beside it). For the bitwuzla row of the solver study, Homebrew `gmp` and `mpfr`.
 | `scripts/check_target_identity.sh` | the vendored bytes match the pinned hashes | seconds |
 | `make hqc-avx-poison` | the AVX2 proofs on bitcode with all-ones poison lanes | about 90 min |
 | `make hqc-solvers`, `make hqc-rme-scaling` | the solver tables of the paper | up to 50 min, 11 min |
+| `make hqc-c-mutants` | six one-line source mutants of copies of the C against the unchanged hqc-1 scripts (the Mutants paragraphs) | about 55 min |
 
 `python3 proof/hqc/gen_hqc.py --check` confirms the committed generated files are current.
 
@@ -79,7 +80,7 @@ Section 3 (model): `model/cryptol/hqc/{GF2X,KM<p>,Fold}.cry`. Section 4 (C equal
 Section 6 (AVX2): `target/hqc/avx2`, `scripts/hqc_avx_ir.py`, `model/cryptol/hqc/{AVXK,Toom,Toom5,AVX<p>}.cry`,
 `proof/hqc/avx_<p>.saw`, `spec/isabelle/hqc/{AVX_Seq,AVX_Toom,AVX_Toom5,AVX_P<p>}.thy`. Section 7
 (field and encoders): `proof/hqc/gf.saw`, `proof/hqc/code_<p>.saw`, `model/cryptol/hqc/{GF256,RS,RM}.cry`.
-Section 8 (solvers): `scripts/hqc_solver_study.sh`, `scripts/hqc_rme_scaling.sh`. Findings:
+Section 8 (solvers): `scripts/hqc_solver_study.sh`, `scripts/hqc_rme_scaling.sh`; source-level mutants: `scripts/hqc_c_mutants.sh`. Findings:
 `ASSUMPTIONS-HQC.md`, OF-5. Appendix: the theorem statements in the theories named above.
 MD
 
@@ -92,7 +93,7 @@ blocks = re.split(r'\n(?=## )', s)
 keep = [b for b in blocks if re.search(r'^hqc[-\w]*:', b, re.M)]
 tail = ('## Every committed lifted theory equals cryptol-to-isabelle of its Cryptol source.\nlift-check:\n'
         '\t./scripts/lift_check_all.sh\n\nclean:\n\trm -rf build\n')
-phony = '.PHONY: hqc hqc-avx hqc-avx-poison hqc-isabelle hqc-solvers hqc-rme-scaling lift-check clean'
+phony = '.PHONY: hqc hqc-avx hqc-avx-poison hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants lift-check clean'
 header = re.sub(r'^\.PHONY:.*$', phony, header, flags=re.M)
 open(f'{out}/Makefile', 'w').write(header.rstrip('\n') + '\n\n' + '\n\n'.join(b.strip('\n') for b in keep) + '\n\n' + tail)
 PY
