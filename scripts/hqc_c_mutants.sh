@@ -13,6 +13,13 @@
 # and the leaf C mutant here is run twice: with the unchanged script, and with the one leaf tactic
 # swapped to abc (row suffix /abc), so that the refutation itself is on record.
 #
+# A mutant that z3 cannot refute symbolically can still be refuted on one concrete input: a universal
+# claim fails as soon as one instance fails. Rows with the suffix /concrete replace the two fresh
+# inputs of the obligation by fixed values in the proof script (and interpret the leaf, so that the
+# whole goal evaluates); a matching /ctl row runs the same script against the unmodified C and must
+# pass, which shows the concrete script itself is not broken. An empty sed expression means "no C
+# change" and is only for /ctl rows.
+#
 # Usage: scripts/hqc_c_mutants.sh [ref|avx|all|<mutant-name>]   (default all; avx needs AVX_CLANG, see Makefile)
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -27,9 +34,12 @@ run_mutant() {  # name  kind(ref|avx)  sed-expression  [sed-expression on the pr
   case "$WHICH" in ref|avx|all) ;; *) [ "$WHICH" = "$name" ] || [ "${name%/*}" = "$WHICH" ] || return 0;; esac
   mkdir -p "$d/proof/hqc" "$d/build/hqc"
   if [ "$kind" = ref ]; then src=target/hqc/gf2x.c; script=karatsuba_1.saw; else src=target/hqc/avx2/hqc-1/gf2x.c; script=avx_1.saw; fi
-  dst="$d/gf2x.c"; sed -e "$expr" "$src" > "$dst"
-  if cmp -s "$src" "$dst"; then printf '%-22s %-9s %-7s %s\n' "$name" ERROR - "mutation did not apply"; return; fi
-  [ "$(diff "$src" "$dst" | grep -c '^<')" -le 1 ] || { printf '%-22s %-9s %-7s %s\n' "$name" ERROR - "mutation touched more than one line"; return; }
+  dst="$d/gf2x.c"
+  if [ -z "$expr" ]; then cp "$src" "$dst"; else
+    sed -e "$expr" "$src" > "$dst"
+    if cmp -s "$src" "$dst"; then printf '%-22s %-9s %-7s %s\n' "$name" ERROR - "mutation did not apply"; return; fi
+    [ "$(diff "$src" "$dst" | grep -c '^<')" -le 1 ] || { printf '%-22s %-9s %-7s %s\n' "$name" ERROR - "mutation touched more than one line"; return; }
+  fi
   if [ "$kind" = ref ]; then
     clang -c -emit-llvm -O0 -g -I target/hqc/hqc-1 -I target/hqc -o "$d/build/hqc/gf2x_1.bc" "$dst" || return
   else
@@ -54,6 +64,9 @@ run_mutant() {  # name  kind(ref|avx)  sed-expression  [sed-expression on the pr
   # The last failure line: the earlier ones belong to the script's own gated mutants, which must fail.
   local why; why=$(grep -E 'Subgoal failed: [a-z_0-9]+|Symbolic execution failed|error: in [a-zA-Z]' "$d/saw.log" | tail -1 | cut -c1-70)
   if [ $timed_out -eq 1 ]; then printf '%-22s %-9s %-7s %s\n' "$name" no-result "$secs" "killed at the limit; last line: $(tail -1 "$d/saw.log" | cut -c1-50)"
+  elif [ -z "$expr" ]; then  # control row: unmodified C, the edited script must pass
+    if [ $rc -eq 0 ]; then printf '%-22s %-9s %-7s %s\n' "$name" ctl-pass "$secs" "saw exit 0 on the unmodified C"
+    else printf '%-22s %-9s %-7s %s\n' "$name" ctl-FAIL "$secs" "${why:-exit $rc}"; fi
   elif [ $rc -ne 0 ]; then printf '%-22s %-9s %-7s %s\n' "$name" caught "$secs" "${why:-exit $rc}"
   else printf '%-22s %-9s %-7s %s\n' "$name" MISSED "$secs" "saw exit 0"; fi
 }
@@ -68,6 +81,12 @@ if [ "$WHICH" != avx ]; then
 fi
 if [ "$WHICH" != ref ]; then
   run_mutant avx-prefix-xor       avx 's/B\[i\] = B\[i - 1\] \^ A\[i\];/B[i] = A[i];/'
+  # toom_3_mult with both inputs fixed (a_i = i*0x9E3779B97F4A7C15 + 0x0123456789ABCDEF, b_i likewise with
+  # other constants) and km96 interpreted: the obligation becomes a closed term. The script stops after
+  # toom_3_mult (a concrete-input tt could not serve as the vect_mul override).
+  CONCRETE='s#a <- llvm_fresh_var "a" (w 282);#let a = {{ [ i * 0x9E3779B97F4A7C15 + 0x0123456789ABCDEF | i <- [0..281] ] : [282][64] }};#; s#b <- llvm_fresh_var "b" (w 282);#let b = {{ [ i * 0xC2B2AE3D27D4EB4F + 0xFEDCBA9876543210 | i <- [0..281] ] : [282][64] }};#; s#tm1 a b }})) (w4_unint_z3 \["km96"\])#tm1 a b }})) (w4_unint_z3 [])#; /^\/\/ vect_mul:/,$d'
+  run_mutant avx-prefix-xor/concrete avx 's/B\[i\] = B\[i - 1\] \^ A\[i\];/B[i] = A[i];/' "$CONCRETE"
+  run_mutant avx-prefix-xor/ctl   avx '' "$CONCRETE"
   run_mutant avx-karat1-dd2       avx 's/__m128i DD1 = _mm_xor_si128(_mm_xor_si128(DD0, DD2), _mm_clmulepi64_si128(AAlpAAh, BBlpBBh, 0));/__m128i DD1 = _mm_xor_si128(DD0, _mm_clmulepi64_si128(AAlpAAh, BBlpBBh, 0));/'
   run_mutant avx-karat1-dd2/abc   avx 's/__m128i DD1 = _mm_xor_si128(_mm_xor_si128(DD0, DD2), _mm_clmulepi64_si128(AAlpAAh, BBlpBBh, 0));/__m128i DD1 = _mm_xor_si128(DD0, _mm_clmulepi64_si128(AAlpAAh, BBlpBBh, 0));/' 's/{{ km4 a b }})) rme;/{{ km4 a b }})) abc;/'
 fi

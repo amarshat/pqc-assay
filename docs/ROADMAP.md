@@ -62,8 +62,9 @@ plan are in private notes until work begins.
    Source-level mutants (`make hqc-c-mutants`, 2026-10-24): five reference one-liners, four caught in
    147 to 159 s at their own level, the schoolbook one caught in 54 s with the leaf tactic swapped to
    abc (rme: no result in 1200 s); AVX2 karat_mult_1 mutant caught in 8 s with the same swap (rme: no
-   result in 1200 s); the AVX2 prefix-XOR mutant no result from z3 in 1200 s, nor in 4 h on the M4 Pro
-   (A-HQC item 15).
+   result in 1200 s); the AVX2 prefix-XOR mutant no result from z3 in 1200 s, nor in 4 h on the M4 Pro,
+   with symbolic inputs; caught in 364 s with both toom_3_mult inputs fixed to concrete values, the
+   same concrete script passing on the unmodified C in 701 s (2026-10-25, A-HQC item 15).
    rme scaling, continued:
    M2 Max (64 GB, not idle); 4, 6, 24, 30, 492 s on the idle M4 Pro, where the 35-word run was killed
    by the system (SIGKILL) at 517 s: on the M2 Max that run peaks at 30.8 GB resident

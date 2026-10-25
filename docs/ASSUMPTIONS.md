@@ -1247,9 +1247,18 @@ What that rests on:
        earlier levels pass and z3 is inside the `toom_3_mult` obligation at 1200 s on the M2 Max; a
        second run on an otherwise idle Apple M4 Pro was killed at the 4 h limit (14400 s) with no
        result. The true `toom_3_mult` obligation is proved within the 263 s the whole hqc-1 script
-       takes, so here the refutation costs at least fifty times the proof.
+       takes, so here the symbolic refutation costs at least fifty times the proof. A universal claim
+       is refuted by one instance, so the row `avx-prefix-xor/concrete` runs the same mutant against
+       the script with the two inputs of `toom_3_mult` fixed to concrete values (`a_i = i *
+       0x9E3779B97F4A7C15 + 0x0123456789ABCDEF`, `b_i` likewise with other constants) and `km96`
+       interpreted, so the goal is a closed term: caught in 364 s (2026-10-25, the time includes the
+       Karatsuba levels the script proves first). The control row `avx-prefix-xor/ctl` runs that
+       concrete script against the unmodified C: saw exit 0 in 701 s, so the concrete script is not
+       itself broken. The concrete runs stop after `toom_3_mult` (a concrete-input result cannot serve
+       as the `vect_mul` override).
      - What this shows: a wrong program at four of the five reference levels makes the unchanged
        script fail where the change is, and so does a wrong AVX2 leaf once the leaf tactic can refute;
-       it says nothing about C bugs of other shapes, and a refutation can cost far more than the
-       proof (the `rme` leaves, and z3 on the AVX2 Toom level).
+       it says nothing about C bugs of other shapes, and a symbolic refutation can cost far more
+       than the proof (the `rme` leaves, and z3 on the AVX2 Toom level, where only a concrete
+       instance refuted the mutant).
 
