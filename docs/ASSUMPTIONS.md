@@ -759,8 +759,11 @@ hardest. Each is a real gap, not a formality.
   result does not depend on it. It is undefined behaviour in a `-O3 -flto` build and a sanitizer
   with global redzones would flag it. hqc-5's `toom_3_mult` sizes its arrays with `+ 2` and its proof
   runs without slack. Fix: one more vector in the two declarations, or stop the loop one vector early.
-  - Reported by email to the HQC team on 2026-10-24. Awaiting their response. Not a security issue
-    as far as we can tell: the word read is the first word of the next static array in the same
+  - Reported by email to the HQC team on 2026-10-24; acknowledged on 2026-10-25. The team confirmed
+    that the two loads in the last iteration read one 64-bit word beyond `W0` and `W2`, that the
+    result does not depend on the value under our stated assumptions, and that the access is still
+    invalid; their fix is one more element in each of the two static arrays (zero-initialized, being
+    static). Not a security issue as far as we can tell: the word read is the first word of the next static array in the same
     object, and it does not reach the output.
   - AddressSanitizer does not catch it as written: `_mm256_lddqu_si256` lowers to the
     `llvm.x86.avx.ldu.dq.256` intrinsic, which ASan does not instrument. The upstream hqc-1 AVX2
