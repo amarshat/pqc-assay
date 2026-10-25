@@ -69,7 +69,7 @@ beside it). For the bitwuzla row of the solver study, Homebrew `gmp` and `mpfr`.
 | `scripts/check_target_identity.sh` | the vendored bytes match the pinned hashes | seconds |
 | `make hqc-avx-poison` | the AVX2 proofs on bitcode with all-ones poison lanes | about 90 min |
 | `make hqc-solvers`, `make hqc-rme-scaling` | the solver tables of the paper | up to 50 min, 11 min |
-| `make hqc-c-mutants` | six one-line source mutants of copies of the C against the unchanged hqc-1 scripts (the Mutants paragraphs) | about 55 min |
+| `make hqc-c-mutants` | seven one-line source mutants of copies of the C against the unchanged hqc-1 scripts (the Mutants paragraphs) | about 75 min |
 
 `python3 proof/hqc/gen_hqc.py --check` confirms the committed generated files are current.
 

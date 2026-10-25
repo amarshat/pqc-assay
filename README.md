@@ -66,8 +66,10 @@ Target: `target/hqc/`, the official HQC v5.0.0 reference `gf2x.c`, unmodified, f
 hqc-5. Every SAW spec has a mutant that must fail; all 69 are rejected. Out of band, `make hqc-c-mutants`
 runs the unchanged hqc-1 scripts against six one-line source mutants of copies of the C: four of the five
 reference mutants are caught in 147 to 159 s at the level the change belongs to, the schoolbook mutant is
-caught in 54 s with the leaf tactic swapped from `rme` to `abc` (no result in 1200 s under `rme`), and the
-AVX2 mutant got no result in 1200 s (A-HQC item 15 in `docs/ASSUMPTIONS.md`). `make hqc` runs SAW at `-v 3`
+caught in 54 s with the leaf tactic swapped from `rme` to `abc` (no result in 1200 s under `rme`); of the two
+AVX2 mutants, the `karat_mult_1` one is caught in 8 s with the same swap (no result in 1200 s under `rme`)
+and the `divide_by_x_plus_one_256` one got no result from z3 in 1200 s, nor in 4 h on a second machine
+(A-HQC item 15 in `docs/ASSUMPTIONS.md`). `make hqc` runs SAW at `-v 3`
 (A-HQC item 12 says why) and took 27 min 57 s and 34 min 24 s in two runs
 (2026-10-24 and 2026-10-25, all steps, exit 0; the encoder scripts alone take 84 s, 134 s and 347 s) and `make hqc-isabelle`
 about 30 s on an Apple M2 Max; on an otherwise idle Apple M4 Pro (macOS 15.8) `make hqc` took 21 min 30 s

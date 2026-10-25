@@ -13,17 +13,18 @@
 # and the leaf C mutant here is run twice: with the unchanged script, and with the one leaf tactic
 # swapped to abc (row suffix /abc), so that the refutation itself is on record.
 #
-# Usage: scripts/hqc_c_mutants.sh [ref|avx|all]   (default all; avx needs AVX_CLANG, see Makefile)
+# Usage: scripts/hqc_c_mutants.sh [ref|avx|all|<mutant-name>]   (default all; avx needs AVX_CLANG, see Makefile)
 set -uo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"; export PATH="$ROOT/.tools/bin:$PATH"
 WHICH="${1:-all}"; LIMIT="${LIMIT:-1200}"
 AVX_CLANG="${AVX_CLANG:-/opt/homebrew/opt/llvm@22/bin/clang}"
-M="$ROOT/build/hqc/cmut"; rm -rf "$M"; mkdir -p "$M"
+M="$ROOT/build/hqc/cmut"; case "$WHICH" in ref|avx|all) rm -rf "$M";; esac; mkdir -p "$M"
 printf '%-22s %-9s %-7s %s\n' mutant verdict seconds "last failure reported by saw"
 
 run_mutant() {  # name  kind(ref|avx)  sed-expression  [sed-expression on the proof script]
   local name=$1 kind=$2 expr=$3 sexpr="${4:-}" d="$M/${1//\//_}" src dst bc script
+  case "$WHICH" in ref|avx|all) ;; *) [ "$WHICH" = "$name" ] || [ "${name%/*}" = "$WHICH" ] || return 0;; esac
   mkdir -p "$d/proof/hqc" "$d/build/hqc"
   if [ "$kind" = ref ]; then src=target/hqc/gf2x.c; script=karatsuba_1.saw; else src=target/hqc/avx2/hqc-1/gf2x.c; script=avx_1.saw; fi
   dst="$d/gf2x.c"; sed -e "$expr" "$src" > "$dst"
@@ -67,4 +68,6 @@ if [ "$WHICH" != avx ]; then
 fi
 if [ "$WHICH" != ref ]; then
   run_mutant avx-prefix-xor       avx 's/B\[i\] = B\[i - 1\] \^ A\[i\];/B[i] = A[i];/'
+  run_mutant avx-karat1-dd2       avx 's/__m128i DD1 = _mm_xor_si128(_mm_xor_si128(DD0, DD2), _mm_clmulepi64_si128(AAlpAAh, BBlpBBh, 0));/__m128i DD1 = _mm_xor_si128(DD0, _mm_clmulepi64_si128(AAlpAAh, BBlpBBh, 0));/'
+  run_mutant avx-karat1-dd2/abc   avx 's/__m128i DD1 = _mm_xor_si128(_mm_xor_si128(DD0, DD2), _mm_clmulepi64_si128(AAlpAAh, BBlpBBh, 0));/__m128i DD1 = _mm_xor_si128(DD0, _mm_clmulepi64_si128(AAlpAAh, BBlpBBh, 0));/' 's/{{ km4 a b }})) rme;/{{ km4 a b }})) abc;/'
 fi

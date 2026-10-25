@@ -1240,11 +1240,16 @@ What that rests on:
        that one tactic swapped to `abc`: `rme` builds a canonical form, so it proves a true equality in
        seconds but did not refute a false one in 20 minutes (the gated leaf mutant of item 10 uses `abc`
        for the same reason).
-     - AVX2 `hqc-1/gf2x.c`, `avx_1.saw`: replacing the prefix XOR of `divide_by_x_plus_one_256` by a
-       copy. No result in 1200 s on an Apple M2 Max: the script's earlier levels pass and z3 is still
-       inside the `toom_3_mult` obligation at the limit. (Recorded as measured; a longer run is noted
-       here if it finishes.)
+     - AVX2 `hqc-1/gf2x.c`, `avx_1.saw`, two mutants. Dropping the `DD2` term from the middle product
+       of `karat_mult_1` (the pclmul leaf): no result in 1200 s under the script's `rme` leaf tactic,
+       caught in 8 s with that tactic swapped to `abc`, the same pattern as the reference leaf.
+       Replacing the prefix XOR of `divide_by_x_plus_one_256` by a copy: no result. The script's
+       earlier levels pass and z3 is inside the `toom_3_mult` obligation at 1200 s on the M2 Max; a
+       second run on an otherwise idle Apple M4 Pro was killed at the 4 h limit (14400 s) with no
+       result. The true `toom_3_mult` obligation is proved within the 263 s the whole hqc-1 script
+       takes, so here the refutation costs at least fifty times the proof.
      - What this shows: a wrong program at four of the five reference levels makes the unchanged
-       script fail where the change is; it says nothing about C bugs of other shapes, and a refutation
-       can cost more than the proof.
+       script fail where the change is, and so does a wrong AVX2 leaf once the leaf tactic can refute;
+       it says nothing about C bugs of other shapes, and a refutation can cost far more than the
+       proof (the `rme` leaves, and z3 on the AVX2 Toom level).
 
