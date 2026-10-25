@@ -141,3 +141,18 @@ reusable pipeline beat one deep). Same repo, same pinned commit as the ML-DSA ta
   document exactly what and why here, and prefer a wrapper over an edit.
 - When vendored, the files go under `target/pqclean/` (ML-DSA), `target/pqclean-mlkem/` (ML-KEM) or
   `target/hqc/` (HQC) and are treated as read-only.
+
+## HQC additive-FFT multiplier target (vendored 2026-10-25 into `target/hqc-fft/`)
+- Source: the artifact of "HQC with additive FFT" (Chen, Chiu, Peng, Yang, TCHES 2026, ePrint
+  2026/014), <https://github.com/ChunTaoPengim/HQC_with_addFFT_tches2026>, commit
+  `c94c84dbaaa5b2d92ce15ce1ac8966e1fa9e1d43`, public domain (`UNLICENSE`, vendored alongside).
+- Files, byte for byte: every `.c` and `.h` of `bitpolymul/gf264_ref/ref/` as
+  `target/hqc-fft/gf264_ref/` (18 files, plus the licence): the portable reference of the GF(2^64)
+  Frobenius additive-FFT multiplier whose AVX2 and NEON variants the artifact deploys for x86-64 and
+  Apple M1. SHA-256 pinned in `scripts/check_target_identity.sh`.
+- Entry points under proof: `polymul_280U64_input` and `polymul_280U64_mul` (hqc-1: 280 words in,
+  560 out), `polymul_576U64_*` (hqc-3), and the functions they call: `bc_1`/`ibc_1` (basis
+  conversion), `encode_64`/`decode_64`, `btfy_64`/`ibtfy_64` (the butterflies over the Cantor
+  basis), `gf264v_mul` and the `karat_mult_*` ladder for the words above the FFT size.
+- Build: `make hqc-fft-bitcode` compiles the ten `.c` files with the Homebrew `llvm@22` clang at
+  `-O0 -g` for the host and links them with `llvm-link`. Nothing is edited or wrapped.

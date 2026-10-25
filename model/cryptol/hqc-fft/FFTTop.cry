@@ -1,0 +1,51 @@
+/* The two entry points of the GF(2^64) additive-FFT multiplier at the hqc-1 size
+   (target/hqc-fft/gf264_ref/polymul_hqclen_ref.c), as the composition of the stage models:
+   polymul_280U64_input transforms the low 256 words of a 280-word operand, and polymul_280U64_mul
+   recovers the product of the two low parts from the transforms and adds the Karatsuba cross terms
+   for the 24 words above. Part (2) of the milestone is that the C equals these two functions; part (1),
+   that mulT a b (inputT a) (inputT b) is the 560-word product a * b, is for Isabelle. */
+module FFTTop where
+
+import FFTRef (btfy9, ibtfy9, gf264v, km24, km16, km8)
+import FFTEnc (encode, decode)
+import FFTBC (bc1w, ibc1_32768w)
+
+// The C hands the same buffer to bc_1 as uint32 words and to encode_64 as uint64 words: the views.
+as32 : {n} (fin n) => [n][64] -> [2 * n][32]
+as32 v = join [ [drop`{32} x, take`{32} x] | x <- v ]
+as64 : {n} (fin n) => [2 * n][32] -> [n][64]
+as64 v = [ hi # lo | [lo, hi] <- split`{n} v ]
+
+// polymul_280U64_input(a_fft, a): bc_1 on the low 256 words, encode_64, btfy_64(9, 2^41).
+inputT : [280][64] -> [512][64]
+inputT a = btfy9 (1 << 41) (encode (as64 (bc1w (as32 (take`{256} a)))))
+
+// A segment of n words at word offset o, and a vector of n words placed at word offset o of 560.
+seg : {o, n, r} (fin o, fin n, fin r) => [o + n + r][64] -> [n][64]
+seg v = take`{n, r} (drop`{o} v)
+pl : {o, n} (fin o, fin n, o + n <= 560) => [n][64] -> [560][64]
+pl v = (zero : [o][64]) # v # (zero : [560 - (o + n)][64])
+
+// polymul_280U64_mul(c, a, b, a_fft, b_fft): the FFT part (pointwise products, ibtfy_64, decode_64,
+// ibc_1 on 4096 bytes) is the product of the low 256-word parts; the rest is karat_mult_1536/1024/512
+// on the 24 words above, exactly as the C places them.
+mulT : [280][64] -> [280][64] -> [512][64] -> [512][64] -> [560][64]
+mulT a b afft bfft = (fftpart # (zero : [48][64])) ^ cross
+  where
+    fftpart = as64 (ibc1_32768w (as32 (decode (ibtfy9 (1 << 41) (gf264v afft bfft)))))
+    arem = drop`{256} a
+    brem = drop`{256} b
+    cross = pl`{512,48} (km24 arem brem)
+      ^ pl`{256,48} (km24 (seg`{0,24} a) brem ^ km24 (seg`{0,24} b) arem)
+      ^ pl`{280,48} (km24 (seg`{24,24} a) brem ^ km24 (seg`{24,24} b) arem)
+      ^ pl`{304,48} (km24 (seg`{48,24} a) brem ^ km24 (seg`{48,24} b) arem)
+      ^ pl`{328,48} (km24 (seg`{72,24} a) brem ^ km24 (seg`{72,24} b) arem)
+      ^ pl`{352,48} (km24 (seg`{96,24} a) brem ^ km24 (seg`{96,24} b) arem)
+      ^ pl`{376,48} (km24 (seg`{120,24} a) brem ^ km24 (seg`{120,24} b) arem)
+      ^ pl`{400,48} (km24 (seg`{144,24} a) brem ^ km24 (seg`{144,24} b) arem)
+      ^ pl`{424,48} (km24 (seg`{168,24} a) brem ^ km24 (seg`{168,24} b) arem)
+      ^ pl`{448,48} (km24 (seg`{192,24} a) brem ^ km24 (seg`{192,24} b) arem)
+      ^ pl`{472,48} (km24 (seg`{216,24} a) brem ^ km24 (seg`{216,24} b) arem)
+      ^ pl`{496,32} (km16 (seg`{240,16} a) (take`{16} brem) ^ km16 (seg`{240,16} b) (take`{16} arem))
+      ^ pl`{512,16} (km8 (seg`{240,8} a) (drop`{16} brem) ^ km8 (seg`{240,8} b) (drop`{16} arem))
+      ^ pl`{520,16} (km8 (seg`{248,8} a) (drop`{16} brem) ^ km8 (seg`{248,8} b) (drop`{16} arem))

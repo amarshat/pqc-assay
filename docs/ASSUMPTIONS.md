@@ -1106,6 +1106,15 @@ What that rests on:
    - On the PQClean HQC `base_mul` (not in this repo), abc, z3 and yices did not finish in over
      10 minutes where `rme` took 0.17 s. That measurement is from scratch work, recorded to
      explain the choice of backend.
+   - False obligations (2026-10-25, `scripts/hqc_solver_study.sh 1 8 600 false|cmut`, M2 Max while
+     other proofs ran, so the times are upper bounds). The specification with bit 0 flipped is
+     refuted by every backend: rme 2 s, abc 62, z3 108, yices 6, cvc5 12, bitwuzla 6. The true
+     specification against the C with one schoolbook term dropped (the `ref-schoolbook-carry`
+     source mutant of item 15) is refuted by abc in 59 s, z3 108, yices 4, bitwuzla 4, and not by
+     rme or cvc5 in 600 s. So "rme does not refute" is wrong as a generality: it refutes a
+     constant difference at once and did not refute a difference of many monomials in the time
+     given; the SAT-based backends refute both. Output: `build/hqc/solvers_false.out`,
+     `build/hqc/solvers_cmut.out`.
 7. **tmp_buffer.**
    - Each `karatsuba_mul(s)` spec allocates exactly the words the recursion uses (8s plus the
      larger child's).
@@ -1134,9 +1143,9 @@ What that rests on:
     - `gf_reduce` is documented for degree at most 14; it is proved for every 16-bit input.
     - Field facts (a^254 is the inverse of nonzero a) are checked by z3 over all 256 elements, not
       in Isabelle.
-12. **The AVX2 implementation (A-HQC-AVX, recorded 2026-10-24).** `target/hqc/avx2/` vendors
-    `src/x86_64/common/hqc-<p>/gf2x.c` of the same v5.0.0 commit. `make hqc-avx` proves, for each
-    parameter set, that its `vect_mul` writes `vmulBytes a b`: the bytes of `fold`{n}` applied to a
+12. **The AVX2 implementation (A-HQC-AVX, recorded 2026-10-24, repaired source since 2026-10-25).**
+    `target/hqc/avx2/` vendors `src/x86_64/common/hqc-<p>/gf2x.c` of the same v5.0.0 commit.
+    `make hqc-avx` proves, for each parameter set, that its `vect_mul` writes `vmulBytes a b`: the bytes of `fold`{n}` applied to a
     Toom-3 / Karatsuba model (`AVX<p>.cry`, `AVXK.cry`, `Toom.cry`) whose leaf is `pclmulqdq`.
     `make hqc-isabelle` proves `AVX_P<p>.vmulA_correct` for the three sets: the word-level model
     is `(a * b) mod (x^n - 1)` for inputs of degree below n. The Toom step is `Toom.cry` (hqc-1
@@ -1150,27 +1159,33 @@ What that rests on:
       is Homebrew clang 22.1.8 (`AVX_CLANG` in the Makefile, default `/opt/homebrew/opt/llvm@22`),
       not the Apple clang 17 used for the other targets: the IR rewrite below works on the textual
       IR and needs `llvm-dis`/`llvm-as`, which Apple's toolchain does not ship.
-    - **IR normalization** (`scripts/hqc_avx_ir.py`, run by `make hqc-avx`). The C is not edited;
-      three things in the bitcode are, and each is a trusted step:
-      (a) poison lanes in vector constants (from `(__m256i){a, b, 0, 0}` literals) become 0, and a
-      whole-`poison` shuffle operand becomes `zeroinitializer`. This refines undefined lanes to one
-      value. That the lanes are overwritten before use, so that the refinement does not change
-      defined behaviour, is checked out of band: `make hqc-avx-poison` reruns the three scripts on
-      bitcode whose poison lanes are all ones (`--poison=ones`), and on 2026-10-24 all three passed
-      with every mutant rejected (1283, 1732, 2367 s). Two lane values giving the same, spec-equal
-      result for all inputs is evidence, not a proof, that the lanes do not reach the result (a
-      proof would need symbolic lanes, which a constant cannot carry); the source shows the
-      overwrite. The gated run uses zero;
-      (b) `toom_3_mult.W0` and `toom_3_mult.W2` get one `<4 x i64>` of slack: in hqc-1 and hqc-3
-      the loop `W2 = (W2 + W0)/x` reads one 64-bit word past the end of both arrays on its last
-      iteration (an out-of-bounds read in the vendored code; the word read lands in a lane that is
-      zeroed before use, so the result does not depend on it). SAW stops at the read; with the slack
-      the proof goes through and shows the output is independent of the extra word (it is
-      symbolic). The proof therefore covers the C only on the assumption that the over-read does
-      not fault, which is what happens with the surrounding static arrays. hqc-5's arrays keep
-      their declared size (the Makefile passes `--slack` only for hqc-1 and hqc-3) and its proof
-      passes, so for hqc-5 SAW witnesses that `toom_3_mult` stays in bounds;
-      (c) two constant GEPs with a negative index (`&ro256[T] - 2`), which Crucible rejects, are
+    - **The one-line repair (hqc-1 and hqc-3, since 2026-10-25).** The gated `make hqc-avx` does not
+      prove the hqc-1/3 source as shipped: `toom_3_mult` reads one word past `W0` and `W2` (OF-5),
+      and SAW stops at the read. It proves the source with the maintainers' fix, which they confirmed
+      on 2026-10-25: `W0` and `W2` declared one vector larger (`AVX_FIX_SED` in the Makefile, applied
+      with `sed` to a copy in `build/hqc/fixed/`; the build fails unless exactly one line changed).
+      This is the only edit to any C under proof in this repository. The vendored file is untouched
+      and pinned. hqc-5 is proved as shipped. The source as shipped is proved out of band by
+      `make hqc-avx-asis` on bitcode where the two arrays get one `<4 x i64>` of symbolic slack
+      instead (`scripts/hqc_avx_ir.py --slack`); that proof shows the word read does not reach the
+      result, and it holds only under the assumption that the over-read does not fault. First full
+      run of the repaired, symbolic-lane configuration: 2026-10-25, `make hqc-avx` exit 0 in 4103 s
+      with other proofs running (`build/hqc/make_avx_fixed.out`); hqc-1 alone 267 s on the idle
+      machine.
+    - **IR normalization** (`scripts/hqc_avx_ir.py`, run by `make hqc-avx`). Two things in the
+      bitcode are rewritten, and each is a trusted step:
+      (a) poison operands. Vector literals such as `(__m256i){a, b, 0, 0}` lower to constants with
+      `poison` lanes, and `shufflevector` gets a whole-`poison` second operand; Crucible refuses to
+      evaluate them. Since 2026-10-25 each such operand is replaced by a load from its own fresh
+      global `@__poison_k` (15, 15 and 6 of them; the defined lanes of a partly poison constant are
+      re-inserted after the load), and every SAW spec allocates every such global with fresh
+      symbolic contents and restates them unchanged after the call (the sidecar
+      `build/hqc/avx_<p>.bc.poison.saw` lists them). The proofs therefore hold for every value of
+      every undefined lane: the lanes are quantified over, not refined. Before that date the lanes
+      were set to zero (gated) and to all ones (`make hqc-avx-poison`, 2026-10-24, all three sets
+      passed in 1283, 1732, 2367 s), which was evidence and not a proof; `--poison=zero|ones` remain
+      as options for the record;
+      (b) two constant GEPs with a negative index (`&ro256[T] - 2`), which Crucible rejects, are
       rewritten as the same address in bytes from the array base.
     - **Intrinsics.** `llvm.x86.pclmulqdq` is implemented by SAW 1.5.1 and trusted. Three others
       have no semantics in SAW and are given theirs as assumed specs: `llvm.x86.avx.ldu.dq.256`
@@ -1179,6 +1194,8 @@ What that rests on:
     - **Scratch state.** The static scratch arrays of `toom_3_mult` and `karat_mult_5` start with
       arbitrary (symbolic) contents in every spec, so the result is shown not to depend on them.
       Static arrays whose contents are read before being written in a call would show up here.
+      Static scratch also makes the function non-reentrant: the theorems are about one sequential
+      call with no concurrent access to those arrays, which is how HQC calls it.
     - **Output.** `vect_mul` writes `VEC_N_SIZE_BYTES` bytes (2209, 4482, 7205) with `memcpy`, so
       the SAW spec is a byte view (`vmulBytes`), defined from `vmulA` by splitting words
       little-endian. The Isabelle theorem is about `vmulA`.
@@ -1273,4 +1290,66 @@ What that rests on:
     The AVX2 specifications allocate 32-byte-aligned buffers (`llvm_alloc_aligned 32`), as the
     256-bit loads and stores require. "For all inputs" in the README and the paper means all input
     values under these two conditions.
+
+
+## A-HQC-FFT: the additive-FFT multiplier, GF(2^64) reference (recorded 2026-10-25, in progress)
+
+Target: `target/hqc-fft/gf264_ref/`, the portable reference of the Frobenius additive-FFT multiplier
+over GF(2^64) from the artifact of Chen, Chiu, Peng and Yang (TCHES 2026, ePrint 2026/014), commit
+c94c84d, public domain; the AVX2 and NEON variants the artifact deploys share its structure. The
+milestone (docs/ROADMAP.md) is in two parts: the model multiplies (Isabelle), and the C implements
+the model (SAW). Nothing below is a result about the multiplier yet; it is the first SAW layer.
+
+1. **Bitcode.** `make hqc-fft-bitcode`: the ten `.c` files compiled for the host at `-O0` with the
+   Homebrew clang 22 (`AVX_CLANG`; `llvm-link` lives beside it), linked into one module, no `-g`
+   (SAW's bitcode reader warns on clang 22's debug metadata). The C is not edited.
+2. **Model** (`model/cryptol/hqc-fft/FFTRef.cry`, `FFTEnc.cry`). Mirrors the C function by function:
+   `mull64` (= `clmul1`), `gf264` (`pmod (pmult a b)` modulo x^64 + x^4 + x^3 + x + 1, the "0x1b"
+   of `gf264.h`), the Karatsuba ladder `km2 .. km64` as `kstep` and `km24 = k3step km8`, the Cantor
+   basis table and `cantor` (the F2-linear index-to-element map), `butterfly`/`ibutterfly`,
+   `stage`/`istage` with twiddle `cantor ((2 m) ^ (scalar >> si))` for unit m of stage si, `btfy9` /
+   `ibtfy9` (the 9-stage networks on 512 elements with scalar 2^41), `gf264v`, and `encode`/`decode`
+   as the F2-linear maps of `_enc_mat`/`_dec_mat` on the 32 x 512 bit view (element e of the
+   encoding is the image of column e; bit 512 t + e of the decoding, t < 64, is bit t of the image
+   of element e; the decoding is 512 words, the product's size). `FFTBC.cry` is the basis conversion
+   `bc_1`/`ibc_1` at 16384 and 32768 bits as the 25 (resp. 28) layers the C's comments name, each
+   layer dividing every 2L-bit block by x^L + x^T in closed form (q = hi + hi div x^(L-T), r = lo +
+   q x^T mod x^L, valid because 2T <= L in every layer; proved equal to `pdiv`/`pmod` at two small
+   sizes by Cryptol). `FFTTop.cry` is `polymul_280U64_input` and `_mul` as the composition of the
+   stage models on the C's word views, cross terms included. Checked against the C on probe inputs
+   (scratch harnesses, not committed): `gf264_mul`, `cantor_to_gf264`, `encode_64`, `decode_64`,
+   `bc_1`/`ibc_1` at both sizes (13 probes) and, on one random 280-word pair, the two entry points
+   themselves (all 512 and 560 words agree).
+3. **Proved by SAW (`make hqc-fft`, `proof/hqc-fft/ref_1.saw`, 2026-10-25: exit 0, 266 s on the M2
+   Max, 29 mutants rejected).** `_mull_64 == mull64` (rme); `_gf264_mul` and `gf264_mul == gf264`
+   (rme; the wrapper with the inline as override); `karat_mult_128 .. _4096 == km2 .. km64` and
+   `karat_mult_1536 == km24`, each with the level below as a proved override and its model
+   uninterpreted (z3); `gf264v_mul(512) == gf264v` with the inline `_gf264_mul` as override;
+   `butterfly_64` and `i_butterfly_64` at every unit 2 .. 512 against `butterfly`/`ibutterfly`
+   (z3, `gf264` uninterpreted). Every spec has a bit-flip mutant that must fail; the claim lint
+   pairs them (spec-building functions with a size argument are keyed `kspec(32)`).
+   Also proved (2026-10-25): `btfy_64` and `ibtfy_64` (9 stages, 512 elements, scalar 2^41) against
+   `btfy9`/`ibtfy9` with the kernels as overrides (`ref_2.saw`, z3, 365 s including script 1; the
+   twiddles come from the real const tables at concrete indices); `ibc_1(poly, 4096)` and its three
+   routines `irepr_s8_1_32768`, `ibc_256(128)`, `ibc_1_256(128)` against `FFTBC.cry` (`ref_4b.saw`,
+   rme for the routines, 86 s). An earlier model with `pdiv`/`pmod` per layer made rme take 30 GB
+   on `repr_s8_1_16384` and was replaced by the closed form.
+4. **Table identity, checked by evaluation, not proved.** `cantor_to_gf264_2x[k] == cantor_to_gf264(2k)`
+   for all 16384 k (a C harness, 2026-10-25); the model's `stage` uses the computed form. A SAW
+   proof of `btfy_64` against `btfy9` will read the real table (concrete indices), so it will
+   re-establish the entries it uses.
+5. **Not yet.** `btfy_64`/`ibtfy_64` against `btfy9`/`ibtfy9` (2304 overridden butterflies per
+   network); `encode_64`/`decode_64` against `encode`/`decode`; `bc_1`/`ibc_1` (the basis
+   conversion: 1725 lines of unrolled shift-XOR layers, which need either a transcription model
+   or the mathematical definition); `polymul_280U64_{input,mul}` as the composition (FFT part on the
+   low 256 words, Karatsuba cross terms above); hqc-3 sizes; the AVX2 variant; and all of part (1),
+   the Isabelle proof that the composition is the product.
+6. **Reference test.** The artifact's `polymul-non2len-test` needs its benchmark header; a harness with
+   the same schoolbook reference (`polymul_ref`) agrees with `polymul_17920_*` on 50 random 280-word
+   pairs (2026-10-25). Evidence that the vendored code is the working code, nothing more.
+7. **Slack in the `decode_64` specification.** The spec allocates 520 words for the 512-word output;
+   the extra 8 words are never written and the postcondition says nothing about them. Without them
+   Crucible stops inside the function. The reason is a property of the C that is being handled per
+   CONTRIBUTING.md (responsible disclosure) and is not described here yet; the proof of `decode_64`
+   therefore carries an assumption of the same kind as the AVX2 slack of item 12 (A-HQC).
 

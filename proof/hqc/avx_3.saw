@@ -10,10 +10,23 @@ import "Toom.cry";
 import "Fold.cry";
 import "AVX3.cry";
 m <- llvm_load_module "../../build/hqc/avx_3.bc";
+include "../../build/hqc/avx_3.bc.poison.saw";   // poison_globals, written by scripts/hqc_avx_ir.py
 
 let w n = llvm_array n (llvm_int 64);
+// Each poison operand of the IR is a load from its own global (hqc_avx_ir.py item 1); every spec
+// gives every such global fresh symbolic contents, so the proofs hold for all lane values.
+let init_poison (g, bits) = do {
+  llvm_alloc_global g;
+  v <- llvm_fresh_var g (llvm_array 4 (llvm_int bits));
+  llvm_points_to_untyped (llvm_global g) (llvm_term v);
+  return (g, v);
+};
+// and states after the call that it left them alone (otherwise SAW treats memory an override read
+// but did not describe afterwards as clobbered, and the next load from it fails).
+let keep_poison (g, v) = llvm_points_to_untyped (llvm_global g) (llvm_term v);
 // A product routine: result pointer, two operand pointers, all 32-byte aligned as the C requires.
 let spec n post = do {
+  pz <- for poison_globals init_poison;
   cp <- llvm_alloc_aligned 32 (w (eval_size {| 2*n |}));
   ap <- llvm_alloc_readonly_aligned 32 (w n);
   bp <- llvm_alloc_readonly_aligned 32 (w n);
@@ -22,6 +35,7 @@ let spec n post = do {
   llvm_points_to ap (llvm_term a);
   llvm_points_to bp (llvm_term b);
   llvm_execute_func [cp, ap, bp];
+  for pz keep_poison;
   llvm_points_to cp (llvm_term (post a b));
 };
 // A static scratch array starts with arbitrary contents.
@@ -73,6 +87,7 @@ fails (llvm_verify m "karat_mult3" [l64] false (spec_top (\a b -> {{ km192 a b ^
 print "VERIFIED: hqc-3 AVX2 karat_mult3 == km192 (192 words)";
 
 let toom_spec post = do {
+  pz <- for poison_globals init_poison;
   for scratch init_global;
   cp <- llvm_alloc_aligned 32 (w 1144);
   ap <- llvm_alloc_readonly_aligned 32 (w 570);
@@ -82,6 +97,7 @@ let toom_spec post = do {
   llvm_points_to ap (llvm_term a);
   llvm_points_to bp (llvm_term b);
   llvm_execute_func [cp, ap, bp];
+  for pz keep_poison;
   llvm_points_to cp (llvm_term (post a b));
 };
 tt <- llvm_verify m "toom_3_mult" [lddqu, top] false (toom_spec (\a b -> {{ tm3 a b }})) (w4_unint_z3 ["km192"]);
@@ -90,6 +106,7 @@ print "VERIFIED: hqc-3 AVX2 toom_3_mult == tm3 (570 words in, 1144 out)";
 
 // vect_mul: the result is written as bytes (memcpy of VEC_N_SIZE_BYTES), so the spec is a byte view.
 let vm_spec post = do {
+  pz <- for poison_globals init_poison;
   for scratch init_global;
   for [("a1_times_a2",1144),("o256",572)] init_global;
   llvm_alloc_global "tmp_reduce";
@@ -103,6 +120,7 @@ let vm_spec post = do {
   llvm_points_to ap (llvm_term a);
   llvm_points_to bp (llvm_term b);
   llvm_execute_func [op, ap, bp];
+  for pz keep_poison;
   llvm_points_to_untyped op (llvm_term (post a b));
 };
 llvm_verify m "vect_mul" [lddqu, psrli, pslli, tt] false (vm_spec (\a b -> {{ vmulBytes a b }})) (w4_unint_z3 ["tm3"]);

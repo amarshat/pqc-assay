@@ -37,8 +37,11 @@ at every level. `make hqc-isabelle` proves the three models are multiplication m
 input of degree below n. Verifying it found
 an out-of-bounds read in `toom_3_mult` (hqc-1 and hqc-3; benign in effect), reported to the HQC
 team by email on 2026-10-24 (A-HQC item 12 describes the slack the proof needs; "Open findings").
-Done 2026-10-24: the AVX2 proofs rerun with all-ones poison lanes (`make hqc-avx-poison`, all three
-sets pass). Next: either the decoders or the additive-FFT multiplier of Chen, Chiu, Peng
+Done 2026-10-24: the AVX2 proofs rerun with all-ones poison lanes (then `make hqc-avx-poison`, all three
+sets pass). Done 2026-10-25, after an outside review: the gated AVX2 proof is of the repaired hqc-1/3
+source (the maintainers' one-line fix) without slack, and every poison lane is a fresh symbolic
+global rather than a constant, so lane independence is proved, not sampled; the as-shipped source
+with slack moved to `make hqc-avx-asis`. Next: either the decoders or the additive-FFT multiplier of Chen, Chiu, Peng
 and Yang (TCHES 2026, ePrint 2026/014; public-domain artifact with portable reference C), whose
 SAW half fits this pipeline and whose Isabelle half needs the subspace-evaluation math.
 
@@ -47,8 +50,13 @@ multiplier of Chen, Chiu, Peng and Yang (TCHES 2026, ePrint 2026/014), in two pa
 (1) Prove that the additive FFT and the CRT reconstruction compute exactly binary polynomial
 multiplication modulo x^n - 1 for every valid HQC input (the Cryptol model and its Isabelle proof).
 (2) Prove that the actual C, including its GF(2^64) arithmetic and memory operations, implements
-that model (SAW, stage by stage, reference variant first, then AVX2). Not started; the assessment and
-plan are in private notes until work begins.
+that model (SAW, stage by stage, reference variant first, then AVX2). Started 2026-10-25 with the
+SAW layer, because it is the deterministic part and it produces the model part (1) needs:
+`target/hqc-fft/gf264_ref` vendored, `make hqc-fft` proves the leaves, the Karatsuba ladder, the
+pointwise product and the butterfly kernels against `FFTRef.cry` (266 s, 29 mutants rejected). Next in
+order: the butterfly networks (`btfy_64` against `btfy9`), `encode_64`/`decode_64` against the linear
+maps in `FFTEnc.cry`, the basis conversion `bc_1` (a transcription model or the recursive definition),
+then `polymul_280U64_mul` as the composition; then part (1) in Isabelle (A-HQC-FFT in ASSUMPTIONS).
 
 1. Done 2026-10-22: `gf.c` (SAW, z3) and Reed-Solomon encoding for all three parameter sets
    (SAW, rme, a property spec). Done 2026-10-24: Reed-Muller encoding for all three sets (SAW, z3,
@@ -65,6 +73,9 @@ plan are in private notes until work begins.
    result in 1200 s); the AVX2 prefix-XOR mutant no result from z3 in 1200 s, nor in 4 h on the M4 Pro,
    with symbolic inputs; caught in 364 s with both toom_3_mult inputs fixed to concrete values, the
    same concrete script passing on the unmodified C in 701 s (2026-10-25, A-HQC item 15).
+   False-obligation solver study (2026-10-25, M2 Max, loaded): the flipped-bit specification is
+   refuted by all six backends (rme 2 s); the one-term source mutant by abc 59 s, z3 108, yices 4,
+   bitwuzla 4, and not by rme or cvc5 in 600 s (A-HQC item 6).
    rme scaling, continued:
    M2 Max (64 GB, not idle); 4, 6, 24, 30, 492 s on the idle M4 Pro, where the 35-word run was killed
    by the system (SIGKILL) at 517 s: on the M2 Max that run peaks at 30.8 GB resident

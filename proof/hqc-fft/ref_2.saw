@@ -1,0 +1,28 @@
+// The GF(2^64) additive-FFT multiplier, reference C, hqc-1 sizes. Script 2: the butterfly networks
+// btfy_64 and ibtfy_64 (9 stages on 512 elements, scalar 2^41) against btfy9 / ibtfy9 in FFTRef.cry,
+// with the butterfly kernels of script 1 as overrides and gf264 uninterpreted. The twiddle tables
+// (cantor_basis, cantor_to_gf264_2x) are the real const globals; every index into them is concrete,
+// so the proof re-establishes the entries it uses against the model's cantor.
+include "ref_1.saw";
+
+// cantor_basis and cantor_to_gf264_2x are const globals: SAW reads their initializers directly (an
+// llvm_alloc_global on a constant is refused: "not mutable"), so no setup is needed for them.
+let tables = do { return (); };
+
+// btfy_64(poly, log_n, scalar_a), in place on 2^log_n words.
+let btfy_spec post = do {
+  tables;
+  p <- llvm_alloc (w 512);
+  x <- llvm_fresh_var "poly" (w 512);
+  llvm_points_to p (llvm_term x);
+  llvm_execute_func [p, llvm_term {{ 9 : [32] }}, llvm_term {{ 1 << 41 : [64] }}];
+  llvm_points_to p (llvm_term (post x));
+};
+let bfs = [bf2, bf4, bf8, bf16, bf32, bf64, bf128, bf256, bf512];
+let ibfs = [ibf2, ibf4, ibf8, ibf16, ibf32, ibf64, ibf128, ibf256, ibf512];
+bt <- llvm_verify m "btfy_64" bfs false (btfy_spec (\x -> {{ btfy9 (1 << 41) x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "btfy_64" bfs false (btfy_spec (\x -> {{ btfy9 (1 << 41) x ^ flip }})) (w4_unint_z3 ["gf264"]));
+print "VERIFIED: btfy_64(512, 2^41) == btfy9";
+ibt <- llvm_verify m "ibtfy_64" ibfs false (btfy_spec (\x -> {{ ibtfy9 (1 << 41) x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "ibtfy_64" ibfs false (btfy_spec (\x -> {{ ibtfy9 (1 << 41) x ^ flip }})) (w4_unint_z3 ["gf264"]));
+print "VERIFIED: ibtfy_64(512, 2^41) == ibtfy9";

@@ -1,0 +1,47 @@
+// The GF(2^64) additive-FFT multiplier, reference C (target/hqc-fft/gf264_ref), hqc-1 size: the
+// whole SAW layer. Scripts 1 to 4b prove every routine against its model; this file proves the two
+// entry points against FFTTop.cry with those routines as overrides and their models uninterpreted,
+// so the obligation here is only the plumbing between stages (buffer views, offsets, the cross terms).
+// Part (2) of the milestone in docs/ROADMAP.md is this script's exit status. Part (1), that
+// mulT a b (inputT a) (inputT b) is the product, is for Isabelle.
+include "ref_2.saw";
+include "ref_3.saw";
+include "ref_4.saw";
+include "ref_4b.saw";
+import "FFTTop.cry";
+
+// polymul_280U64_input(a_fft, a): writes 512 words of a_fft from the low 256 words of a.
+let in_spec post = do {
+  op <- llvm_alloc (w 512);
+  ap <- llvm_alloc_readonly (w 280);
+  a <- llvm_fresh_var "a" (w 280);
+  llvm_points_to ap (llvm_term a);
+  llvm_execute_func [op, ap];
+  llvm_points_to op (llvm_term (post a));
+};
+pin <- llvm_verify m "polymul_280U64_input" [bc, enc, bt] false (in_spec (\a -> {{ inputT a }})) (w4_unint_z3 ["bc1w", "encode", "btfy9"]);
+fails (llvm_verify m "polymul_280U64_input" [bc, enc, bt] false (in_spec (\a -> {{ inputT a ^ flip }})) (w4_unint_z3 ["bc1w", "encode", "btfy9"]));
+print "VERIFIED: polymul_280U64_input == inputT (bc_1, encode_64, btfy_64 as overrides)";
+
+// polymul_280U64_mul(c, a, b, a_fft, b_fft): 560 words of c.
+let mul_spec post = do {
+  cp <- llvm_alloc (w 560);
+  ap <- llvm_alloc_readonly (w 280);
+  bp <- llvm_alloc_readonly (w 280);
+  afp <- llvm_alloc_readonly (w 512);
+  bfp <- llvm_alloc_readonly (w 512);
+  a <- llvm_fresh_var "a" (w 280);
+  b <- llvm_fresh_var "b" (w 280);
+  af <- llvm_fresh_var "a_fft" (w 512);
+  bf <- llvm_fresh_var "b_fft" (w 512);
+  llvm_points_to ap (llvm_term a);
+  llvm_points_to bp (llvm_term b);
+  llvm_points_to afp (llvm_term af);
+  llvm_points_to bfp (llvm_term bf);
+  llvm_execute_func [cp, ap, bp, afp, bfp];
+  llvm_points_to cp (llvm_term (post a b af bf));
+};
+let stages = ["gf264v", "ibtfy9", "decode", "ibc1_32768w", "km24", "km16", "km8"];
+pm <- llvm_verify m "polymul_280U64_mul" [gfv, ibt, dec, ibc4096, k24, k16, k8] false (mul_spec (\a b af bf -> {{ mulT a b af bf }})) (w4_unint_z3 stages);
+fails (llvm_verify m "polymul_280U64_mul" [gfv, ibt, dec, ibc4096, k24, k16, k8] false (mul_spec (\a b af bf -> {{ mulT a b af bf ^ flip }})) (w4_unint_z3 stages));
+print "VERIFIED: polymul_280U64_mul == mulT (pointwise, ibtfy_64, decode_64, ibc_1, karat_mult_1536/1024/512 as overrides)";

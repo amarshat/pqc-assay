@@ -1,0 +1,115 @@
+/* Model of the GF(2^64) Frobenius additive-FFT multiplier's reference C (target/hqc-fft/gf264_ref,
+   artifact of Chen, Chiu, Peng and Yang, TCHES 2026, commit c94c84d), function by function. Word 0
+   is least significant and bit i of a word is the coefficient of x^i, as in GF2X.cry.
+
+   Stage 0 of the milestone in docs/ROADMAP.md: these definitions mirror the C so that SAW can
+   prove each C function equal to its model one level at a time. The mathematical statement (that
+   the pipeline computes the product) is for Isabelle, later. */
+module FFTRef where
+
+import GF2X (clmul1, kstep)
+import AVXK (k3step)
+
+// ---- the leaves ------------------------------------------------------------------------------
+
+// _mull_64: the 64 x 64 carry-less product, (low word, high word).
+mull64 : [64] -> [64] -> [2][64]
+mull64 = clmul1
+
+// GF(2^64) with the modulus x^64 + x^4 + x^3 + x + 1 (gf264.h: "0x1b").
+gf264 : [64] -> [64] -> [64]
+gf264 a b = pmod (pmult a b) <| x^^64 + x^^4 + x^^3 + x + 1 |>
+
+// ---- the Karatsuba ladder for the words above the FFT size (polymul_hqclen_ref.c) ------------
+
+km1 : [1][64] -> [1][64] -> [2][64]
+km1 a b = mull64 (a @ 0) (b @ 0)
+km2 : [2][64] -> [2][64] -> [4][64]
+km2 = kstep km1 km1                       // karat_mult_128
+km4 : [4][64] -> [4][64] -> [8][64]
+km4 = kstep km2 km2                       // karat_mult_256
+km8 : [8][64] -> [8][64] -> [16][64]
+km8 = kstep km4 km4                       // karat_mult_512
+km16 : [16][64] -> [16][64] -> [32][64]
+km16 = kstep km8 km8                      // karat_mult_1024
+km24 : [24][64] -> [24][64] -> [48][64]
+km24 = k3step`{8} km8                     // karat_mult_1536: three 8-word parts, six products
+km32 : [32][64] -> [32][64] -> [64][64]
+km32 = kstep km16 km16                    // karat_mult_2048
+km64 : [64][64] -> [64][64] -> [128][64]
+km64 = kstep km32 km32                    // karat_mult_4096
+
+// ---- the Cantor basis and the twiddles (cantor_to_gf264.c) ------------------------------------
+
+cantorBasis : [64][64]
+cantorBasis =
+ [0x0000000000000001, 0x19C9369F278ADC02, 0xA181E7D66F5FF794, 0x5DB84357CE785D08, 0xB973D466F5C9D0CA, 0x521AC889831A075E, 0x033CE8BEDDC8A656, 0xB5846C4E07B91010,
+  0x4087B8CBB37A32EC, 0x00D0D3888C0AE17C, 0xAFD5AC70237F2222, 0xE3F5AF99CC3AAAF8, 0x5A1DB3B16A0B58B8, 0x09947C54FE7EE248, 0x0E8EAF0E0068F544, 0xA2A113500B4B4F5A,
+  0xE96F9805D6CE0BB0, 0x53496F8B5C9EDD4C, 0xAD325CB6F4AC2A9E, 0x4A8DCF8BD7EDE826, 0xA3E9C552B6434210, 0x5FA92AD9C9BC7ED0, 0xA389F910CD7734DE, 0xE916F3DFCA4609D8,
+  0xF89578714BD28F96, 0x564DDA59237A3352, 0xAD33BC6CC75AED38, 0x57A3104FCD0E5F34, 0xB0F502E4CD60039A, 0xEB42E79F91F49F8C, 0x54E5BF3774B3F850, 0xB66864E6EC14B4D2,
+  0xED57CE778F0D6244, 0x523AAF9D6148BA24, 0xA8FCBFAAC14940C6, 0xE503EACFCEF77780, 0xF3746C7B5183A372, 0xEC50D77D2F416218, 0xF9CDF54569FE87E6, 0xE576269915705E2C,
+  0xEE2A197148FA8C72, 0x49E31453575F365A, 0xB86698D88ADD0BC0, 0x4F35FB218E7F37C0, 0xA306FEEA8A242832, 0x5E5F06A9DAEAD6E6, 0xBE13089ECC784EA0, 0xFE1A10738739C892,
+  0xE2266CEB0C5BC774, 0xF490E6ED40D1DD1A, 0xF3F5F515077E92F0, 0x467C20312E7EB0F0, 0xB06CAA4295D350C2, 0x5C5916D98A583C16, 0xA04DE5B4C7A1CEAC, 0x41430183D6E85EC0,
+  0xB361D8DABE3B3632, 0x4357375D88B88B56, 0xB057DCC8A19FBC9C, 0xF26E1791BE4B37C2, 0xE9F744031BFE63E4, 0xE50803875E9AB776, 0x44EE098F4D56753E, 0x9DC338F8399031B4]
+
+// cantor_to_gf264: the F2-linear map from an index to the field element with that Cantor coordinate vector.
+cantor : [64] -> [64]
+cantor v = foldl (^) 0 [ if v ! i then cantorBasis @ i else 0 | i <- [0 .. 63] ]
+
+// ---- the butterflies (btfy.c) ----------------------------------------------------------------
+
+// butterfly_64 on one unit of 2h words with twiddle a: lo ^= hi * a; hi ^= lo.
+butterfly : {h} (fin h) => [64] -> [2*h][64] -> [2*h][64]
+butterfly a p = lo' # hi'
+  where lo = take`{h} p
+        hi = drop`{h} p
+        lo' = lo ^ [ gf264 x a | x <- hi ]
+        hi' = hi ^ lo'
+
+// i_butterfly_64: hi ^= lo; lo ^= hi * a.
+ibutterfly : {h} (fin h) => [64] -> [2*h][64] -> [2*h][64]
+ibutterfly a p = lo' # hi'
+  where lo = take`{h} p
+        hi = drop`{h} p
+        hi' = hi ^ lo
+        lo' = lo ^ [ gf264 x a | x <- hi' ]
+
+// One stage of btfy_64 at unit 2h over k units: unit m gets the twiddle cantor((2m) ^ s), where
+// s = scalar_a >> si. In the C, cantor_to_gf264_2x[k] ^ cantor_to_gf264(j << 1) ^ cantor_to_gf264(scalar_a >> si)
+// with m = j + k; the three index ranges are disjoint, so this is one cantor of their XOR.
+stage : {h, k} (fin h, fin k, k <= 2^^32) => [64] -> [k*(2*h)][64] -> [k*(2*h)][64]
+stage s p = join [ butterfly`{h} (cantor ((2 * m) ^ s)) u | u <- split`{k} p | m <- ([0 ..< k] : [k][64]) ]
+
+istage : {h, k} (fin h, fin k, k <= 2^^32) => [64] -> [k*(2*h)][64] -> [k*(2*h)][64]
+istage s p = join [ ibutterfly`{h} (cantor ((2 * m) ^ s)) u | u <- split`{k} p | m <- ([0 ..< k] : [k][64]) ]
+
+// btfy_64(poly, 9, 2^41) on 512 words: stages si = 8 down to 0, unit = 2^(si+1), s = scalar >> si.
+btfy9 : [64] -> [512][64] -> [512][64]
+btfy9 scalar p =
+  stage`{1,256} (scalar >> 0)
+  (stage`{2,128} (scalar >> 1)
+  (stage`{4,64} (scalar >> 2)
+  (stage`{8,32} (scalar >> 3)
+  (stage`{16,16} (scalar >> 4)
+  (stage`{32,8} (scalar >> 5)
+  (stage`{64,4} (scalar >> 6)
+  (stage`{128,2} (scalar >> 7)
+  (stage`{256,1} (scalar >> 8) p))))))))
+
+// ibtfy_64(poly, 9, 2^41): stages si = 0 up to 8.
+ibtfy9 : [64] -> [512][64] -> [512][64]
+ibtfy9 scalar p =
+  istage`{256,1} (scalar >> 8)
+  (istage`{128,2} (scalar >> 7)
+  (istage`{64,4} (scalar >> 6)
+  (istage`{32,8} (scalar >> 5)
+  (istage`{16,16} (scalar >> 4)
+  (istage`{8,32} (scalar >> 3)
+  (istage`{4,64} (scalar >> 2)
+  (istage`{2,128} (scalar >> 1)
+  (istage`{1,256} (scalar >> 0) p))))))))
+
+// ---- pointwise products (gf264v_mul) ------------------------------------------------------------
+
+gf264v : {n} (fin n) => [n][64] -> [n][64] -> [n][64]
+gf264v a b = [ gf264 x y | x <- a | y <- b ]

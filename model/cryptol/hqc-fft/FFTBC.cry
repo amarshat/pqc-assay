@@ -1,0 +1,159 @@
+/* bc_1 / ibc_1 of the GF(2^64) additive-FFT reference (target/hqc-fft/gf264_ref/bc_1_ref.c and
+   bc_256_ref.c) at the hqc-1 size, 16384 bits: the conversion between the monomial basis and the
+   novel polynomial basis built on the Cantor basis.
+
+   Read from the C's layer comments ("layer k: [2L] s_i^m:(L,T)"): bc_1 is 25 layers in order, and a
+   layer splits the vector into blocks of 2L bits and replaces every block f by (q, r) with
+   f = q (x^L + x^T) + r, deg r < L, stored as the high half q and the low half r. The C does the long
+   division in 32-bit words with shifts (or, when T is a multiple of 32, as word moves); here each layer
+   is Cryptol's pdiv and pmod by the two-term polynomial, so the model is the mathematics of each layer
+   and the SAW proof is what connects the word-shift code to it. ibc_1 undoes the layers in reverse
+   order: f = q (x^L + x^T) + r.
+
+   The divisors are powers of the Cantor subspace polynomials that have two terms, s_{2^j} = x^{2^{2^j}} + x
+   (s1 = x^2 + x, s2 = x^4 + x, s4 = x^16 + x, s8 = x^256 + x), and their powers (s_i^{2^m} = x^{2^{2^j+m}} +
+   x^{2^m}); layers 6 to 12 are the same divisions in the variable y = s8 (x^256), which in bits are
+   divisions by x^{256 a} + x^{256 b}. Why this sequence is the novel-basis conversion is part (1) of the
+   milestone (Isabelle); nothing here asserts it. */
+module FFTBC where
+
+// One layer: every 2L-bit block f becomes (f div g) # (f mod g) with g = x^L + x^T. With f = hi x^L + lo
+// and 2T <= L (true of every layer), the quotient is q = hi + hi div x^(L-T) and the remainder
+// r = lo + (q x^T mod x^L): two shifts and two XORs. (pdiv / pmod would say the same, but SAW unrolls
+// them into a quadratic long-division circuit; divBlock_is_pdiv_pmod below checks the closed form.)
+divLayer : {k, L, T} (fin k, fin L, fin T, L >= 1, 2 * T <= L) => [k * (2*L)] -> [k * (2*L)]
+divLayer v = join [ divBlock`{L,T} b | b <- split`{k} v ]
+
+divBlock : {L, T} (fin L, fin T, L >= 1, 2 * T <= L) => [2*L] -> [2*L]
+divBlock f = q # r
+  where hi = take`{L} f
+        lo = drop`{L} f
+        q = hi ^ (hi >> `(L - T))
+        r = lo ^ (q << `T)
+
+property divBlock_is_pdiv_pmod (f : [32]) =
+  divBlock`{16,4} f == drop`{16} (pdiv f g) # pmod f g where g = (1 : [17]) << 16 ^ (1 : [17]) << 4
+property divBlock_is_pdiv_pmod_half (f : [16]) =
+  divBlock`{8,4} f == drop`{8} (pdiv f g) # pmod f g where g = (1 : [9]) << 8 ^ (1 : [9]) << 4
+
+// Its inverse: (q # r) becomes q (x^L + x^T) + r.
+mulLayer : {k, L, T} (fin k, fin L, fin T, L >= 1, 2 * T <= L) => [k * (2*L)] -> [k * (2*L)]
+mulLayer v = join [ mulBlock`{L,T} b | b <- split`{k} v ]
+
+mulBlock : {L, T} (fin L, fin T, L >= 1, 2 * T <= L) => [2*L] -> [2*L]
+mulBlock b = (q # (zero : [L])) ^ (((zero : [L]) # q) << `T) ^ ((zero : [L]) # r)
+  where q = take`{L} b
+        r = drop`{L} b
+
+// bc_1 on 16384 bits (bc_1_16384): repr_s8_1_16384 (layers 0 to 5), bc_256 on 64 blocks (6 to 12),
+// bc_1_256 on each 256-bit block (13 to 24).
+repr16384 : [16384] -> [16384]
+repr16384 v =
+  divLayer`{32,256,1} (divLayer`{16,512,2} (divLayer`{8,1024,4} (divLayer`{4,2048,8}
+  (divLayer`{2,4096,16} (divLayer`{1,8192,32} v)))))
+
+bc256of16384 : [16384] -> [16384]
+bc256of16384 v =
+  divLayer`{16,512,256} (divLayer`{4,2048,1024} (divLayer`{8,1024,256} (divLayer`{4,2048,512}
+  (divLayer`{1,8192,4096} (divLayer`{2,4096,256} (divLayer`{1,8192,512} v))))))
+
+bc1of256 : {k} (fin k) => [k * 256] -> [k * 256]
+bc1of256 v =
+  divLayer`{64*k,2,1} (divLayer`{16*k,8,4} (divLayer`{32*k,4,1} (divLayer`{16*k,8,2}
+  (divLayer`{4*k,32,16} (divLayer`{k,128,64} (divLayer`{2*k,64,16} (divLayer`{k,128,32}
+  (divLayer`{8*k,16,1} (divLayer`{4*k,32,2} (divLayer`{2*k,64,4} (divLayer`{k,128,8} v)))))))))))
+
+bc1 : [16384] -> [16384]
+bc1 v = bc1of256`{64} (bc256of16384 (repr16384 v))
+
+// The inverses, layers undone in reverse order (ibc_1_16384: ibc_1_256, ibc_256, irepr_s8_1_16384).
+irepr16384 : [16384] -> [16384]
+irepr16384 v =
+  mulLayer`{1,8192,32} (mulLayer`{2,4096,16} (mulLayer`{4,2048,8} (mulLayer`{8,1024,4}
+  (mulLayer`{16,512,2} (mulLayer`{32,256,1} v)))))
+
+ibc256of16384 : [16384] -> [16384]
+ibc256of16384 v =
+  mulLayer`{1,8192,512} (mulLayer`{2,4096,256} (mulLayer`{1,8192,4096} (mulLayer`{4,2048,512}
+  (mulLayer`{8,1024,256} (mulLayer`{4,2048,1024} (mulLayer`{16,512,256} v))))))
+
+ibc1of256 : {k} (fin k) => [k * 256] -> [k * 256]
+ibc1of256 v =
+  mulLayer`{k,128,8} (mulLayer`{2*k,64,4} (mulLayer`{4*k,32,2} (mulLayer`{8*k,16,1}
+  (mulLayer`{k,128,32} (mulLayer`{2*k,64,16} (mulLayer`{k,128,64} (mulLayer`{4*k,32,16}
+  (mulLayer`{16*k,8,2} (mulLayer`{32*k,4,1} (mulLayer`{16*k,8,4} (mulLayer`{64*k,2,1} v)))))))))))
+
+ibc1 : [16384] -> [16384]
+ibc1 v = irepr16384 (ibc256of16384 (ibc1of256`{64} v))
+
+// The same at 32768 bits (bc_1_32768 / ibc_1_32768, used by polymul_280U64_mul on the product, 4096
+// bytes): repr_s8_1_32768 is one more layer (16384, 64) before the six of repr16384 on each half;
+// bc_256_32768 is layers 7 to 15 of bc_256_ref.c; bc_1_256 on 128 blocks.
+repr32768 : [32768] -> [32768]
+repr32768 v =
+  divLayer`{64,256,1} (divLayer`{32,512,2} (divLayer`{16,1024,4} (divLayer`{8,2048,8}
+  (divLayer`{4,4096,16} (divLayer`{2,8192,32} (divLayer`{1,16384,64} v))))))
+
+bc256of32768 : [32768] -> [32768]
+bc256of32768 v =
+  divLayer`{32,512,256} (divLayer`{8,2048,1024} (divLayer`{16,1024,256} (divLayer`{8,2048,512}
+  (divLayer`{2,8192,4096} (divLayer`{1,16384,4096} (divLayer`{4,4096,256} (divLayer`{2,8192,512}
+  (divLayer`{1,16384,1024} v))))))))
+
+bc1_32768 : [32768] -> [32768]
+bc1_32768 v = bc1of256`{128} (bc256of32768 (repr32768 v))
+
+irepr32768 : [32768] -> [32768]
+irepr32768 v =
+  mulLayer`{1,16384,64} (mulLayer`{2,8192,32} (mulLayer`{4,4096,16} (mulLayer`{8,2048,8}
+  (mulLayer`{16,1024,4} (mulLayer`{32,512,2} (mulLayer`{64,256,1} v))))))
+
+ibc256of32768 : [32768] -> [32768]
+ibc256of32768 v =
+  mulLayer`{1,16384,1024} (mulLayer`{2,8192,512} (mulLayer`{4,4096,256} (mulLayer`{1,16384,4096}
+  (mulLayer`{2,8192,4096} (mulLayer`{8,2048,512} (mulLayer`{16,1024,256} (mulLayer`{8,2048,1024}
+  (mulLayer`{32,512,256} v))))))))
+
+ibc1_32768 : [32768] -> [32768]
+ibc1_32768 v = irepr32768 (ibc256of32768 (ibc1of256`{128} v))
+
+// Word views: the C works on uint32 words, word 0 least significant.
+flat32 : {n} (fin n) => [n][32] -> [n * 32]
+flat32 v = join (reverse v)
+unflat32 : {n} (fin n) => [n * 32] -> [n][32]
+unflat32 v = reverse (split v)
+
+// The three C routines on the word view (the SAW specs), and bc_1 / ibc_1 as their composition.
+reprW : [512][32] -> [512][32]
+reprW v = unflat32 (repr16384 (flat32 v))
+bc256W : [512][32] -> [512][32]
+bc256W v = unflat32 (bc256of16384 (flat32 v))
+bc1of256W : [512][32] -> [512][32]
+bc1of256W v = unflat32 (bc1of256`{64} (flat32 v))
+bc1w : [512][32] -> [512][32]
+bc1w v = bc1of256W (bc256W (reprW v))
+
+ireprW : [512][32] -> [512][32]
+ireprW v = unflat32 (irepr16384 (flat32 v))
+ibc256W : [512][32] -> [512][32]
+ibc256W v = unflat32 (ibc256of16384 (flat32 v))
+ibc1of256W : [512][32] -> [512][32]
+ibc1of256W v = unflat32 (ibc1of256`{64} (flat32 v))
+ibc1w : [512][32] -> [512][32]
+ibc1w v = ireprW (ibc256W (ibc1of256W v))
+
+property bc1w_is_bc1 v = bc1w v == unflat32 (bc1 (flat32 v))
+
+// 32768 bits as 1024 words (the product buffer of polymul_280U64_mul).
+irepr32W : [1024][32] -> [1024][32]
+irepr32W v = unflat32 (irepr32768 (flat32 v))
+ibc256of32W : [1024][32] -> [1024][32]
+ibc256of32W v = unflat32 (ibc256of32768 (flat32 v))
+ibc1of256of32W : [1024][32] -> [1024][32]
+ibc1of256of32W v = unflat32 (ibc1of256`{128} (flat32 v))
+ibc1_32768w : [1024][32] -> [1024][32]
+ibc1_32768w v = irepr32W (ibc256of32W (ibc1of256of32W v))
+bc1_32768w : [1024][32] -> [1024][32]
+bc1_32768w v = unflat32 (bc1_32768 (flat32 v))
+
+property layer_inverse_small (v : [64]) = mulLayer`{2,16,1} (divLayer`{2,16,1} v) == v

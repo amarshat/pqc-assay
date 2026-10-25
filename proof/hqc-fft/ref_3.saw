@@ -1,0 +1,43 @@
+// The GF(2^64) additive-FFT multiplier, reference C, hqc-1 sizes. Script 3: encode_64 and decode_64
+// (dencoder.c) against the F2-linear maps encode / decode in FFTEnc.cry: 256 words to 512 field
+// elements and 512 elements to 512 words, through the constant matrices _enc_mat and _dec_mat (the
+// real globals). Both are linear, so rme proves them (z3 did not finish encode in 40 minutes).
+import "FFTEnc.cry";
+// Library: included by fft_1.saw after ref_1.saw (the module m, w, flip come from there).
+
+let mats = do {
+  llvm_alloc_global "_enc_mat";
+  llvm_points_to (llvm_global "_enc_mat") (llvm_global_initializer "_enc_mat");
+  llvm_alloc_global "_dec_mat";
+  llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
+};
+
+// encode_64(rfx, n_u64 = 512, fx, src_bits = 32): the C reads fx byte by byte.
+let enc_spec post = do {
+  mats;
+  rp <- llvm_alloc (w 512);
+  fp <- llvm_alloc_readonly (w 256);
+  x <- llvm_fresh_var "fx" (w 256);
+  llvm_points_to fp (llvm_term x);
+  llvm_execute_func [rp, llvm_term {{ 512 : [32] }}, fp, llvm_term {{ 32 : [32] }}];
+  llvm_points_to rp (llvm_term (post x));
+};
+enc <- llvm_verify m "encode_64" [] false (enc_spec (\x -> {{ encode x }})) rme;
+fails (llvm_verify m "encode_64" [] false (enc_spec (\x -> {{ encode x ^ flip }})) abc);
+print "VERIFIED: encode_64(512, 32) == encode";
+
+// decode_64(rfx, fx, n_u64 = 512): 512 words out (32768 bits), written byte by byte. The spec
+// allocates 8 extra words after the output, never written and unconstrained by the postcondition;
+// without them symbolic execution does not complete (A-HQC-FFT item 7).
+let dec_spec post = do {
+  mats;
+  rp <- llvm_alloc (w 520);
+  fp <- llvm_alloc_readonly (w 512);
+  x <- llvm_fresh_var "fx" (w 512);
+  llvm_points_to fp (llvm_term x);
+  llvm_execute_func [rp, fp, llvm_term {{ 512 : [32] }}];
+  llvm_points_to_untyped rp (llvm_term (post x));
+};
+dec <- llvm_verify m "decode_64" [] false (dec_spec (\x -> {{ decode x }})) rme;
+fails (llvm_verify m "decode_64" [] false (dec_spec (\x -> {{ decode x ^ flip }})) abc);
+print "VERIFIED: decode_64(512) == decode";

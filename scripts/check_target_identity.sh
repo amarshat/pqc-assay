@@ -16,6 +16,7 @@ cd "$(dirname "$0")/.."
 PQCLEAN_COMMIT="202a8f96315f9ed219387a50f7e40d04af037ea8"   # PQClean, crypto_sign/ml-dsa-44/clean/
 PQCRYSTALS_COMMIT="cbcd8753a43402885c90343cd6335fb54712cda1" # pq-crystals/dilithium the clean impl tracks
 HQC_COMMIT="f46e54222ffb76706678a9ec8a43cd2188a12ab1"        # gitlab.com/pqc-hqc/hqc, tag v5.0.0 (target/hqc/)
+FFT_COMMIT="c94c84dbaaa5b2d92ce15ce1ac8966e1fa9e1d43"        # github.com/ChunTaoPengim/HQC_with_addFFT_tches2026 (target/hqc-fft/)
 
 # expected_sha256  path  (pinned at vendoring; see target/README.md)
 EXPECTED="
@@ -65,11 +66,30 @@ c2bb3b7be30a125abdfdbd60de6321c9b4edd52f01d54bdfcfcee78fa632c8b1  target/hqc/dat
 c207b7708c2e7b894c31b1d31166534af73bc07d855b4d99d3e956862c7626af  target/hqc/code.c
 afbd3a2e0baf952a5a0d08175deb94e6f89236c207132f3ce6ff613064cbe8d3  target/hqc/code.h
 906d712f2e4b67f172c7cc5596c23d618c3004eb9173e1f4f94cc8bbf2b89c24  target/hqc/crypto_memset.c
+6b0382b16279f26ff69014300541967a356a666eb0b91b422f6862f6b7dad17e  target/hqc-fft/UNLICENSE
+b89136baf5741b6d66e417d0f8f22063ec2e9891c6da45010c6d3a51c13a6643  target/hqc-fft/gf264_ref/bc_1.h
+c513eb095052d3306de7d4d7671b53948a46184912fee22293c33dce06dffc39  target/hqc-fft/gf264_ref/bc_1_ref.c
+d57733c56817c338e1f98135d1bd7d94cc0a993576555e7bc692138ec4af8ca8  target/hqc-fft/gf264_ref/bc_256.h
+c5cce4754b1735ebf39021ee909cfa382b78d94f3386b486c64de4a430a00977  target/hqc-fft/gf264_ref/bc_256_ref.c
+258e72ab0bbbc62312d20f6fb2a800e9683d672ac55af0893a71277467568476  target/hqc-fft/gf264_ref/btfy.c
+f1944407e48ea86984b05b2e84adf64099c6795ffec4d19bd6e1da445b97447e  target/hqc-fft/gf264_ref/btfy.h
+33c24876dcea5229a994bfd6d6b21cbf0a05813cf9f397a80ea24464c9bbe80d  target/hqc-fft/gf264_ref/btfy_consts_2stages.c
+f031d6a889a7faede8697ebfce665267929ee3bf14cf1f86d69af855cc8863b8  target/hqc-fft/gf264_ref/cantor_to_gf264.c
+e721a883a4c584107633fc667319f7f66c1a47a4f0c80d18d87ebbfea5480b77  target/hqc-fft/gf264_ref/cantor_to_gf264.h
+481e359599a7c287f9d3cff484bd10ddd842e861de81e974c34dcf8d3d929e8a  target/hqc-fft/gf264_ref/cantor_to_gf264_2x.c
+0ed85188eb9acd6f1918479564784b2eda636e70b33111c59136ce2cb05434ca  target/hqc-fft/gf264_ref/dencoder.c
+237927c75ea44380f4158df64ae49b9df017f5ea982a6cd4d4cd70bfa79069ba  target/hqc-fft/gf264_ref/dencoder.h
+b54f8cb5ba433eb007d58714ccc92e605abadb4ce2bf9469d0a0a922258bd098  target/hqc-fft/gf264_ref/gf264.c
+f15893b07a032abb0a3701b02cca9c188634443b7d7f73f8684b52c79ff57d65  target/hqc-fft/gf264_ref/gf264.h
+359f955b4bd0cc48a221bf67e60943e52e4c2bb26a84d2a6c4022b376220627c  target/hqc-fft/gf264_ref/polymul.c
+1dae4fc41908985af8c545b32a3bd7fef0bc3da6ff89770f14724f716d45835e  target/hqc-fft/gf264_ref/polymul.h
+a67dae6c95813bd0888fd4a939b6b115c628d9c16461a58cd8e55a897437c2d7  target/hqc-fft/gf264_ref/polymul_hqclen.h
+45ceff27d3d7553ac7ede76e4797f68de5b1eb5710b92516b9b47fe93454202c  target/hqc-fft/gf264_ref/polymul_hqclen_ref.c
 "
 
 SHA="shasum -a 256"; command -v sha256sum >/dev/null 2>&1 && SHA="sha256sum"
 
-echo ">> verifying vendored target bytes (PQClean $PQCLEAN_COMMIT, tracks pq-crystals $PQCRYSTALS_COMMIT; HQC $HQC_COMMIT)"
+echo ">> verifying vendored target bytes (PQClean $PQCLEAN_COMMIT, tracks pq-crystals $PQCRYSTALS_COMMIT; HQC $HQC_COMMIT; HQC-FFT $FFT_COMMIT)"
 fail=0
 while read -r want path; do
   [ -z "${want:-}" ] && continue

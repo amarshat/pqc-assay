@@ -67,7 +67,7 @@ beside it). For the bitwuzla row of the solver study, Homebrew `gmp` and `mpfr`.
 | `make hqc-isabelle` | the lifted models compute (a*b) mod (x^n - 1), oracle-free (`HQC_Gate`) | about 30 s |
 | `make lift-check` | every committed lifted theory equals `cryptol-to-isabelle` of its Cryptol source | about 1 min |
 | `scripts/check_target_identity.sh` | the vendored bytes match the pinned hashes | seconds |
-| `make hqc-avx-poison` | the AVX2 proofs on bitcode with all-ones poison lanes | about 90 min |
+| `make hqc-avx-asis` | the AVX2 proofs on the source as shipped (hqc-1/3 with one vector of symbolic slack on `W0`/`W2`); the gated `make hqc-avx` proves the repaired hqc-1/3 source | same as `make hqc-avx` |
 | `make hqc-solvers`, `make hqc-rme-scaling` | the solver tables of the paper (both depend on `make hqc`, which runs first if its outputs are absent) | up to 50 min, 11 min |
 | `make hqc-c-mutants` | seven one-line source mutants of copies of the C against the unchanged hqc-1 scripts, nine rows with the two concrete-input rows (the Mutants paragraphs); depends on `make hqc` | about 90 min after `make hqc` |
 
@@ -104,7 +104,7 @@ for b in keep:
     assert not re.search(r'\$\((TARGET_C|BITCODE|SAW_SCRIPT|ISA_SESSION)\)', b), b[:80]
 tail = ('## Every committed lifted theory equals cryptol-to-isabelle of its Cryptol source.\nlift-check:\n'
         '\t./scripts/lift_check_all.sh\n\nclean:\n\trm -rf build\n')
-phony = '.PHONY: hqc hqc-avx hqc-avx-poison hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants lift-check clean'
+phony = '.PHONY: hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants lift-check clean'
 header = re.sub(r'^\.PHONY:.*$', phony, header, flags=re.M)
 header = header.replace('# Assay — one-command reproduction.\n# Each target fails loudly; `make verify` is the whole pipeline.', '# One-command reproduction of the HQC proofs. Each target fails loudly.')
 header = re.sub(r'^(TARGET_C|BITCODE|SAW_SCRIPT|ISA_SESSION)\s*:=.*\n', '', header, flags=re.M)

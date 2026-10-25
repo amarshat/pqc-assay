@@ -1,0 +1,129 @@
+// The GF(2^64) additive-FFT multiplier, reference C (target/hqc-fft/gf264_ref), hqc-1 sizes.
+// Script 1: the leaves, the Karatsuba ladder, the pointwise product and the butterfly kernel,
+// each C function equal to its model in FFTRef.cry with the children uninterpreted.
+// Every proved specification has a mutant that must fail (the lint checks the pairing).
+import "FFTRef.cry";
+m <- llvm_load_module "../../build/hqc-fft/fft_ref.bc";
+let w n = llvm_array n (llvm_int 64);
+let u64 = llvm_int 64;
+
+// _mull_64(c0*, c1*, a, b): the 64 x 64 carry-less product as two output words.
+let mull_spec post = do {
+  c0 <- llvm_alloc u64;
+  c1 <- llvm_alloc u64;
+  a <- llvm_fresh_var "a" u64;
+  b <- llvm_fresh_var "b" u64;
+  llvm_execute_func [c0, c1, llvm_term a, llvm_term b];
+  let r = post a b;
+  llvm_points_to c0 (llvm_term {{ r @ 0 }});
+  llvm_points_to c1 (llvm_term {{ r @ 1 }});
+};
+mull <- llvm_verify m "_mull_64" [] false (mull_spec (\a b -> {{ mull64 a b }})) rme;
+fails (llvm_verify m "_mull_64" [] false (mull_spec (\a b -> {{ mull64 a b ^ [1, 0] }})) abc);
+print "VERIFIED: _mull_64 == mull64 (clmul1)";
+
+// _gf264_mul / gf264_mul: the field product, modulus x^64 + x^4 + x^3 + x + 1.
+let gf_spec post = do {
+  a <- llvm_fresh_var "a" u64;
+  b <- llvm_fresh_var "b" u64;
+  llvm_execute_func [llvm_term a, llvm_term b];
+  llvm_return (llvm_term (post a b));
+};
+gfi <- llvm_verify m "_gf264_mul" [] false (gf_spec (\a b -> {{ gf264 a b }})) rme;
+fails (llvm_verify m "_gf264_mul" [] false (gf_spec (\a b -> {{ gf264 a b ^ 1 }})) abc);
+gfm <- llvm_verify m "gf264_mul" [gfi] false (gf_spec (\a b -> {{ gf264 a b }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "gf264_mul" [gfi] false (gf_spec (\a b -> {{ gf264 a b ^ 1 }})) (w4_unint_z3 ["gf264"]));
+print "VERIFIED: _gf264_mul and gf264_mul == gf264 (pmod . pmult)";
+
+// karat_mult_<bits>(C, A, B): n words in, 2n out.
+let kspec n post = do {
+  cp <- llvm_alloc (w (eval_size {| 2*n |}));
+  ap <- llvm_alloc_readonly (w n);
+  bp <- llvm_alloc_readonly (w n);
+  a <- llvm_fresh_var "a" (w n);
+  b <- llvm_fresh_var "b" (w n);
+  llvm_points_to ap (llvm_term a);
+  llvm_points_to bp (llvm_term b);
+  llvm_execute_func [cp, ap, bp];
+  llvm_points_to cp (llvm_term (post a b));
+};
+let flip = {{ [1] # zero }};
+k2 <- llvm_verify m "karat_mult_128" [mull] false (kspec 2 (\a b -> {{ km2 a b }})) (w4_unint_z3 ["mull64", "clmul1"]);
+fails (llvm_verify m "karat_mult_128" [mull] false (kspec 2 (\a b -> {{ km2 a b ^ flip }})) (w4_unint_z3 ["mull64", "clmul1"]));
+k4 <- llvm_verify m "karat_mult_256" [k2] false (kspec 4 (\a b -> {{ km4 a b }})) (w4_unint_z3 ["km2"]);
+fails (llvm_verify m "karat_mult_256" [k2] false (kspec 4 (\a b -> {{ km4 a b ^ flip }})) (w4_unint_z3 ["km2"]));
+k8 <- llvm_verify m "karat_mult_512" [k4] false (kspec 8 (\a b -> {{ km8 a b }})) (w4_unint_z3 ["km4"]);
+fails (llvm_verify m "karat_mult_512" [k4] false (kspec 8 (\a b -> {{ km8 a b ^ flip }})) (w4_unint_z3 ["km4"]));
+k16 <- llvm_verify m "karat_mult_1024" [k8] false (kspec 16 (\a b -> {{ km16 a b }})) (w4_unint_z3 ["km8"]);
+fails (llvm_verify m "karat_mult_1024" [k8] false (kspec 16 (\a b -> {{ km16 a b ^ flip }})) (w4_unint_z3 ["km8"]));
+k24 <- llvm_verify m "karat_mult_1536" [k8] false (kspec 24 (\a b -> {{ km24 a b }})) (w4_unint_z3 ["km8"]);
+fails (llvm_verify m "karat_mult_1536" [k8] false (kspec 24 (\a b -> {{ km24 a b ^ flip }})) (w4_unint_z3 ["km8"]));
+k32 <- llvm_verify m "karat_mult_2048" [k16] false (kspec 32 (\a b -> {{ km32 a b }})) (w4_unint_z3 ["km16"]);
+fails (llvm_verify m "karat_mult_2048" [k16] false (kspec 32 (\a b -> {{ km32 a b ^ flip }})) (w4_unint_z3 ["km16"]));
+k64 <- llvm_verify m "karat_mult_4096" [k32] false (kspec 64 (\a b -> {{ km64 a b }})) (w4_unint_z3 ["km32"]);
+fails (llvm_verify m "karat_mult_4096" [k32] false (kspec 64 (\a b -> {{ km64 a b ^ flip }})) (w4_unint_z3 ["km32"]));
+print "VERIFIED: karat_mult_128 .. 4096 == km2 .. km64 (km24 = k3step km8)";
+
+// gf264v_mul(c, a, b, len): pointwise products of len = 512 elements. It calls the inline _gf264_mul
+// directly (gf264.c), so the override is gfi, not gfm.
+let gfv_spec n nt post = do {
+  cp <- llvm_alloc (w n);
+  ap <- llvm_alloc_readonly (w n);
+  bp <- llvm_alloc_readonly (w n);
+  a <- llvm_fresh_var "a" (w n);
+  b <- llvm_fresh_var "b" (w n);
+  llvm_points_to ap (llvm_term a);
+  llvm_points_to bp (llvm_term b);
+  llvm_execute_func [cp, ap, bp, llvm_term nt];
+  llvm_points_to cp (llvm_term (post a b));
+};
+gfv <- llvm_verify m "gf264v_mul" [gfi] false (gfv_spec 512 {{ 512 : [32] }} (\a b -> {{ gf264v a b }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "gf264v_mul" [gfi] false (gfv_spec 512 {{ 512 : [32] }} (\a b -> {{ gf264v a b ^ flip }})) (w4_unint_z3 ["gf264"]));
+print "VERIFIED: gf264v_mul(512) == gf264v";
+
+// butterfly_64(poly, unit, a) and i_butterfly_64, in place on unit words, unit = 2 .. 512.
+let bf_spec u ut post = do {
+  p <- llvm_alloc (w u);
+  x <- llvm_fresh_var "poly" (w u);
+  a <- llvm_fresh_var "a" u64;
+  llvm_points_to p (llvm_term x);
+  llvm_execute_func [p, llvm_term ut, llvm_term a];
+  llvm_points_to p (llvm_term (post a x));
+};
+bf2 <- llvm_verify m "butterfly_64" [gfm] false (bf_spec 2 {{ 2 : [32] }} (\a x -> {{ butterfly`{1} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "butterfly_64" [gfm] false (bf_spec 2 {{ 2 : [32] }} (\a x -> {{ butterfly`{1} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+bf4 <- llvm_verify m "butterfly_64" [gfm] false (bf_spec 4 {{ 4 : [32] }} (\a x -> {{ butterfly`{2} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "butterfly_64" [gfm] false (bf_spec 4 {{ 4 : [32] }} (\a x -> {{ butterfly`{2} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+bf8 <- llvm_verify m "butterfly_64" [gfm] false (bf_spec 8 {{ 8 : [32] }} (\a x -> {{ butterfly`{4} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "butterfly_64" [gfm] false (bf_spec 8 {{ 8 : [32] }} (\a x -> {{ butterfly`{4} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+bf16 <- llvm_verify m "butterfly_64" [gfm] false (bf_spec 16 {{ 16 : [32] }} (\a x -> {{ butterfly`{8} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "butterfly_64" [gfm] false (bf_spec 16 {{ 16 : [32] }} (\a x -> {{ butterfly`{8} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+bf32 <- llvm_verify m "butterfly_64" [gfm] false (bf_spec 32 {{ 32 : [32] }} (\a x -> {{ butterfly`{16} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "butterfly_64" [gfm] false (bf_spec 32 {{ 32 : [32] }} (\a x -> {{ butterfly`{16} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+bf64 <- llvm_verify m "butterfly_64" [gfm] false (bf_spec 64 {{ 64 : [32] }} (\a x -> {{ butterfly`{32} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "butterfly_64" [gfm] false (bf_spec 64 {{ 64 : [32] }} (\a x -> {{ butterfly`{32} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+bf128 <- llvm_verify m "butterfly_64" [gfm] false (bf_spec 128 {{ 128 : [32] }} (\a x -> {{ butterfly`{64} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "butterfly_64" [gfm] false (bf_spec 128 {{ 128 : [32] }} (\a x -> {{ butterfly`{64} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+bf256 <- llvm_verify m "butterfly_64" [gfm] false (bf_spec 256 {{ 256 : [32] }} (\a x -> {{ butterfly`{128} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "butterfly_64" [gfm] false (bf_spec 256 {{ 256 : [32] }} (\a x -> {{ butterfly`{128} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+bf512 <- llvm_verify m "butterfly_64" [gfm] false (bf_spec 512 {{ 512 : [32] }} (\a x -> {{ butterfly`{256} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "butterfly_64" [gfm] false (bf_spec 512 {{ 512 : [32] }} (\a x -> {{ butterfly`{256} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+ibf2 <- llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 2 {{ 2 : [32] }} (\a x -> {{ ibutterfly`{1} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 2 {{ 2 : [32] }} (\a x -> {{ ibutterfly`{1} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+ibf4 <- llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 4 {{ 4 : [32] }} (\a x -> {{ ibutterfly`{2} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 4 {{ 4 : [32] }} (\a x -> {{ ibutterfly`{2} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+ibf8 <- llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 8 {{ 8 : [32] }} (\a x -> {{ ibutterfly`{4} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 8 {{ 8 : [32] }} (\a x -> {{ ibutterfly`{4} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+ibf16 <- llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 16 {{ 16 : [32] }} (\a x -> {{ ibutterfly`{8} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 16 {{ 16 : [32] }} (\a x -> {{ ibutterfly`{8} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+ibf32 <- llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 32 {{ 32 : [32] }} (\a x -> {{ ibutterfly`{16} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 32 {{ 32 : [32] }} (\a x -> {{ ibutterfly`{16} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+ibf64 <- llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 64 {{ 64 : [32] }} (\a x -> {{ ibutterfly`{32} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 64 {{ 64 : [32] }} (\a x -> {{ ibutterfly`{32} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+ibf128 <- llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 128 {{ 128 : [32] }} (\a x -> {{ ibutterfly`{64} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 128 {{ 128 : [32] }} (\a x -> {{ ibutterfly`{64} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+ibf256 <- llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 256 {{ 256 : [32] }} (\a x -> {{ ibutterfly`{128} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 256 {{ 256 : [32] }} (\a x -> {{ ibutterfly`{128} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+ibf512 <- llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 512 {{ 512 : [32] }} (\a x -> {{ ibutterfly`{256} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 512 {{ 512 : [32] }} (\a x -> {{ ibutterfly`{256} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+print "VERIFIED: butterfly_64 and i_butterfly_64 == butterfly / ibutterfly at units 2 .. 512";

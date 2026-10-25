@@ -1,0 +1,41 @@
+// The GF(2^64) additive-FFT multiplier, reference C, hqc-1 size. Script 4: the basis conversion
+// bc_1 / ibc_1 on 16384 bits (bc_1_ref.c, bc_256_ref.c) against FFTBC.cry: each of the three routines
+// against its layers (pdiv / pmod by two-term polynomials), then bc_1 and ibc_1 as the composition with
+// the routines as overrides and their models uninterpreted. The C works on uint32 words.
+import "FFTBC.cry";
+// Library: included by fft_1.saw after ref_1.saw (the module m and flip come from there).
+let w32 n = llvm_array n (llvm_int 32);
+
+// In place on 512 words; `args` are the extra concrete arguments after the pointer.
+let bc_spec args post = do {
+  p <- llvm_alloc (w32 512);
+  x <- llvm_fresh_var "poly" (w32 512);
+  llvm_points_to p (llvm_term x);
+  llvm_execute_func (concat [p] args);
+  llvm_points_to p (llvm_term (post x));
+};
+let n64 = llvm_term {{ 64 : [32] }};
+let n2048 = llvm_term {{ 2048 : [32] }};
+
+rp <- llvm_verify m "repr_s8_1_16384" [] false (bc_spec [] (\x -> {{ reprW x }})) rme;
+fails (llvm_verify m "repr_s8_1_16384" [] false (bc_spec [] (\x -> {{ reprW x ^ flip }})) abc);
+print "VERIFIED: repr_s8_1_16384 == reprW (layers 0 to 5)";
+b2 <- llvm_verify m "bc_256" [] false (bc_spec [n64] (\x -> {{ bc256W x }})) rme;
+fails (llvm_verify m "bc_256" [] false (bc_spec [n64] (\x -> {{ bc256W x ^ flip }})) abc);
+print "VERIFIED: bc_256(64) == bc256W (layers 6 to 12)";
+b1 <- llvm_verify m "bc_1_256" [] false (bc_spec [n64] (\x -> {{ bc1of256W x }})) rme;
+fails (llvm_verify m "bc_1_256" [] false (bc_spec [n64] (\x -> {{ bc1of256W x ^ flip }})) abc);
+print "VERIFIED: bc_1_256(64) == bc1of256W (layers 13 to 24)";
+bc <- llvm_verify m "bc_1" [rp, b2, b1] false (bc_spec [n2048] (\x -> {{ bc1w x }})) (w4_unint_z3 ["reprW", "bc256W", "bc1of256W"]);
+fails (llvm_verify m "bc_1" [rp, b2, b1] false (bc_spec [n2048] (\x -> {{ bc1w x ^ flip }})) (w4_unint_z3 ["reprW", "bc256W", "bc1of256W"]));
+print "VERIFIED: bc_1(2048 bytes) == bc1w, the composition";
+
+irp <- llvm_verify m "irepr_s8_1_16384" [] false (bc_spec [] (\x -> {{ ireprW x }})) rme;
+fails (llvm_verify m "irepr_s8_1_16384" [] false (bc_spec [] (\x -> {{ ireprW x ^ flip }})) abc);
+ib2 <- llvm_verify m "ibc_256" [] false (bc_spec [n64] (\x -> {{ ibc256W x }})) rme;
+fails (llvm_verify m "ibc_256" [] false (bc_spec [n64] (\x -> {{ ibc256W x ^ flip }})) abc);
+ib1 <- llvm_verify m "ibc_1_256" [] false (bc_spec [n64] (\x -> {{ ibc1of256W x }})) rme;
+fails (llvm_verify m "ibc_1_256" [] false (bc_spec [n64] (\x -> {{ ibc1of256W x ^ flip }})) abc);
+ibc <- llvm_verify m "ibc_1" [irp, ib2, ib1] false (bc_spec [n2048] (\x -> {{ ibc1w x }})) (w4_unint_z3 ["ireprW", "ibc256W", "ibc1of256W"]);
+fails (llvm_verify m "ibc_1" [irp, ib2, ib1] false (bc_spec [n2048] (\x -> {{ ibc1w x ^ flip }})) (w4_unint_z3 ["ireprW", "ibc256W", "ibc1of256W"]));
+print "VERIFIED: ibc_1(2048 bytes) == ibc1w, and its three routines";

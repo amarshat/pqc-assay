@@ -97,14 +97,18 @@ trusted; see A-HQC in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md).
 
 ### The AVX2 implementation
 
-Target: `target/hqc/avx2/`, the x86-64 `gf2x.c` of the same v5.0.0 commit (unmodified; the bitcode is
-normalized in three documented places, A-HQC item 12), cross-compiled at `-O0` with Homebrew clang 22.
-`make hqc-avx` runs SAW at `-v 3`; one `make hqc-avx` on an otherwise idle Apple M2 Max took 58 min
-13 s (2026-10-24, exit 0: 263 s for hqc-1, 1167 s for hqc-3, 2062 s for hqc-5); all 23 mutants are
-rejected. `make hqc-avx-poison` (out of band) reruns the same proofs on bitcode
-whose poison lanes are all ones instead of zero; it passed on 2026-10-24 (1283, 1732, 2367 s). That is
-evidence, not a proof, that the lanes the IR normalization fixes do not reach the result; the source
-shows they are overwritten (A-HQC item 12).
+Target: `target/hqc/avx2/`, the x86-64 `gf2x.c` of the same v5.0.0 commit, cross-compiled at `-O0`
+with Homebrew clang 22. For hqc-1 and hqc-3 the gated proof is of the source after the maintainers'
+one-line fix for OF-5 (`W0` and `W2` one vector larger, applied to a copy at build time; the vendored
+file is untouched), because the shipped source reads one word past those arrays and SAW stops there;
+hqc-5 is proved as shipped. The bitcode is rewritten in two documented places (A-HQC item 12): every
+`poison` operand becomes a load from its own fresh global, which the specs give symbolic contents,
+so the proofs hold for every value of the lanes LLVM leaves undefined; and two negative constant
+GEPs become byte offsets. `make hqc-avx` runs SAW at `-v 3`; all 23 mutants are rejected (2026-10-25:
+exit 0, 68 min for the three sets on a busy M2 Max; hqc-1 alone 267 s idle; the earlier zero-lane,
+slack configuration took 58 min idle: 263, 1167, 2062 s).
+`make hqc-avx-asis` (out of band) proves the source as shipped with one vector of symbolic slack on
+the two arrays, which shows the word read never reaches the result (A-HQC item 12, OF-5).
 
 | Property | Checked by |
 |---|---|
@@ -122,6 +126,17 @@ compute the same polynomial, so they agree on the `VEC_N_SIZE_BYTES` bytes the A
 936-word output buffer untouched). SAW's `pclmulqdq` semantics are trusted and three AVX intrinsics
 (unaligned load, per-lane shifts) have assumed specs; A-HQC item 12 lists them with the IR
 normalizations.
+
+### In progress: the additive-FFT multiplier
+
+`target/hqc-fft/gf264_ref/` vendors the GF(2^64) reference of the additive-FFT HQC multiplier (Chen,
+Chiu, Peng, Yang, TCHES 2026; public domain, commit c94c84d). `make hqc-fft` proves the first layer of
+the C against `model/cryptol/hqc-fft/FFTRef.cry` (2026-10-25, exit 0, 266 s, 29 mutants rejected): the
+64 x 64 carry-less leaf, GF(2^64) multiplication modulo x^64 + x^4 + x^3 + x + 1, the `karat_mult_128`
+to `_4096` ladder and the three-way `karat_mult_1536`, the pointwise product, and the butterfly kernels
+at every unit size. Not yet: the butterfly networks, encode/decode, the basis conversion, the
+composition, and the Isabelle proof that the composition is the product (A-HQC-FFT in
+`docs/ASSUMPTIONS.md`; the milestone is in `docs/ROADMAP.md`).
 
 ## Checked once, not gated
 

@@ -17,7 +17,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: hqc hqc-avx hqc-avx-poison hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: hqc-fft-bitcode hqc-fft hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -83,13 +83,20 @@ hqc:
 ## The AVX2 bitcode needs a clang whose bindir also has llvm-dis/llvm-as (scripts/hqc_avx_ir.py rewrites
 ## the IR as text). Apple's clang ships neither, so this target uses Homebrew llvm@22, like AC2_CLANG.
 AVX_CLANG ?= /opt/homebrew/opt/llvm@22/bin/clang
+AVX_CC = $(AVX_CLANG) --target=x86_64-apple-darwin -isysroot $$(xcrun --show-sdk-path) -D_FORTIFY_SOURCE=0 -O0 -mavx -mavx2 -mbmi -mpclmul
+## The maintainers' fix for OF-5 (confirmed 2026-10-25), applied to a copy of hqc-1/3 gf2x.c in build/:
+## W0 and W2 get one more vector, so toom_3_mult's last "(W2 + W0)/x" load stays in bounds. One line.
+AVX_FIX_SED = s/static __m256i W0\[2 \* (T_TM3R_3W_256)\], W1\[2 \* (T_TM3R_3W_256)\], W2\[2 \* (T_TM3R_3W_256)\],/static __m256i W0[2 * (T_TM3R_3W_256) + 1], W1[2 * (T_TM3R_3W_256)], W2[2 * (T_TM3R_3W_256) + 1],/
 AVX_LLVM_BIN := $(dir $(AVX_CLANG))
 hqc-avx:
 	@mkdir -p build/hqc
 	@python3 proof/hqc/gen_hqc.py --check
 	@test -x $(AVX_LLVM_BIN)llvm-dis || { echo "!! $(AVX_LLVM_BIN)llvm-dis not found; set AVX_CLANG to a clang with llvm-dis/llvm-as beside it"; exit 1; }
-	@for p in 1 3 5; do $(AVX_CLANG) --target=x86_64-apple-darwin -isysroot $$(xcrun --show-sdk-path) -D_FORTIFY_SOURCE=0 -O0 -mavx -mavx2 -mbmi -mpclmul -I target/hqc/avx2/hqc-$$p -I target/hqc/hqc-$$p -I target/hqc/avx2 -I target/hqc -c -emit-llvm -o build/hqc/avx_$$p.raw.bc target/hqc/avx2/hqc-$$p/gf2x.c || exit 1; python3 scripts/hqc_avx_ir.py $(AVX_LLVM_BIN) build/hqc/avx_$$p.raw.bc build/hqc/avx_$$p.bc $$([ $$p = 5 ] || echo --slack) || exit 1; done
-	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p AVX2 vect_mul == vmulBytes (karat_mult ladder, karat_mult3/5, toom_3_mult, reduce)"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) -v 3 proof/hqc/avx_$$p.saw || exit 1; echo "VERIFIED: hqc-$$p AVX2 vect_mul == vmulBytes (saw exit 0: every llvm_verify in proof/hqc/avx_$$p.saw passed and every mutant was rejected)"; done
+	@mkdir -p build/hqc/fixed
+	@for p in 1 3; do sed -e '$(AVX_FIX_SED)' target/hqc/avx2/hqc-$$p/gf2x.c > build/hqc/fixed/gf2x_$$p.c; [ "$$(diff target/hqc/avx2/hqc-$$p/gf2x.c build/hqc/fixed/gf2x_$$p.c | grep -c '^<')" = 1 ] || { echo "!! the W0/W2 patch did not apply as one line to hqc-$$p"; exit 1; }; done
+	@cp target/hqc/avx2/hqc-5/gf2x.c build/hqc/fixed/gf2x_5.c
+	@for p in 1 3 5; do $(AVX_CC) -I target/hqc/avx2/hqc-$$p -I target/hqc/hqc-$$p -I target/hqc/avx2 -I target/hqc -c -emit-llvm -o build/hqc/avx_$$p.raw.bc build/hqc/fixed/gf2x_$$p.c || exit 1; python3 scripts/hqc_avx_ir.py $(AVX_LLVM_BIN) build/hqc/avx_$$p.raw.bc build/hqc/avx_$$p.bc || exit 1; done
+	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p AVX2 vect_mul == vmulBytes (karat_mult ladder, karat_mult3/5, toom_3_mult, reduce)"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) -v 3 proof/hqc/avx_$$p.saw || exit 1; echo "VERIFIED: hqc-$$p AVX2 vect_mul == vmulBytes (saw exit 0: every llvm_verify in proof/hqc/avx_$$p.saw passed and every mutant was rejected; hqc-1/3 on the W0/W2 + 1 source, poison lanes symbolic)"; done
 ## -v 3 (warnings and errors, no info): at the default level SAW prints, for each rejected mutant, the
 ## solver's model of the uninterpreted child function as a term; for the hqc-3 vect_mul mutant that
 ## print alone needed more memory than the machine has and the kernel killed the run after the real
@@ -101,18 +108,40 @@ hqc-avx:
 hqc-solvers: hqc
 	./scripts/hqc_solver_study.sh 1 8 600
 
-## Out of band: the same AVX2 proofs on bitcode whose poison lanes are all ones instead of zero. A pass on
-## both bitcodes shows the lanes do not reach the result (hqc_avx_ir.py item 1). Same cost as hqc-avx.
-hqc-avx-poison:
-	@mkdir -p build/hqc/poison
+## Out of band: the AVX2 proofs on the source as shipped. hqc-1/3 then need one vector of slack on W0 and
+## W2 (hqc_avx_ir.py item 2) because toom_3_mult reads one word past both arrays (OF-5); the proof on that
+## bitcode shows the word read does not reach the result. The gated hqc-avx proves the repaired source
+## (W0 and W2 one element larger, the maintainers' fix) without slack. Same cost as hqc-avx.
+hqc-avx-asis:
+	@mkdir -p build/hqc/asis
 	@test -x $(AVX_LLVM_BIN)llvm-dis || { echo "!! $(AVX_LLVM_BIN)llvm-dis not found; set AVX_CLANG"; exit 1; }
-	@for p in 1 3 5; do $(AVX_CLANG) --target=x86_64-apple-darwin -isysroot $$(xcrun --show-sdk-path) -D_FORTIFY_SOURCE=0 -O0 -mavx -mavx2 -mbmi -mpclmul -I target/hqc/avx2/hqc-$$p -I target/hqc/hqc-$$p -I target/hqc/avx2 -I target/hqc -c -emit-llvm -o build/hqc/poison/avx_$$p.raw.bc target/hqc/avx2/hqc-$$p/gf2x.c || exit 1; python3 scripts/hqc_avx_ir.py $(AVX_LLVM_BIN) build/hqc/poison/avx_$$p.raw.bc build/hqc/poison/avx_$$p.bc --poison=ones $$([ $$p = 5 ] || echo --slack) || exit 1; sed 's|../../build/hqc/avx_'$$p'.bc|avx_'$$p'.bc|' proof/hqc/avx_$$p.saw > build/hqc/poison/avx_$$p.saw; done
-	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p AVX2 proofs on all-ones poison lanes"; (cd build/hqc/poison && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) -v 3 avx_$$p.saw) || exit 1; echo "VERIFIED: hqc-$$p AVX2 proofs pass with all-ones poison lanes (saw exit 0)"; done
+	@for p in 1 3 5; do $(AVX_CC) -I target/hqc/avx2/hqc-$$p -I target/hqc/hqc-$$p -I target/hqc/avx2 -I target/hqc -c -emit-llvm -o build/hqc/asis/avx_$$p.raw.bc target/hqc/avx2/hqc-$$p/gf2x.c || exit 1; python3 scripts/hqc_avx_ir.py $(AVX_LLVM_BIN) build/hqc/asis/avx_$$p.raw.bc build/hqc/asis/avx_$$p.bc $$([ $$p = 5 ] || echo --slack) || exit 1; sed -e 's|../../build/hqc/avx_'$$p'.bc|avx_'$$p'.bc|g' proof/hqc/avx_$$p.saw > build/hqc/asis/avx_$$p.saw; done
+	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p AVX2 proofs on the source as shipped (hqc-1/3 with one vector of slack)"; (cd build/hqc/asis && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) -v 3 avx_$$p.saw) || exit 1; echo "VERIFIED: hqc-$$p AVX2 as shipped (saw exit 0; hqc-1/3 under the slack assumption)"; done
+
 
 ## Out of band, a measurement: one-line mutants of the C under proof (copies, target/ untouched) run
 ## against the unchanged hqc-1 scripts; each must make saw exit non-zero (scripts/hqc_c_mutants.sh).
 hqc-c-mutants: hqc
 	./scripts/hqc_c_mutants.sh all
+
+## HQC additive-FFT multiplier (target/hqc-fft, see target/README.md): -O0 bitcode of the GF(2^64)
+## reference library, one linked module. Uses the llvm@22 clang (AVX_CLANG) because llvm-link lives
+## beside it; the code is portable C, compiled for the host, without -g (SAW's reader warns on clang 22's
+## debug metadata).
+FFT_SRC := target/hqc-fft/gf264_ref
+FFT_C   := polymul_hqclen_ref gf264 btfy dencoder cantor_to_gf264 cantor_to_gf264_2x bc_1_ref bc_256_ref btfy_consts_2stages polymul
+hqc-fft-bitcode: build/hqc-fft/fft_ref.bc
+## The SAW layer of the milestone (part 2): fft_1.saw includes ref_1 .. ref_4b (every routine against its
+## model) and proves the two entry points as their composition; -v 3 because the scripts have `fails`
+## mutants (see the note under hqc). A-HQC-FFT in docs/ASSUMPTIONS.md.
+hqc-fft: build/hqc-fft/fft_ref.bc
+	CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(SAW) -v 3 proof/hqc-fft/fft_1.saw
+	@echo "VERIFIED: additive-FFT gf264_ref (hqc-1): every routine == its model (FFTRef, FFTEnc, FFTBC) and polymul_280U64_input/mul == inputT/mulT (FFTTop) with the routines as overrides (saw exit 0: every llvm_verify passed, every mutant rejected)"
+build/hqc-fft/fft_ref.bc: $(addprefix $(FFT_SRC)/,$(addsuffix .c,$(FFT_C)))
+	mkdir -p build/hqc-fft
+	for f in $(FFT_C); do $(AVX_CLANG) -O0 -std=c11 -I $(FFT_SRC) -c -emit-llvm -o build/hqc-fft/$$f.bc $(FFT_SRC)/$$f.c || exit 1; done
+	$(dir $(AVX_CLANG))llvm-link -o $@ $(addprefix build/hqc-fft/,$(addsuffix .bc,$(FFT_C)))
+	@echo "BUILT: $@ ($$($(dir $(AVX_CLANG))llvm-dis -o - $@ | grep -c '^define') functions)"
 
 ## Out of band, a measurement: how rme scales with the leaf size (scripts/hqc_rme_scaling.sh).
 hqc-rme-scaling: hqc
