@@ -62,14 +62,22 @@ beside it). For the bitwuzla row of the solver study, Homebrew `gmp` and `mpfr`.
 
 | Command | What it checks | Time (Apple M2 Max) |
 |---|---|---|
-| `make hqc` | reference `vect_mul` = Karatsuba model (SAW), GF(2^8), Reed-Solomon, Reed-Muller and `code_encode` against their code properties; every spec's mutant rejected | about 25 min |
+| `make hqc` | reference `vect_mul` = Karatsuba model (SAW), GF(2^8), Reed-Solomon, Reed-Muller and `code_encode` against their code properties; every spec's mutant rejected | 28 to 34 min |
 | `make hqc-avx` | AVX2 `vect_mul` = Toom/Karatsuba model, three sets, mutants rejected | 263 s + 1167 s + 2062 s (58 min) |
 | `make hqc-isabelle` | the lifted models compute (a*b) mod (x^n - 1), oracle-free (`HQC_Gate`) | about 30 s |
 | `make lift-check` | every committed lifted theory equals `cryptol-to-isabelle` of its Cryptol source | about 1 min |
 | `scripts/check_target_identity.sh` | the vendored bytes match the pinned hashes | seconds |
 | `make hqc-avx-poison` | the AVX2 proofs on bitcode with all-ones poison lanes | about 90 min |
-| `make hqc-solvers`, `make hqc-rme-scaling` | the solver tables of the paper | up to 50 min, 11 min |
-| `make hqc-c-mutants` | seven one-line source mutants of copies of the C against the unchanged hqc-1 scripts (the Mutants paragraphs) | about 75 min |
+| `make hqc-solvers`, `make hqc-rme-scaling` | the solver tables of the paper (both depend on `make hqc`, which runs first if its outputs are absent) | up to 50 min, 11 min |
+| `make hqc-c-mutants` | seven one-line source mutants of copies of the C against the unchanged hqc-1 scripts, nine rows with the two concrete-input rows (the Mutants paragraphs); depends on `make hqc` | about 90 min after `make hqc` |
+
+`make` with no target runs `hqc`, `hqc-avx` and `hqc-isabelle`.
+
+## Logs behind the tables
+
+`logs/` holds the runs the paper's numbers come from, so a table can be checked without a rerun:
+`make_hqc_v3.out` (`make hqc`, 34 min 24 s, exit 0), `make_avx.out` (`make hqc-avx`, 263/1167/2062 s,
+exit 0), `cmut.table` and `cmut_concrete.out` (`make hqc-c-mutants`, all rows), all on the Apple M2 Max.
 
 `python3 proof/hqc/gen_hqc.py --check` confirms the committed generated files are current.
 
@@ -91,13 +99,68 @@ out = sys.argv[1]; s = open('Makefile').read()
 header = s[:s.index('\n## ')]                      # variables up to the first target comment
 blocks = re.split(r'\n(?=## )', s)
 keep = [b for b in blocks if re.search(r'^hqc[-\w]*:', b, re.M)]
+keep = [b.replace('(run 40120098008)', '(a CI run)') for b in keep]
+for b in keep:
+    assert not re.search(r'\$\((TARGET_C|BITCODE|SAW_SCRIPT|ISA_SESSION)\)', b), b[:80]
 tail = ('## Every committed lifted theory equals cryptol-to-isabelle of its Cryptol source.\nlift-check:\n'
         '\t./scripts/lift_check_all.sh\n\nclean:\n\trm -rf build\n')
 phony = '.PHONY: hqc hqc-avx hqc-avx-poison hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants lift-check clean'
 header = re.sub(r'^\.PHONY:.*$', phony, header, flags=re.M)
+header = header.replace('# Assay — one-command reproduction.\n# Each target fails loudly; `make verify` is the whole pipeline.', '# One-command reproduction of the HQC proofs. Each target fails loudly.')
+header = re.sub(r'^(TARGET_C|BITCODE|SAW_SCRIPT|ISA_SESSION)\s*:=.*\n', '', header, flags=re.M)
+header = header.replace('all: verify', 'all: hqc hqc-avx hqc-isabelle')
+header = header.replace(' — ', ': ')
+assert 'all: hqc hqc-avx hqc-isabelle' in header and 'ISA_SESSION' not in header
 open(f'{out}/Makefile', 'w').write(header.rstrip('\n') + '\n\n' + '\n\n'.join(b.strip('\n') for b in keep) + '\n\n' + tail)
 PY
 
+# Other scripts: drop the sentences about other targets of the full repository.
+python3 - "$OUT" <<'PYS'
+import re, sys
+out = sys.argv[1]
+def sub(path, pairs):
+    p = f'{out}/{path}'; s = open(p).read()
+    for old, new in pairs:
+        assert old in s, (path, old[:50]); s = s.replace(old, new)
+    open(p, 'w').write(s)
+sub('scripts/setup.sh', [
+    ('for the Q-SEAL reachability property (section 16 property 5)', 'for a protocol leg of the full repository, not used here'),
+    ('(implementations/rustcrypto-ml-dsa/proof/ntt) needs it; the Q-SEAL legs do not', 'the solver study (one table row) needs it'),
+    ('(Q-SEAL reachability leg; optional, needs OCaml)', '(optional, needs OCaml; not used by the HQC targets)'),
+    ('See qseal/proof/proverif/README.md.', 'Not needed for the HQC targets.'),
+    ('(Q-SEAL reachability leg)', '(not used by the HQC targets)'),
+    (' — ', ': '),
+])
+sub('scripts/check_target_identity.sh', [
+    ("""# The verified C lives in target/pqclean/, vendored verbatim from PQClean's ml-dsa-44/clean at the
+# commit below. PQClean's `clean` implementation tracks the pq-crystals/dilithium reference (PQClean
+# only adds the PQCLEAN_MLDSA44_CLEAN_ symbol prefix); the pq-crystals commit it imports is recorded
+# below so a reviewer can diff target/pqclean against that reference directly.
+""", """# The verified C lives in target/hqc/, vendored verbatim from the HQC v5.0.0 release at the
+# commit recorded in target/README.md.
+"""),
+    ('echo ">> verifying vendored target bytes (PQClean $PQCLEAN_COMMIT, tracks pq-crystals $PQCRYSTALS_COMMIT; HQC $HQC_COMMIT)"',
+     'echo ">> verifying vendored target bytes (HQC $HQC_COMMIT)"'),
+])
+p2 = f'{out}/scripts/check_target_identity.sh'; s2 = open(p2).read()
+s2 = re.sub(r'^(PQCLEAN_COMMIT|PQCRYSTALS_COMMIT)=.*\n', '', s2, flags=re.M); open(p2, 'w').write(s2)
+sub('scripts/lift_check_all.sh', [
+    ("""# scripts/lift_check.sh enforced that for MLDSA_NTT and lift_check_barrett.sh for the Barrett lift,
+# which left two lifts ungated: the ML-KEM model and the FIPS-204 reference transcription. Both were
+# in sync when this script was written, so the gap was latent rather than live, but "currently in
+# sync" is not a check.
+""", """# Every lifted theory in the manifest below is regenerated and compared byte for byte.
+"""),
+])
+PYS
+mkdir -p "$OUT/logs"
+for f in make_hqc_v3.out make_avx.out cmut.table cmut_concrete.out; do
+  sed -e "s#/Users/[^ ]*/assay/assay#\$ROOT#g" "build/hqc/$f" > "$OUT/logs/$f"
+done
+for f in "$OUT"/scripts/*.sh; do bash -n "$f"; done
+if grep -rIn -E 'Assay|Q-SEAL|qseal|rustcrypto|mldsa|MLDSA|ml-dsa|pq-crystals|—|40120098008' "$OUT" | grep -q .; then
+  grep -rIn -E 'Assay|Q-SEAL|qseal|rustcrypto|mldsa|MLDSA|ml-dsa|pq-crystals|—|40120098008' "$OUT" | head; echo "!! other-target breadcrumbs remain (above)" >&2; exit 1
+fi
 # Scrub: nothing author-identifying may remain ("hadamard" matches 'amar' and is excluded).
 if grep -rIl -i -E 'akshat|amarshat|mpsc\.io|zenodo' "$OUT" | grep -v '^$'; then
   echo "!! identifying strings remain (above)" >&2; exit 1

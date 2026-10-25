@@ -763,8 +763,8 @@ hardest. Each is a real gap, not a formality.
     that the two loads in the last iteration read one 64-bit word beyond `W0` and `W2`, that the
     result does not depend on the value under our stated assumptions, and that the access is still
     invalid; their fix is one more element in each of the two static arrays (zero-initialized, being
-    static). Not a security issue as far as we can tell: the word read is the first word of the next static array in the same
-    object, and it does not reach the output.
+    static). Not a security issue as far as we can tell: the word read is whatever the linker placed
+    after the array in the object's static data, and it does not reach the output.
   - AddressSanitizer does not catch it as written: `_mm256_lddqu_si256` lowers to the
     `llvm.x86.avx.ldu.dq.256` intrinsic, which ASan does not instrument. The upstream hqc-1 AVX2
     KAT test built with `-O2 -fsanitize=address` for x86-64 and run under Rosetta on macOS 15 gives
@@ -1254,14 +1254,23 @@ What that rests on:
        is refuted by one instance, so the row `avx-prefix-xor/concrete` runs the same mutant against
        the script with the two inputs of `toom_3_mult` fixed to concrete values (`a_i = i *
        0x9E3779B97F4A7C15 + 0x0123456789ABCDEF`, `b_i` likewise with other constants) and `km96`
-       interpreted, so the goal is a closed term: caught in 364 s (2026-10-25, the time includes the
-       Karatsuba levels the script proves first). The control row `avx-prefix-xor/ctl` runs that
-       concrete script against the unmodified C: saw exit 0 in 701 s, so the concrete script is not
-       itself broken. The concrete runs stop after `toom_3_mult` (a concrete-input result cannot serve
+       interpreted (the C child is still replaced by its proved override; the 13 static arrays stay
+       symbolic, as in the gated proof), so the goal no longer depends on the inputs: caught in 364 s
+       (2026-10-25, the time includes the Karatsuba levels the script proves first). The control row
+       `avx-prefix-xor/ctl` runs that concrete script against the unmodified C: saw exit 0 in 701 s,
+       so the concrete script is not itself broken; the extra time is the script's own gated
+       `toom_3_mult` mutant, which the failed run never reached. The concrete runs stop after `toom_3_mult` (a concrete-input result cannot serve
        as the `vect_mul` override).
      - What this shows: a wrong program at four of the five reference levels makes the unchanged
        script fail where the change is, and so does a wrong AVX2 leaf once the leaf tactic can refute;
        it says nothing about C bugs of other shapes, and a symbolic refutation can cost far more
        than the proof (the `rme` leaves, and z3 on the AVX2 Toom level, where only a concrete
-       instance refuted the mutant).
+       instance refuted the mutant). Under its own tactics the hqc-1 AVX2 script rejected neither
+       source mutant within 1200 s.
+16. **Aliasing and alignment (recorded 2026-10-25).** Every SAW specification in `karatsuba_<p>.saw`,
+    `avx_<p>.saw`, `gf.saw` and `code_<p>.saw` allocates the output and each input as its own
+    buffer, so the results assume the output does not alias an input (the C is called that way).
+    The AVX2 specifications allocate 32-byte-aligned buffers (`llvm_alloc_aligned 32`), as the
+    256-bit loads and stores require. "For all inputs" in the README and the paper means all input
+    values under these two conditions.
 

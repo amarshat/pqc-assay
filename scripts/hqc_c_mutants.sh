@@ -15,8 +15,9 @@
 #
 # A mutant that z3 cannot refute symbolically can still be refuted on one concrete input: a universal
 # claim fails as soon as one instance fails. Rows with the suffix /concrete replace the two fresh
-# inputs of the obligation by fixed values in the proof script (and interpret the leaf, so that the
-# whole goal evaluates); a matching /ctl row runs the same script against the unmodified C and must
+# inputs of the obligation by fixed values in the proof script and interpret the child's model, so
+# that the goal no longer depends on the inputs (the static arrays stay symbolic); a matching /ctl
+# row runs the same script against the unmodified C and must
 # pass, which shows the concrete script itself is not broken. An empty sed expression means "no C
 # change" and is only for /ctl rows.
 #
@@ -82,7 +83,7 @@ fi
 if [ "$WHICH" != ref ]; then
   run_mutant avx-prefix-xor       avx 's/B\[i\] = B\[i - 1\] \^ A\[i\];/B[i] = A[i];/'
   # toom_3_mult with both inputs fixed (a_i = i*0x9E3779B97F4A7C15 + 0x0123456789ABCDEF, b_i likewise with
-  # other constants) and km96 interpreted: the obligation becomes a closed term. The script stops after
+  # other constants) and km96 interpreted: the obligation no longer depends on a or b. The script stops after
   # toom_3_mult (a concrete-input tt could not serve as the vect_mul override).
   CONCRETE='s#a <- llvm_fresh_var "a" (w 282);#let a = {{ [ i * 0x9E3779B97F4A7C15 + 0x0123456789ABCDEF | i <- [0..281] ] : [282][64] }};#; s#b <- llvm_fresh_var "b" (w 282);#let b = {{ [ i * 0xC2B2AE3D27D4EB4F + 0xFEDCBA9876543210 | i <- [0..281] ] : [282][64] }};#; s#tm1 a b }})) (w4_unint_z3 \["km96"\])#tm1 a b }})) (w4_unint_z3 [])#; /^\/\/ vect_mul:/,$d'
   run_mutant avx-prefix-xor/concrete avx 's/B\[i\] = B\[i - 1\] \^ A\[i\];/B[i] = A[i];/' "$CONCRETE"
