@@ -1,0 +1,139 @@
+// The GF(2^64) additive-FFT multiplier, reference C (target/hqc-fft/gf264_ref), hqc-3 size: the whole
+// SAW layer. ref_1.saw supplies the leaves, the Karatsuba ladder, the pointwise product and the
+// butterfly kernels (size-independent code); the rest is the hqc-3 instance of every routine, then the
+// two entry points polymul_576U64_input / _mul against FFTTop3.cry with the routines as overrides.
+include "ref_1.saw";
+import "FFTEnc.cry";
+import "FFTBC.cry";
+import "FFTTop3.cry";
+let w32 n = llvm_array n (llvm_int 32);
+
+// Pointwise products at 1024 elements, and the butterfly kernel at unit 1024.
+gfv3 <- llvm_verify m "gf264v_mul" [gfi] false (gfv_spec 1024 {{ 1024 : [32] }} (\a b -> {{ gf264v a b }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "gf264v_mul" [gfi] false (gfv_spec 1024 {{ 1024 : [32] }} (\a b -> {{ gf264v a b ^ flip }})) (w4_unint_z3 ["gf264"]));
+bf1024 <- llvm_verify m "butterfly_64" [gfm] false (bf_spec 1024 {{ 1024 : [32] }} (\a x -> {{ butterfly`{512} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "butterfly_64" [gfm] false (bf_spec 1024 {{ 1024 : [32] }} (\a x -> {{ butterfly`{512} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+ibf1024 <- llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 1024 {{ 1024 : [32] }} (\a x -> {{ ibutterfly`{512} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 1024 {{ 1024 : [32] }} (\a x -> {{ ibutterfly`{512} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+
+// btfy_64(poly, 10, 2^42) and ibtfy_64 on 1024 words.
+let btfy3_spec post = do {
+  p <- llvm_alloc (w 1024);
+  x <- llvm_fresh_var "poly" (w 1024);
+  llvm_points_to p (llvm_term x);
+  llvm_execute_func [p, llvm_term {{ 10 : [32] }}, llvm_term {{ 1 << 42 : [64] }}];
+  llvm_points_to p (llvm_term (post x));
+};
+let bfs3 = [bf2, bf4, bf8, bf16, bf32, bf64, bf128, bf256, bf512, bf1024];
+let ibfs3 = [ibf2, ibf4, ibf8, ibf16, ibf32, ibf64, ibf128, ibf256, ibf512, ibf1024];
+bt3 <- llvm_verify m "btfy_64" bfs3 false (btfy3_spec (\x -> {{ btfy10 (1 << 42) x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "btfy_64" bfs3 false (btfy3_spec (\x -> {{ btfy10 (1 << 42) x ^ flip }})) (w4_unint_z3 ["gf264"]));
+ibt3 <- llvm_verify m "ibtfy_64" ibfs3 false (btfy3_spec (\x -> {{ ibtfy10 (1 << 42) x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "ibtfy_64" ibfs3 false (btfy3_spec (\x -> {{ ibtfy10 (1 << 42) x ^ flip }})) (w4_unint_z3 ["gf264"]));
+print "VERIFIED: hqc-3 btfy_64 / ibtfy_64 (1024, 2^42) == btfy10 / ibtfy10";
+
+// encode_64(rfx, 1024, fx, 32) and decode_64(rfx, fx, 1024); the matrices are the real globals; the
+// decode spec allocates 8 extra words (A-HQC-FFT item 7); transpose_8x8 is an override.
+let mats = do {
+  llvm_alloc_global "_enc_mat";
+  llvm_points_to (llvm_global "_enc_mat") (llvm_global_initializer "_enc_mat");
+  llvm_alloc_global "_dec_mat";
+  llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
+};
+let enc3_spec post = do {
+  mats;
+  rp <- llvm_alloc (w 1024);
+  fp <- llvm_alloc_readonly (w 512);
+  x <- llvm_fresh_var "fx" (w 512);
+  llvm_points_to fp (llvm_term x);
+  llvm_execute_func [rp, llvm_term {{ 1024 : [32] }}, fp, llvm_term {{ 32 : [32] }}];
+  llvm_points_to rp (llvm_term (post x));
+};
+enc3 <- llvm_verify m "encode_64" [] false (enc3_spec (\x -> {{ encode3 x }})) rme;
+fails (llvm_verify m "encode_64" [] false (enc3_spec (\x -> {{ encode3 x ^ flip }})) abc);
+let tr_spec post = do {
+  p <- llvm_alloc (llvm_array 8 (llvm_int 8));
+  x <- llvm_fresh_var "mat0" (llvm_array 8 (llvm_int 8));
+  llvm_points_to p (llvm_term x);
+  llvm_execute_func [p];
+  llvm_points_to p (llvm_term (post x));
+};
+tr <- llvm_verify m "transpose_8x8" [] false (tr_spec (\x -> {{ transpose8 x }})) (w4_unint_z3 []);
+fails (llvm_verify m "transpose_8x8" [] false (tr_spec (\x -> {{ transpose8 x ^ [1, 0, 0, 0, 0, 0, 0, 0] }})) (w4_unint_z3 []));
+let dec3_spec post = do {
+  mats;
+  rp <- llvm_alloc (w 1032);
+  fp <- llvm_alloc_readonly (w 1024);
+  x <- llvm_fresh_var "fx" (w 1024);
+  llvm_points_to fp (llvm_term x);
+  llvm_execute_func [rp, fp, llvm_term {{ 1024 : [32] }}];
+  llvm_points_to_untyped rp (llvm_term (post x));
+};
+dec3 <- llvm_verify m "decode_64" [tr] false (dec3_spec (\x -> {{ decode3 x }})) (w4_unint_z3 ["transpose8"]);
+fails (llvm_verify m "decode_64" [tr] false (dec3_spec (\x -> {{ decode3 x ^ flip }})) (w4_unint_z3 ["transpose8"]));
+decode3_lemma <- prove_print rme {{ \x -> decode3 x == decodeIdx3 x }};
+print "VERIFIED: hqc-3 encode_64(1024) == encode3, decode_64(1024) == decode3 == decodeIdx3";
+
+// bc_1(poly, 4096 bytes) = bc_1_32768 and ibc_1(poly, 8192 bytes) = ibc_1_65536, each as three routines
+// against their layers, then the composition.
+let bc3_spec n args post = do {
+  p <- llvm_alloc (w32 n);
+  x <- llvm_fresh_var "poly" (w32 n);
+  llvm_points_to p (llvm_term x);
+  llvm_execute_func (concat [p] args);
+  llvm_points_to p (llvm_term (post x));
+};
+let a128 = llvm_term {{ 128 : [32] }};
+let a256 = llvm_term {{ 256 : [32] }};
+let a4096 = llvm_term {{ 4096 : [32] }};
+let a8192 = llvm_term {{ 8192 : [32] }};
+rp3 <- llvm_verify m "repr_s8_1_32768" [] false (bc3_spec 1024 [] (\x -> {{ repr32W x }})) rme;
+fails (llvm_verify m "repr_s8_1_32768" [] false (bc3_spec 1024 [] (\x -> {{ repr32W x ^ flip }})) abc);
+b23 <- llvm_verify m "bc_256" [] false (bc3_spec 1024 [a128] (\x -> {{ bc256of32W x }})) rme;
+fails (llvm_verify m "bc_256" [] false (bc3_spec 1024 [a128] (\x -> {{ bc256of32W x ^ flip }})) abc);
+b13 <- llvm_verify m "bc_1_256" [] false (bc3_spec 1024 [a128] (\x -> {{ bc1of256of32W x }})) rme;
+fails (llvm_verify m "bc_1_256" [] false (bc3_spec 1024 [a128] (\x -> {{ bc1of256of32W x ^ flip }})) abc);
+bc3 <- llvm_verify m "bc_1" [rp3, b23, b13] false (bc3_spec 1024 [a4096] (\x -> {{ bc1_32768wc x }})) (w4_unint_z3 ["repr32W", "bc256of32W", "bc1of256of32W"]);
+fails (llvm_verify m "bc_1" [rp3, b23, b13] false (bc3_spec 1024 [a4096] (\x -> {{ bc1_32768wc x ^ flip }})) (w4_unint_z3 ["repr32W", "bc256of32W", "bc1of256of32W"]));
+irp3 <- llvm_verify m "irepr_s8_1_65536" [] false (bc3_spec 2048 [] (\x -> {{ irepr64W x }})) rme;
+fails (llvm_verify m "irepr_s8_1_65536" [] false (bc3_spec 2048 [] (\x -> {{ irepr64W x ^ flip }})) abc);
+ib23 <- llvm_verify m "ibc_256" [] false (bc3_spec 2048 [a256] (\x -> {{ ibc256of64W x }})) rme;
+fails (llvm_verify m "ibc_256" [] false (bc3_spec 2048 [a256] (\x -> {{ ibc256of64W x ^ flip }})) abc);
+ib13 <- llvm_verify m "ibc_1_256" [] false (bc3_spec 2048 [a256] (\x -> {{ ibc1of256of64W x }})) rme;
+fails (llvm_verify m "ibc_1_256" [] false (bc3_spec 2048 [a256] (\x -> {{ ibc1of256of64W x ^ flip }})) abc);
+ibc3 <- llvm_verify m "ibc_1" [irp3, ib23, ib13] false (bc3_spec 2048 [a8192] (\x -> {{ ibc1_65536w x }})) (w4_unint_z3 ["irepr64W", "ibc256of64W", "ibc1of256of64W"]);
+fails (llvm_verify m "ibc_1" [irp3, ib23, ib13] false (bc3_spec 2048 [a8192] (\x -> {{ ibc1_65536w x ^ flip }})) (w4_unint_z3 ["irepr64W", "ibc256of64W", "ibc1of256of64W"]));
+print "VERIFIED: hqc-3 bc_1(4096) == bc1_32768wc and ibc_1(8192) == ibc1_65536w, with their routines";
+
+// The entry points.
+let in3_spec post = do {
+  op <- llvm_alloc (w 1024);
+  ap <- llvm_alloc_readonly (w 576);
+  a <- llvm_fresh_var "a" (w 576);
+  llvm_points_to ap (llvm_term a);
+  llvm_execute_func [op, ap];
+  llvm_points_to op (llvm_term (post a));
+};
+pin3 <- llvm_verify m "polymul_576U64_input" [bc3, enc3, bt3] false (in3_spec (\a -> {{ inputT3 a }})) (w4_unint_z3 ["bc1_32768wc", "encode3", "btfy10"]);
+fails (llvm_verify m "polymul_576U64_input" [bc3, enc3, bt3] false (in3_spec (\a -> {{ inputT3 a ^ flip }})) (w4_unint_z3 ["bc1_32768wc", "encode3", "btfy10"]));
+let mul3_spec post = do {
+  cp <- llvm_alloc (w 1152);
+  ap <- llvm_alloc_readonly (w 576);
+  bp <- llvm_alloc_readonly (w 576);
+  afp <- llvm_alloc_readonly (w 1024);
+  bfp <- llvm_alloc_readonly (w 1024);
+  a <- llvm_fresh_var "a" (w 576);
+  b <- llvm_fresh_var "b" (w 576);
+  af <- llvm_fresh_var "a_fft" (w 1024);
+  bf <- llvm_fresh_var "b_fft" (w 1024);
+  llvm_points_to ap (llvm_term a);
+  llvm_points_to bp (llvm_term b);
+  llvm_points_to afp (llvm_term af);
+  llvm_points_to bfp (llvm_term bf);
+  llvm_execute_func [cp, ap, bp, afp, bfp];
+  llvm_points_to cp (llvm_term (post a b af bf));
+};
+let stages3 = ["gf264v", "ibtfy10", "decode3", "ibc1_65536w", "km64"];
+pm3 <- llvm_verify m "polymul_576U64_mul" [gfv3, ibt3, dec3, ibc3, k64] false (mul3_spec (\a b af bf -> {{ mulT3 a b af bf }})) (w4_unint_z3 stages3);
+fails (llvm_verify m "polymul_576U64_mul" [gfv3, ibt3, dec3, ibc3, k64] false (mul3_spec (\a b af bf -> {{ mulT3 a b af bf ^ flip }})) (w4_unint_z3 stages3));
+print "VERIFIED: hqc-3 polymul_576U64_input / _mul == inputT3 / mulT3";

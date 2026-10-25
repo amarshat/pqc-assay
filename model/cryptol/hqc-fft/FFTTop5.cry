@@ -1,0 +1,16 @@
+/* polymul_input_transform(a_fft, a, 1024) and polymul_output(c, a_fft, b_fft, 1024) (hqc-5, which the
+   artifact's HQC wiring uses with N_PAD_U64 = 1024): bc_1 on 8192 bytes, encode_64 to 2048 elements,
+   btfy_64(11, 2^43); pointwise products, ibtfy_64, decode_64 to 2048 words, ibc_1 on 16384 bytes. The
+   whole 2048-word product comes from the FFT; there are no Karatsuba cross terms at this size. */
+module FFTTop5 where
+
+import FFTRef (btfy11, ibtfy11, gf264v)
+import FFTEnc (encode5, decode5)
+import FFTBC (bc1_65536wc, ibc1_131072w)
+import FFTTop (as32, as64)
+
+inputT5 : [1024][64] -> [2048][64]
+inputT5 a = btfy11 (1 << 43) (encode5 (as64 (bc1_65536wc (as32 a))))
+
+mulT5 : [2048][64] -> [2048][64] -> [2048][64]
+mulT5 afft bfft = as64 (ibc1_131072w (as32 (decode5 (ibtfy11 (1 << 43) (gf264v afft bfft)))))

@@ -1,0 +1,33 @@
+/* polymul_576U64_input and polymul_576U64_mul (hqc-3): the FFT on the low 512 words (bc_1 on 4096
+   bytes, encode_64 to 1024 elements, btfy_64(10, 2^42)), the inverse on the 1024-word product
+   (ibc_1 on 8192 bytes), and karat_mult_4096 cross terms on the 64 words above. */
+module FFTTop3 where
+
+import FFTRef (btfy10, ibtfy10, gf264v, km64)
+import FFTEnc (encode3, decode3)
+import FFTBC (bc1_32768wc, ibc1_65536w)
+import FFTTop (as32, as64)
+
+inputT3 : [576][64] -> [1024][64]
+inputT3 a = btfy10 (1 << 42) (encode3 (as64 (bc1_32768wc (as32 (take`{512} a)))))
+
+seg3 : {o, n, r} (fin o, fin n, fin r) => [o + n + r][64] -> [n][64]
+seg3 v = take`{n, r} (drop`{o} v)
+pl3 : {o, n} (fin o, fin n, o + n <= 1152) => [n][64] -> [1152][64]
+pl3 v = (zero : [o][64]) # v # (zero : [1152 - (o + n)][64])
+
+mulT3 : [576][64] -> [576][64] -> [1024][64] -> [1024][64] -> [1152][64]
+mulT3 a b afft bfft = (fftpart # (zero : [128][64])) ^ cross
+  where
+    fftpart = as64 (ibc1_65536w (as32 (decode3 (ibtfy10 (1 << 42) (gf264v afft bfft)))))
+    arem = drop`{512} a
+    brem = drop`{512} b
+    cross = pl3`{1024,128} (km64 arem brem)
+      ^ pl3`{512,128} (km64 (seg3`{0,64} a) brem ^ km64 (seg3`{0,64} b) arem)
+      ^ pl3`{576,128} (km64 (seg3`{64,64} a) brem ^ km64 (seg3`{64,64} b) arem)
+      ^ pl3`{640,128} (km64 (seg3`{128,64} a) brem ^ km64 (seg3`{128,64} b) arem)
+      ^ pl3`{704,128} (km64 (seg3`{192,64} a) brem ^ km64 (seg3`{192,64} b) arem)
+      ^ pl3`{768,128} (km64 (seg3`{256,64} a) brem ^ km64 (seg3`{256,64} b) arem)
+      ^ pl3`{832,128} (km64 (seg3`{320,64} a) brem ^ km64 (seg3`{320,64} b) arem)
+      ^ pl3`{896,128} (km64 (seg3`{384,64} a) brem ^ km64 (seg3`{384,64} b) arem)
+      ^ pl3`{960,128} (km64 (seg3`{448,64} a) brem ^ km64 (seg3`{448,64} b) arem)

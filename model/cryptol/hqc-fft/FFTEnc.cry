@@ -63,11 +63,110 @@ encode : [256][64] -> [512][64]
 encode fx = [ linmap`{32} encMat (reverse [ fb ! (512 * j + e) | j <- [0 ..< 32] ]) | e <- [0 ..< 512] : [512][14] ]
   where fb = flat fx
 
-// decode_64(rfx, fx, 512): bit 512 t + e of the output (t < 64, so 32768 bits = 512 words) is bit t
-// of _dec_mat applied to element e.
-decode : [512][64] -> [512][64]
-decode fx = unflat2 (reverse [ (img @ (p % 512)) ! (p / 512) | p <- [0 ..< 32768] : [32768][15] ])
+// decode_64(rfx, fx, 512), two ways. decodeIdx is the statement: bit 512 t + e of the output (t < 64,
+// so 32768 bits = 512 words) is bit t of _dec_mat applied to element e. decode mirrors the C, which
+// handles eight elements per batch, builds the eight images rr, and for each byte position k
+// transposes the 8 x 8 bit matrix of the k-th bytes of rr and scatters its rows 64 bytes apart; the
+// SAW proof of decode_64 is against decode (with transpose_8x8 as an override), and decode == decodeIdx
+// is a lemma about the model alone (ref_3.saw).
+decodeIdx : [512][64] -> [512][64]
+decodeIdx fx = unflat2 (reverse [ (img @ (p % 512)) ! (p / 512) | p <- [0 ..< 32768] : [32768][15] ])
   where img = [ linmap`{64} decMat x | x <- fx ]
 
 unflat2 : [32768] -> [512][64]
 unflat2 v = reverse (split v)
+
+// transpose_8x8 (the SWAPMOVE network): row j of the result holds, at bit c, bit j of row c.
+transpose8 : [8][8] -> [8][8]
+transpose8 m = [ [ (m @ c) ! j | c <- [7, 6 .. 0] : [8][3] ] | j <- [0 .. 7] : [8][3] ]
+
+// Byte k (little-endian) of a 64-bit word.
+byteOf : [64] -> [3] -> [8]
+byteOf w k = (reverse (split`{8} w)) @ k
+
+decode : [512][64] -> [512][64]
+decode fx = unflat2 (join (reverse [ outByte q | q <- [0 ..< 4096] : [4096][12] ]))
+  where
+    outByte : [12] -> [8]
+    outByte q = (transpose8 [ byteOf r k | r <- rr ]) @ j
+      where i = drop`{6} q            // output byte q = i + 64 (8 k + j)
+            t = take`{6} q
+            k = take`{3} t
+            j = drop`{3} t
+            rr = rows @ i
+    rows : [64][8][64]
+    rows = [ [ linmap`{64} decMat x | x <- blk ] | blk <- split`{64} fx ]
+
+// ---- hqc-3 size: 1024 elements, 512 input words, 1024 output words ----
+
+// The same for the other sizes: flat3 / flat5 are flat at 512 and 1024 input words.
+flat3 : [512][64] -> [32768]
+flat3 fx = join (reverse fx)
+flat5 : [1024][64] -> [65536]
+flat5 fx = join (reverse fx)
+// encode_64(rfx, 1024, fx, 32): element e = _enc_mat applied to column e of the 32 x 512 bit view.
+encode3 : [512][64] -> [1024][64]
+encode3 fx = [ linmap`{32} encMat (reverse [ fb ! (1024 * j + e) | j <- [0 ..< 32] ]) | e <- [0 ..< 1024] : [1024][16] ]
+  where fb = flat3 fx
+
+// decode_64(rfx, fx, 1024), two ways. decodeIdx3 is the statement: bit 512 t + e of the output (t < 64,
+// so 32768 bits = 512 words) is bit t of _dec_mat applied to element e. decode3 mirrors the C, which
+// handles eight elements per batch, builds the eight images rr, and for each byte position k
+// transposes the 8 x 8 bit matrix of the k-th bytes of rr and scatters its rows 64 bytes apart; the
+// SAW proof of decode_64 is against decode3 (with transpose_8x8 as an override), and decode3 == decodeIdx3
+// is a lemma about the model alone (ref_3.saw).
+decodeIdx3 : [1024][64] -> [1024][64]
+decodeIdx3 fx = unflat23 (reverse [ (img @ (p % 1024)) ! (p / 1024) | p <- [0 ..< 65536] : [65536][16] ])
+  where img = [ linmap`{64} decMat x | x <- fx ]
+
+unflat23 : [65536] -> [1024][64]
+unflat23 v = reverse (split v)
+
+
+
+decode3 : [1024][64] -> [1024][64]
+decode3 fx = unflat23 (join (reverse [ outByte q | q <- [0 ..< 8192] : [8192][13] ]))
+  where
+    outByte : [13] -> [8]
+    outByte q = (transpose8 [ byteOf r k | r <- rr ]) @ j
+      where i = drop`{6} q            // output byte q = i + 64 (8 k + j)
+            t = take`{6} q
+            k = take`{3} t
+            j = drop`{3} t
+            rr = rows @ i
+    rows : [128][8][64]
+    rows = [ [ linmap`{64} decMat x | x <- blk ] | blk <- split`{128} fx ]
+
+// ---- hqc-5 size (generic path, 1024 input words): 2048 elements, 2048 output words ----
+// encode_64(rfx, 2048, fx, 32): element e = _enc_mat applied to column e of the 32 x 512 bit view.
+encode5 : [1024][64] -> [2048][64]
+encode5 fx = [ linmap`{32} encMat (reverse [ fb ! (2048 * j + e) | j <- [0 ..< 32] ]) | e <- [0 ..< 2048] : [2048][17] ]
+  where fb = flat5 fx
+
+// decode_64(rfx, fx, 2048), two ways. decodeIdx5 is the statement: bit 512 t + e of the output (t < 64,
+// so 32768 bits = 512 words) is bit t of _dec_mat applied to element e. decode5 mirrors the C, which
+// handles eight elements per batch, builds the eight images rr, and for each byte position k
+// transposes the 8 x 8 bit matrix of the k-th bytes of rr and scatters its rows 64 bytes apart; the
+// SAW proof of decode_64 is against decode5 (with transpose_8x8 as an override), and decode5 == decodeIdx5
+// is a lemma about the model alone (ref_3.saw).
+decodeIdx5 : [2048][64] -> [2048][64]
+decodeIdx5 fx = unflat25 (reverse [ (img @ (p % 2048)) ! (p / 2048) | p <- [0 ..< 131072] : [131072][17] ])
+  where img = [ linmap`{64} decMat x | x <- fx ]
+
+unflat25 : [131072] -> [2048][64]
+unflat25 v = reverse (split v)
+
+
+
+decode5 : [2048][64] -> [2048][64]
+decode5 fx = unflat25 (join (reverse [ outByte q | q <- [0 ..< 16384] : [16384][14] ]))
+  where
+    outByte : [14] -> [8]
+    outByte q = (transpose8 [ byteOf r k | r <- rr ]) @ j
+      where i = drop`{6} q            // output byte q = i + 64 (8 k + j)
+            t = take`{6} q
+            k = take`{3} t
+            j = drop`{3} t
+            rr = rows @ i
+    rows : [256][8][64]
+    rows = [ [ linmap`{64} decMat x | x <- blk ] | blk <- split`{256} fx ]

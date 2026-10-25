@@ -157,3 +157,144 @@ bc1_32768w : [1024][32] -> [1024][32]
 bc1_32768w v = unflat32 (bc1_32768 (flat32 v))
 
 property layer_inverse_small (v : [64]) = mulLayer`{2,16,1} (divLayer`{2,16,1} v) == v
+
+// 65536 bits (bc_1_65536 / ibc_1_65536; ibc_1 on 8192 bytes is the hqc-3 product): repr_s8_1_65536 is
+// (32768, 128) then the seven layers of repr32768 on each half; bc_256_65536 is layers 8 to 19 of
+// bc_256_ref.c; bc_1_256 on 256 blocks.
+repr65536 : [65536] -> [65536]
+repr65536 v =
+  divLayer`{128,256,1} (divLayer`{64,512,2} (divLayer`{32,1024,4} (divLayer`{16,2048,8}
+  (divLayer`{8,4096,16} (divLayer`{4,8192,32} (divLayer`{2,16384,64} (divLayer`{1,32768,128} v)))))))
+
+bc256of65536 : [65536] -> [65536]
+bc256of65536 v =
+  divLayer`{64,512,256} (divLayer`{16,2048,1024} (divLayer`{32,1024,256} (divLayer`{16,2048,512}
+  (divLayer`{4,8192,4096} (divLayer`{1,32768,16384} (divLayer`{2,16384,4096} (divLayer`{1,32768,8192}
+  (divLayer`{8,4096,256} (divLayer`{4,8192,512} (divLayer`{2,16384,1024} (divLayer`{1,32768,2048} v)))))))))))
+
+bc1_65536 : [65536] -> [65536]
+bc1_65536 v = bc1of256`{256} (bc256of65536 (repr65536 v))
+
+irepr65536 : [65536] -> [65536]
+irepr65536 v =
+  mulLayer`{1,32768,128} (mulLayer`{2,16384,64} (mulLayer`{4,8192,32} (mulLayer`{8,4096,16}
+  (mulLayer`{16,2048,8} (mulLayer`{32,1024,4} (mulLayer`{64,512,2} (mulLayer`{128,256,1} v)))))))
+
+ibc256of65536 : [65536] -> [65536]
+ibc256of65536 v =
+  mulLayer`{1,32768,2048} (mulLayer`{2,16384,1024} (mulLayer`{4,8192,512} (mulLayer`{8,4096,256}
+  (mulLayer`{1,32768,8192} (mulLayer`{2,16384,4096} (mulLayer`{1,32768,16384} (mulLayer`{4,8192,4096}
+  (mulLayer`{16,2048,512} (mulLayer`{32,1024,256} (mulLayer`{16,2048,1024} (mulLayer`{64,512,256} v)))))))))))
+
+ibc1_65536 : [65536] -> [65536]
+ibc1_65536 v = irepr65536 (ibc256of65536 (ibc1of256`{256} v))
+
+// Word views at 65536 bits (2048 words) and the forward conversion at 32768 bits as three routines.
+irepr64W : [2048][32] -> [2048][32]
+irepr64W v = unflat32 (irepr65536 (flat32 v))
+ibc256of64W : [2048][32] -> [2048][32]
+ibc256of64W v = unflat32 (ibc256of65536 (flat32 v))
+ibc1of256of64W : [2048][32] -> [2048][32]
+ibc1of256of64W v = unflat32 (ibc1of256`{256} (flat32 v))
+ibc1_65536w : [2048][32] -> [2048][32]
+ibc1_65536w v = irepr64W (ibc256of64W (ibc1of256of64W v))
+bc1_65536w : [2048][32] -> [2048][32]
+bc1_65536w v = unflat32 (bc1_65536 (flat32 v))
+
+repr32W : [1024][32] -> [1024][32]
+repr32W v = unflat32 (repr32768 (flat32 v))
+bc256of32W : [1024][32] -> [1024][32]
+bc256of32W v = unflat32 (bc256of32768 (flat32 v))
+bc1of256of32W : [1024][32] -> [1024][32]
+bc1of256of32W v = unflat32 (bc1of256`{128} (flat32 v))
+bc1_32768wc : [1024][32] -> [1024][32]
+bc1_32768wc v = bc1of256of32W (bc256of32W (repr32W v))
+
+// 131072 bits (hqc-5, 16384 bytes): bc_1 and ibc_1 take the generic path of the C (repr_s8_1,
+// bc_1_256 on 512 blocks, then bc_256's recursive cvt; the inverse in the reverse order). The layer
+// lists below are the C's loops and recursion written out (a Python transcript of repr_s8_1 and cvt at
+// n_byte = 16384, kept in the comment of the Makefile target); the order of the cvt layers is the
+// recursion's execution order.
+repr131072 : [131072] -> [131072]
+repr131072 v =
+  divLayer`{256,256,1} 
+  (divLayer`{128,512,2} 
+  (divLayer`{64,1024,4} 
+  (divLayer`{32,2048,8} 
+  (divLayer`{16,4096,16} 
+  (divLayer`{8,8192,32} 
+  (divLayer`{4,16384,64} 
+  (divLayer`{2,32768,128} 
+  (divLayer`{1,65536,256} v))))))))
+
+cvt131072 : [131072] -> [131072]
+cvt131072 v =
+  divLayer`{2,32768,16384} 
+  (divLayer`{8,8192,4096} 
+  (divLayer`{4,16384,4096} 
+  (divLayer`{2,32768,8192} 
+  (divLayer`{32,2048,1024} 
+  (divLayer`{128,512,256} 
+  (divLayer`{64,1024,256} 
+  (divLayer`{32,2048,512} 
+  (divLayer`{16,4096,256} 
+  (divLayer`{8,8192,512} 
+  (divLayer`{4,16384,1024} 
+  (divLayer`{2,32768,2048} 
+  (divLayer`{1,65536,256} v))))))))))))
+
+bc1_131072 : [131072] -> [131072]
+bc1_131072 v = cvt131072 (bc1of256`{512} (repr131072 v))
+
+irepr131072 : [131072] -> [131072]
+irepr131072 v =
+  mulLayer`{1,65536,256} 
+  (mulLayer`{2,32768,128} 
+  (mulLayer`{4,16384,64} 
+  (mulLayer`{8,8192,32} 
+  (mulLayer`{16,4096,16} 
+  (mulLayer`{32,2048,8} 
+  (mulLayer`{64,1024,4} 
+  (mulLayer`{128,512,2} 
+  (mulLayer`{256,256,1} v))))))))
+
+icvt131072 : [131072] -> [131072]
+icvt131072 v =
+  mulLayer`{1,65536,256} 
+  (mulLayer`{2,32768,2048} 
+  (mulLayer`{4,16384,1024} 
+  (mulLayer`{8,8192,512} 
+  (mulLayer`{16,4096,256} 
+  (mulLayer`{32,2048,512} 
+  (mulLayer`{64,1024,256} 
+  (mulLayer`{128,512,256} 
+  (mulLayer`{32,2048,1024} 
+  (mulLayer`{2,32768,8192} 
+  (mulLayer`{4,16384,4096} 
+  (mulLayer`{8,8192,4096} 
+  (mulLayer`{2,32768,16384} v))))))))))))
+
+ibc1_131072 : [131072] -> [131072]
+ibc1_131072 v = irepr131072 (ibc1of256`{512} (icvt131072 v))
+
+// Word views at 131072 bits (4096 words).
+irepr128W : [4096][32] -> [4096][32]
+irepr128W v = unflat32 (irepr131072 (flat32 v))
+icvt128W : [4096][32] -> [4096][32]
+icvt128W v = unflat32 (icvt131072 (flat32 v))
+ibc1of256of128W : [4096][32] -> [4096][32]
+ibc1of256of128W v = unflat32 (ibc1of256`{512} (flat32 v))
+ibc1_131072w : [4096][32] -> [4096][32]
+ibc1_131072w v = irepr128W (ibc1of256of128W (icvt128W v))
+bc1_131072w : [4096][32] -> [4096][32]
+bc1_131072w v = unflat32 (bc1_131072 (flat32 v))
+
+// The forward conversion at 65536 bits as three routines (bc_1 on 8192 bytes, the hqc-5 operand).
+repr64W : [2048][32] -> [2048][32]
+repr64W v = unflat32 (repr65536 (flat32 v))
+bc256of64W : [2048][32] -> [2048][32]
+bc256of64W v = unflat32 (bc256of65536 (flat32 v))
+bc1of256of64W : [2048][32] -> [2048][32]
+bc1of256of64W v = unflat32 (bc1of256`{256} (flat32 v))
+bc1_65536wc : [2048][32] -> [2048][32]
+bc1_65536wc v = bc1of256of64W (bc256of64W (repr64W v))

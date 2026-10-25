@@ -109,6 +109,65 @@ ibtfy9 scalar p =
   (istage`{2,128} (scalar >> 1)
   (istage`{1,256} (scalar >> 0) p))))))))
 
+
+// btfy_64(poly, 10, 2^42) on 1024 words (hqc-3).
+btfy10 : [64] -> [1024][64] -> [1024][64]
+btfy10 scalar p =
+  stage`{1,512} (scalar >> 0)
+  (stage`{2,256} (scalar >> 1)
+  (stage`{4,128} (scalar >> 2)
+  (stage`{8,64} (scalar >> 3)
+  (stage`{16,32} (scalar >> 4)
+  (stage`{32,16} (scalar >> 5)
+  (stage`{64,8} (scalar >> 6)
+  (stage`{128,4} (scalar >> 7)
+  (stage`{256,2} (scalar >> 8)
+  (stage`{512,1} (scalar >> 9) p)))))))))
+
+// ibtfy_64(poly, 10, 2^42).
+ibtfy10 : [64] -> [1024][64] -> [1024][64]
+ibtfy10 scalar p =
+  istage`{512,1} (scalar >> 9)
+  (istage`{256,2} (scalar >> 8)
+  (istage`{128,4} (scalar >> 7)
+  (istage`{64,8} (scalar >> 6)
+  (istage`{32,16} (scalar >> 5)
+  (istage`{16,32} (scalar >> 4)
+  (istage`{8,64} (scalar >> 3)
+  (istage`{4,128} (scalar >> 2)
+  (istage`{2,256} (scalar >> 1)
+  (istage`{1,512} (scalar >> 0) p)))))))))
+
+// btfy_64(poly, 11, 2^43) on 2048 words (hqc-5).
+btfy11 : [64] -> [2048][64] -> [2048][64]
+btfy11 scalar p =
+  stage`{1,1024} (scalar >> 0)
+  (stage`{2,512} (scalar >> 1)
+  (stage`{4,256} (scalar >> 2)
+  (stage`{8,128} (scalar >> 3)
+  (stage`{16,64} (scalar >> 4)
+  (stage`{32,32} (scalar >> 5)
+  (stage`{64,16} (scalar >> 6)
+  (stage`{128,8} (scalar >> 7)
+  (stage`{256,4} (scalar >> 8)
+  (stage`{512,2} (scalar >> 9)
+  (stage`{1024,1} (scalar >> 10) p))))))))))
+
+// ibtfy_64(poly, 11, 2^43).
+ibtfy11 : [64] -> [2048][64] -> [2048][64]
+ibtfy11 scalar p =
+  istage`{1024,1} (scalar >> 10)
+  (istage`{512,2} (scalar >> 9)
+  (istage`{256,4} (scalar >> 8)
+  (istage`{128,8} (scalar >> 7)
+  (istage`{64,16} (scalar >> 6)
+  (istage`{32,32} (scalar >> 5)
+  (istage`{16,64} (scalar >> 4)
+  (istage`{8,128} (scalar >> 3)
+  (istage`{4,256} (scalar >> 2)
+  (istage`{2,512} (scalar >> 1)
+  (istage`{1,1024} (scalar >> 0) p))))))))))
+
 // ---- pointwise products (gf264v_mul) ------------------------------------------------------------
 
 gf264v : {n} (fin n) => [n][64] -> [n][64] -> [n][64]
