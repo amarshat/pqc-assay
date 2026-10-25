@@ -76,8 +76,11 @@ beside it). For the bitwuzla row of the solver study, Homebrew `gmp` and `mpfr`.
 ## Logs behind the tables
 
 `logs/` holds the runs the paper's numbers come from, so a table can be checked without a rerun:
-`make_hqc_v3.out` (`make hqc`, 34 min 24 s, exit 0), `make_avx.out` (`make hqc-avx`, 263/1167/2062 s,
-exit 0), `cmut.table` and `cmut_concrete.out` (`make hqc-c-mutants`, all rows), all on the Apple M2 Max.
+`make_hqc_v3.out` (`make hqc`, 34 min 24 s, exit 0), `make_avx.out` (the earlier zero-lane, slack
+configuration of `make hqc-avx`, 263/1167/2062 s, exit 0), `make_avx_fixed.out` (`make hqc-avx` as
+shipped here: repaired hqc-1/3 source, symbolic lanes, exit 0 in 4103 s on a busy machine),
+`cmut.table` and `cmut_concrete.out` (`make hqc-c-mutants`, all rows), `solvers_false.out` and
+`solvers_cmut.out` (the two false obligations of the solver table), all on the Apple M2 Max.
 
 `python3 proof/hqc/gen_hqc.py --check` confirms the committed generated files are current.
 
@@ -98,7 +101,7 @@ import re, sys
 out = sys.argv[1]; s = open('Makefile').read()
 header = s[:s.index('\n## ')]                      # variables up to the first target comment
 blocks = re.split(r'\n(?=## )', s)
-keep = [b for b in blocks if re.search(r'^hqc[-\w]*:', b, re.M)]
+keep = [b for b in blocks if re.search(r'^hqc[-\w]*:', b, re.M) and not re.search(r'^hqc-fft', b, re.M)]
 keep = [b.replace('(run 40120098008)', '(a CI run)') for b in keep]
 for b in keep:
     assert not re.search(r'\$\((TARGET_C|BITCODE|SAW_SCRIPT|ISA_SESSION)\)', b), b[:80]
@@ -154,7 +157,7 @@ sub('scripts/lift_check_all.sh', [
 ])
 PYS
 mkdir -p "$OUT/logs"
-for f in make_hqc_v3.out make_avx.out cmut.table cmut_concrete.out; do
+for f in make_hqc_v3.out make_avx.out make_avx_fixed.out cmut.table cmut_concrete.out solvers_false.out solvers_cmut.out; do
   sed -e "s#/Users/[^ ]*/assay/assay#\$ROOT#g" "build/hqc/$f" > "$OUT/logs/$f"
 done
 for f in "$OUT"/scripts/*.sh; do bash -n "$f"; done
