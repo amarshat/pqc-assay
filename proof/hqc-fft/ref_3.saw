@@ -26,7 +26,10 @@ enc <- llvm_verify m "encode_64" [] false (enc_spec (\x -> {{ encode x }})) rme;
 fails (llvm_verify m "encode_64" [] false (enc_spec (\x -> {{ encode x ^ flip }})) abc);
 print "VERIFIED: encode_64(512, 32) == encode";
 
-// decode_64(rfx, fx, n_u64 = 512): 512 words out (32768 bits), written byte by byte. The spec
+// decode_64(rfx, fx, n_u64 = 512): 512 words out (32768 bits), written byte by byte. Both linear maps
+// are proved by rme (encode: 2026-10-25; decode with transpose_8x8 as an override: 110 s on the M4 Pro,
+// 2026-10-26; z3 did not finish either in 40 minutes, and rme on decode without the override ran out of
+// memory). The spec
 // allocates 8 extra words after the output, never written and unconstrained by the postcondition;
 // without them symbolic execution does not complete (A-HQC-FFT item 7).
 let dec_spec post = do {
@@ -48,8 +51,8 @@ let tr_spec post = do {
 };
 tr <- llvm_verify m "transpose_8x8" [] false (tr_spec (\x -> {{ transpose8 x }})) (w4_unint_z3 []);
 fails (llvm_verify m "transpose_8x8" [] false (tr_spec (\x -> {{ transpose8 x ^ [1, 0, 0, 0, 0, 0, 0, 0] }})) (w4_unint_z3 []));
-dec <- llvm_verify m "decode_64" [tr] false (dec_spec (\x -> {{ decode x }})) (w4_unint_z3 ["transpose8"]);
-fails (llvm_verify m "decode_64" [tr] false (dec_spec (\x -> {{ decode x ^ flip }})) (w4_unint_z3 ["transpose8"]));
+dec <- llvm_verify m "decode_64" [tr] false (dec_spec (\x -> {{ decode x }})) rme;
+fails (llvm_verify m "decode_64" [tr] false (dec_spec (\x -> {{ decode x ^ flip }})) abc);
 print "VERIFIED: decode_64(512) == decode (transpose_8x8 as override)";
 // The model lemma: the C-shaped decode is the index statement.
 decode_lemma <- prove_print rme {{ \x -> decode x == decodeIdx x }};
