@@ -142,11 +142,12 @@ sub('scripts/check_target_identity.sh', [
 """, """# The verified C lives in target/hqc/, vendored verbatim from the HQC v5.0.0 release at the
 # commit recorded in target/README.md.
 """),
-    ('echo ">> verifying vendored target bytes (PQClean $PQCLEAN_COMMIT, tracks pq-crystals $PQCRYSTALS_COMMIT; HQC $HQC_COMMIT)"',
+    ('echo ">> verifying vendored target bytes (PQClean $PQCLEAN_COMMIT, tracks pq-crystals $PQCRYSTALS_COMMIT; HQC $HQC_COMMIT; HQC-FFT $FFT_COMMIT)"',
      'echo ">> verifying vendored target bytes (HQC $HQC_COMMIT)"'),
 ])
 p2 = f'{out}/scripts/check_target_identity.sh'; s2 = open(p2).read()
-s2 = re.sub(r'^(PQCLEAN_COMMIT|PQCRYSTALS_COMMIT)=.*\n', '', s2, flags=re.M); open(p2, 'w').write(s2)
+s2 = re.sub(r'^(PQCLEAN_COMMIT|PQCRYSTALS_COMMIT|FFT_COMMIT)=.*\n', '', s2, flags=re.M)
+s2 = '\n'.join(l for l in s2.split('\n') if 'target/hqc-fft' not in l) + '\n'; open(p2, 'w').write(s2)
 sub('scripts/lift_check_all.sh', [
     ("""# scripts/lift_check.sh enforced that for MLDSA_NTT and lift_check_barrett.sh for the Barrett lift,
 # which left two lifts ungated: the ML-KEM model and the FIPS-204 reference transcription. Both were
