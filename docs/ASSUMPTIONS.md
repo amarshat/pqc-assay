@@ -1168,8 +1168,9 @@ What that rests on:
       and pinned. hqc-5 is proved as shipped. The source as shipped is proved out of band by
       `make hqc-avx-asis` on bitcode where the two arrays get one `<4 x i64>` of symbolic slack
       instead (`scripts/hqc_avx_ir.py --slack`); that proof shows the word read does not reach the
-      result, and it holds only under the assumption that the over-read does not fault. First full
-      run of the repaired, symbolic-lane configuration: 2026-10-25, `make hqc-avx` exit 0 in 4103 s
+      result, and it holds only under the assumption that the over-read does not fault; run
+      2026-10-25, exit 0 in 4111 s for the three sets with other proofs running
+      (`build/hqc/make_avx_asis.out`). First full run of the repaired, symbolic-lane configuration: 2026-10-25, `make hqc-avx` exit 0 in 4103 s
       with other proofs running (`build/hqc/make_avx_fixed.out`); hqc-1 alone 267 s on the idle
       machine.
     - **IR normalization** (`scripts/hqc_avx_ir.py`, run by `make hqc-avx`). Two things in the

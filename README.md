@@ -108,7 +108,8 @@ GEPs become byte offsets. `make hqc-avx` runs SAW at `-v 3`; all 23 mutants are 
 exit 0, 68 min for the three sets on a busy M2 Max; hqc-1 alone 267 s idle; the earlier zero-lane,
 slack configuration took 58 min idle: 263, 1167, 2062 s).
 `make hqc-avx-asis` (out of band) proves the source as shipped with one vector of symbolic slack on
-the two arrays, which shows the word read never reaches the result (A-HQC item 12, OF-5).
+the two arrays, which shows the word read never reaches the result (A-HQC item 12, OF-5); it passed
+on 2026-10-25 for all three sets (exit 0, 4111 s on the busy machine).
 
 | Property | Checked by |
 |---|---|
