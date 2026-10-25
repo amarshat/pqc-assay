@@ -1180,7 +1180,8 @@ What that rests on:
       the SAW spec is a byte view (`vmulBytes`), defined from `vmulA` by splitting words
       little-endian. The Isabelle theorem is about `vmulA`.
     - **Mutants.** Every spec has a mutant (bit 0 of the result flipped) that must fail, at every
-      Karatsuba size, the multi-way level, Toom and `vect_mul`. `make hqc-avx` runs SAW at `-v 3`
+      Karatsuba size, the multi-way level, Toom and `vect_mul`. `make hqc-avx` (and, since 2026-10-25,
+      `make hqc`: the encoder mutants' model dumps killed a CI runner) runs SAW at `-v 3`
       because at the default level SAW prints each rejected mutant's solver model, including the
       model of the uninterpreted child function, as a term; for the hqc-3 `vect_mul` mutant that
       print exhausted the machine's memory. At `-v 3` the scripts' own `print` lines are not shown,

@@ -68,11 +68,14 @@ hqc:
 	@for p in 1 3 5; do $(CLANG) -c -emit-llvm -O0 -g -I target/hqc/hqc-$$p -I target/hqc -o build/hqc/gf2x_$$p.bc target/hqc/gf2x.c || exit 1; done
 	@$(CLANG) -c -emit-llvm -O0 -g -I target/hqc/hqc-1 -I target/hqc -o build/hqc/gf_1.bc target/hqc/gf.c
 	@echo ">> SAW: HQC gf.c, GF(2^8) multiply, square, reduce, inverse (same field in all parameter sets)"
-	CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/gf.saw
+	CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) -v 3 proof/hqc/gf.saw && echo "VERIFIED: HQC gf.c GF(2^8) multiply, square, reduce, inverse == GF256 model (saw exit 0: every llvm_verify passed, every mutant rejected)"
 	@printf '#include "gf.c"\n#include "reed_solomon.c"\n#include "reed_muller.c"\n#include "crypto_memset.c"\n#include "code.c"\n' > build/hqc/_code.c
 	@for p in 1 3 5; do $(CLANG) -c -emit-llvm -O0 -g -I target/hqc/hqc-$$p -I target/hqc -o build/hqc/code_$$p.bc build/hqc/_code.c || exit 1; done
-	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p reed_solomon_encode, reed_muller_encode and code_encode against the code properties"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/code_$$p.saw || exit 1; done
-	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p vect_mul == fold (Karatsuba model)"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) proof/hqc/karatsuba_$$p.saw || exit 1; done
+	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p reed_solomon_encode, reed_muller_encode and code_encode against the code properties"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) -v 3 proof/hqc/code_$$p.saw || exit 1; echo "VERIFIED: hqc-$$p reed_solomon_encode, reed_muller_encode and code_encode against the code properties (saw exit 0: every llvm_verify passed, every mutant rejected)"; done
+	@for p in 1 3 5; do echo ">> SAW: HQC hqc-$$p vect_mul == fold (Karatsuba model)"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc $(SAW) -v 3 proof/hqc/karatsuba_$$p.saw || exit 1; echo "VERIFIED: hqc-$$p vect_mul == fold, every Karatsuba level == km<s> (saw exit 0: every llvm_verify passed, every mutant rejected)"; done
+## hqc runs SAW at -v 3 as well (since 2026-10-25): at the default level the code_<p>.saw mutants print
+## their solver models (the local log was 378 MB, 10 M lines) and the macos-15 CI runner died in the
+## hqc-3 reed_muller_encode mutant's dump (run 40120098008). See the note under hqc-avx.
 
 ## The AVX2 build of the same function (target/hqc/avx2, x86_64, pclmulqdq): SAW proves vect_mul ==
 ## vmulBytes, the Toom-3 / multi-way Karatsuba model folded mod x^n - 1. The bitcode is cross-compiled
