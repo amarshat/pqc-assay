@@ -13,7 +13,7 @@ OUT=dist/hqc-artifact
 rm -rf "$OUT" dist/hqc-artifact.zip; mkdir -p "$OUT"
 
 git archive HEAD Makefile LICENSE model/cryptol/hqc proof/hqc spec/isabelle/hqc target/hqc target/README.md \
-  target/hqc-fft model/cryptol/hqc-fft proof/hqc-fft \
+  target/hqc-fft model/cryptol/hqc-fft proof/hqc-fft scripts/hqc_native \
   scripts/setup.sh scripts/setup_isabelle_cryptol.sh scripts/hqc_avx_ir.py scripts/hqc_solver_study.sh \
   scripts/hqc_rme_scaling.sh scripts/hqc_c_mutants.sh scripts/saw_mutant_pairs.py scripts/check_target_identity.sh scripts/lift_check_all.sh \
   | tar -x -C "$OUT"
@@ -72,6 +72,7 @@ beside it). For the bitwuzla row of the solver study, Homebrew `gmp` and `mpfr`.
 | `make hqc-avx-asis` | the AVX2 proofs on the source as shipped (hqc-1/3 with one vector of symbolic slack on `W0`/`W2`); the gated `make hqc-avx` proves the repaired hqc-1/3 source | same as `make hqc-avx` |
 | `make hqc-solvers`, `make hqc-rme-scaling` | the solver tables of the paper (both depend on `make hqc`, which runs first if its outputs are absent) | up to 50 min, 11 min |
 | `make hqc-fft`, `make hqc-fft-3`, `make hqc-fft-5` | additive-FFT reference C (`target/hqc-fft`) = Cryptol model (`model/cryptol/hqc-fft`), every routine and the entry points, at the three lengths; mutants rejected | 761 s and 5561 s (Apple M4 Pro, 24 GB); 14585 s with 25.7 GB peak (M2 Max) |
+| `scripts/hqc_native/run.sh` | evidence, not a proof: repaired AVX2 `vect_mul` against the reference natively at `-O0`, `-O3 -flto` and with ASan (x86-64, or Rosetta 2 on macOS 15) | a few minutes |
 | `make hqc-fft-lemmas` | the model lemmas those proofs use (Cryptol, abc) | 1152 s (M4 Pro) |
 | `make hqc-c-mutants` | seven one-line source mutants of copies of the C against the unchanged hqc-1 scripts, nine rows with the two concrete-input rows (the Mutants paragraphs); depends on `make hqc` | about 90 min after `make hqc` |
 
