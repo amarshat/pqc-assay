@@ -49,8 +49,23 @@ let enc3_spec post = do {
   llvm_execute_func [rp, llvm_term {{ 1024 : [32] }}, fp, llvm_term {{ 32 : [32] }}];
   llvm_points_to rp (llvm_term (post x));
 };
-enc3 <- llvm_verify m "encode_64" [] false (enc3_spec (\x -> {{ encode3 x }})) rme;
-fails (llvm_verify m "encode_64" [] false (enc3_spec (\x -> {{ encode3 x ^ flip }})) abc);
+let lin_spec post = do {
+  mats;
+  rr <- llvm_alloc (w 8);
+  ip <- llvm_alloc_readonly (llvm_array 32 (llvm_int 8));
+  bits <- llvm_fresh_var "inbits" (llvm_array 32 (llvm_int 8));
+  llvm_points_to ip (llvm_term bits);
+  llvm_execute_func [rr, ip, llvm_term {{ 32 : [32] }}, llvm_global "_enc_mat"];
+  llvm_points_to rr (llvm_term (post bits));
+  // unchanged by the call, and restated so that SAW does not treat them as clobbered for the next batch
+  llvm_points_to ip (llvm_term bits);
+  llvm_points_to (llvm_global "_enc_mat") (llvm_global_initializer "_enc_mat");
+  llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
+};
+lin <- llvm_verify m "linear_map_x8" [] false (lin_spec (\b -> {{ lin8 b }})) rme;
+fails (llvm_verify m "linear_map_x8" [] false (lin_spec (\b -> {{ lin8 b ^ flip }})) abc);
+enc3 <- llvm_verify m "encode_64" [lin] false (enc3_spec (\x -> {{ encode3 x }})) (w4_unint_z3 ["lin8"]);
+fails (llvm_verify m "encode_64" [lin] false (enc3_spec (\x -> {{ encode3 x ^ flip }})) (w4_unint_z3 ["lin8"]));
 let tr_spec post = do {
   p <- llvm_alloc (llvm_array 8 (llvm_int 8));
   x <- llvm_fresh_var "mat0" (llvm_array 8 (llvm_int 8));

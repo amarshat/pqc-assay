@@ -58,11 +58,10 @@ flat fx = join (reverse fx)
 unflat : [16384] -> [256][64]
 unflat v = reverse (split v)
 
-// encode_64(rfx, 512, fx, 32): element e = _enc_mat applied to column e of the 32 x 512 bit view.
-// (This index form is what SAW proves encode_64 against, by rme; a form that mirrored the C's byte
-// gathers made rme use far more memory, 2026-10-26.)
-encode : [256][64] -> [512][64]
-encode fx = [ linmap`{32} encMat (reverse [ fb ! (512 * j + e) | j <- [0 ..< 32] ]) | e <- [0 ..< 512] : [512][14] ]
+// encode_64(rfx, 512, fx, 32): element e = _enc_mat applied to column e of the 32 x 512 bit view. This
+// index form is the statement; encode below is the batch structure SAW proves the C against.
+encodeIdx : [256][64] -> [512][64]
+encodeIdx fx = [ linmap`{32} encMat (reverse [ fb ! (512 * j + e) | j <- [0 ..< 32] ]) | e <- [0 ..< 512] : [512][14] ]
   where fb = flat fx
 
 // decode_64(rfx, fx, 512), two ways. decodeIdx is the statement: bit 512 t + e of the output (t < 64,
@@ -86,19 +85,6 @@ transpose8 m = [ [ (m @ c) ! j | c <- [7, 6 .. 0] : [8][3] ] | j <- [0 .. 7] : [
 byteOf : [64] -> [3] -> [8]
 byteOf w k = (reverse (split`{8} w)) @ k
 
-decode : [512][64] -> [512][64]
-decode fx = unflat2 (join (reverse [ outByte q | q <- [0 ..< 4096] : [4096][12] ]))
-  where
-    outByte : [12] -> [8]
-    outByte q = (transpose8 [ byteOf r k | r <- rr ]) @ j
-      where i = drop`{6} q            // output byte q = i + 64 (8 k + j)
-            t = take`{6} q
-            k = take`{3} t
-            j = drop`{3} t
-            rr = rows @ i
-    rows : [64][8][64]
-    rows = [ [ linmap`{64} decMat x | x <- blk ] | blk <- split`{64} fx ]
-
 // ---- hqc-3 size: 1024 elements, 512 input words, 1024 output words ----
 
 // The same for the other sizes: flat3 / flat5 are flat at 512 and 1024 input words.
@@ -107,8 +93,8 @@ flat3 fx = join (reverse fx)
 flat5 : [1024][64] -> [65536]
 flat5 fx = join (reverse fx)
 // encode_64(rfx, 1024, fx, 32): element e = _enc_mat applied to column e of the 32 x 512 bit view.
-encode3 : [512][64] -> [1024][64]
-encode3 fx = [ linmap`{32} encMat (reverse [ fb ! (1024 * j + e) | j <- [0 ..< 32] ]) | e <- [0 ..< 1024] : [1024][16] ]
+encodeIdx3 : [512][64] -> [1024][64]
+encodeIdx3 fx = [ linmap`{32} encMat (reverse [ fb ! (1024 * j + e) | j <- [0 ..< 32] ]) | e <- [0 ..< 1024] : [1024][16] ]
   where fb = flat3 fx
 
 // decode_64(rfx, fx, 1024), two ways. decodeIdx3 is the statement: bit 512 t + e of the output (t < 64,
@@ -126,23 +112,10 @@ unflat23 v = reverse (split v)
 
 
 
-decode3 : [1024][64] -> [1024][64]
-decode3 fx = unflat23 (join (reverse [ outByte q | q <- [0 ..< 8192] : [8192][13] ]))
-  where
-    outByte : [13] -> [8]
-    outByte q = (transpose8 [ byteOf r k | r <- rr ]) @ j
-      where i = drop`{6} q            // output byte q = i + 64 (8 k + j)
-            t = take`{6} q
-            k = take`{3} t
-            j = drop`{3} t
-            rr = rows @ i
-    rows : [128][8][64]
-    rows = [ [ linmap`{64} decMat x | x <- blk ] | blk <- split`{128} fx ]
-
 // ---- hqc-5 size (generic path, 1024 input words): 2048 elements, 2048 output words ----
 // encode_64(rfx, 2048, fx, 32): element e = _enc_mat applied to column e of the 32 x 512 bit view.
-encode5 : [1024][64] -> [2048][64]
-encode5 fx = [ linmap`{32} encMat (reverse [ fb ! (2048 * j + e) | j <- [0 ..< 32] ]) | e <- [0 ..< 2048] : [2048][17] ]
+encodeIdx5 : [1024][64] -> [2048][64]
+encodeIdx5 fx = [ linmap`{32} encMat (reverse [ fb ! (2048 * j + e) | j <- [0 ..< 32] ]) | e <- [0 ..< 2048] : [2048][17] ]
   where fb = flat5 fx
 
 // decode_64(rfx, fx, 2048), two ways. decodeIdx5 is the statement: bit 512 t + e of the output (t < 64,
@@ -160,15 +133,49 @@ unflat25 v = reverse (split v)
 
 
 
-decode5 : [2048][64] -> [2048][64]
-decode5 fx = unflat25 (join (reverse [ outByte q | q <- [0 ..< 16384] : [16384][14] ]))
+// linear_map_x8(rrx8, inbits, 32, _enc_mat): from 32 gathered bytes, the eight words whose word kk is
+// the XOR of _enc_mat[j] over the j with bit kk of byte j set. SAW proves the C function against lin8
+// and uses it as an override, so the encode_64 obligations are the gathers and the assembly only.
+lin8 : [32][8] -> [8][64]
+lin8 bits = [ foldl (^) 0 [ if (bits @ j) ! kk then encMat @ j else 0 | j <- [0 ..< 32] : [32][5] ] | kk <- [0 ..< 8] : [8][3] ]
+
+// collect_inputbits_x8 for batch i of 64: input bytes j * 64 + i, j < 32 (bytes of the little-endian word array).
+collect64 : [256][64] -> [12] -> [32][8]
+collect64 fx i = [ byteOf (fx @ (q >> 3)) (drop`{9} q) | j <- [0 ..< 32] : [32][12], q <- [j * 64 + i] ]
+
+// collect_inputbits_x8 for batch i of 128: input bytes j * 128 + i, j < 32 (bytes of the little-endian word array).
+collect128 : [512][64] -> [13] -> [32][8]
+collect128 fx i = [ byteOf (fx @ (q >> 3)) (drop`{10} q) | j <- [0 ..< 32] : [32][13], q <- [j * 128 + i] ]
+
+// collect_inputbits_x8 for batch i of 256: input bytes j * 256 + i, j < 32 (bytes of the little-endian word array).
+collect256 : [1024][64] -> [14] -> [32][8]
+collect256 fx i = [ byteOf (fx @ (q >> 3)) (drop`{11} q) | j <- [0 ..< 32] : [32][14], q <- [j * 256 + i] ]
+
+encode : [256][64] -> [512][64]
+encode fx = join [ lin8 (collect64 fx i) | i <- [0 ..< 64] : [64][12] ]
+encode3 : [512][64] -> [1024][64]
+encode3 fx = join [ lin8 (collect128 fx i) | i <- [0 ..< 128] : [128][13] ]
+encode5 : [1024][64] -> [2048][64]
+encode5 fx = join [ lin8 (collect256 fx i) | i <- [0 ..< 256] : [256][14] ]
+
+// decode_64 as the C computes it, without computed indices: batch i (8 elements) gives the eight images
+// rr; for each byte position kb the 8 x 8 bit matrix of the kb-th bytes of rr is transposed and its
+// row j is output byte i + k (8 kb + j). Ordering the output bytes by kb, then j, then i is exactly
+// that layout. This is the form SAW proves decode_64 against (rme, transpose_8x8 as an override); the
+// index statement decodeIdx is the specification, and decodeK == decodeIdx is a model lemma.
+decodeK : {k} (fin k, k >= 1) => [8 * k][64] -> [8 * k][64]
+decodeK fx = reverse (split (join (reverse outBytes)))
   where
-    outByte : [14] -> [8]
-    outByte q = (transpose8 [ byteOf r k | r <- rr ]) @ j
-      where i = drop`{6} q            // output byte q = i + 64 (8 k + j)
-            t = take`{6} q
-            k = take`{3} t
-            j = drop`{3} t
-            rr = rows @ i
-    rows : [256][8][64]
-    rows = [ [ linmap`{64} decMat x | x <- blk ] | blk <- split`{256} fx ]
+    rows : [k][8][64]
+    rows = [ [ linmap`{64} decMat x | x <- blk ] | blk <- split`{k} fx ]
+    tt : [k][8][8][8]
+    tt = [ [ transpose8 [ byteOf r kb | r <- rr ] | kb <- [0 .. 7] : [8][3] ] | rr <- rows ]
+    outBytes : [64 * k][8]
+    outBytes = join [ join [ [ (t @ kb) @ j | t <- tt ] | j <- [0 .. 7] : [8][3] ] | kb <- [0 .. 7] : [8][3] ]
+
+decode : [512][64] -> [512][64]
+decode = decodeK`{64}
+decode3 : [1024][64] -> [1024][64]
+decode3 = decodeK`{128}
+decode5 : [2048][64] -> [2048][64]
+decode5 = decodeK`{256}

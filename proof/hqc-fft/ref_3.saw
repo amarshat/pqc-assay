@@ -24,8 +24,27 @@ let enc_spec post = do {
   llvm_execute_func [rp, llvm_term {{ 512 : [32] }}, fp, llvm_term {{ 32 : [32] }}];
   llvm_points_to rp (llvm_term (post x));
 };
-enc <- llvm_verify m "encode_64" [] false (enc_spec (\x -> {{ encode x }})) rme;
-fails (llvm_verify m "encode_64" [] false (enc_spec (\x -> {{ encode x ^ flip }})) abc);
+// linear_map_x8(rrx8, inbits, 32, _enc_mat): 32 bytes to 8 words, proved on its own (256 input bits) and
+// used as an override, so that encode_64's obligation is the byte gathers and the assembly of 64
+// batches with lin8 uninterpreted. (encode_64 against the index statement under rme passed once but
+// needs more than 33 GB; z3 did not finish it in 40 minutes.)
+let lin_spec post = do {
+  mats;
+  rr <- llvm_alloc (w 8);
+  ip <- llvm_alloc_readonly (llvm_array 32 (llvm_int 8));
+  bits <- llvm_fresh_var "inbits" (llvm_array 32 (llvm_int 8));
+  llvm_points_to ip (llvm_term bits);
+  llvm_execute_func [rr, ip, llvm_term {{ 32 : [32] }}, llvm_global "_enc_mat"];
+  llvm_points_to rr (llvm_term (post bits));
+  // unchanged by the call, and restated so that SAW does not treat them as clobbered for the next batch
+  llvm_points_to ip (llvm_term bits);
+  llvm_points_to (llvm_global "_enc_mat") (llvm_global_initializer "_enc_mat");
+  llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
+};
+lin <- llvm_verify m "linear_map_x8" [] false (lin_spec (\b -> {{ lin8 b }})) rme;
+fails (llvm_verify m "linear_map_x8" [] false (lin_spec (\b -> {{ lin8 b ^ flip }})) abc);
+enc <- llvm_verify m "encode_64" [lin] false (enc_spec (\x -> {{ encode x }})) (w4_unint_z3 ["lin8"]);
+fails (llvm_verify m "encode_64" [lin] false (enc_spec (\x -> {{ encode x ^ flip }})) (w4_unint_z3 ["lin8"]));
 print "VERIFIED: encode_64(512, 32) == encode";
 
 // decode_64(rfx, fx, n_u64 = 512): 512 words out (32768 bits), written byte by byte. Both linear maps
