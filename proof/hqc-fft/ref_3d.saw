@@ -37,5 +37,5 @@ let tr_spec post = do {
 tr <- llvm_verify m "transpose_8x8" [] false (tr_spec (\x -> {{ transpose8 x }})) (w4_unint_z3 []);
 fails (llvm_verify m "transpose_8x8" [] false (tr_spec (\x -> {{ transpose8 x ^ [1, 0, 0, 0, 0, 0, 0, 0] }})) (w4_unint_z3 []));
 dec <- llvm_verify m "decode_64" [tr] false (dec_spec (\x -> {{ decode x }})) rme;
-fails (llvm_verify m "decode_64" [tr] false (dec_spec (\x -> {{ decode x ^ flip }})) abc);
+fails (llvm_verify m "decode_64" [tr] false (dec_spec (\x -> {{ decode x ^ flip }})) rme);
 print "VERIFIED: decode_64(512) == decode (transpose_8x8 as override)";
