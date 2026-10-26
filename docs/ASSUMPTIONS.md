@@ -1368,9 +1368,12 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    for all 16384 k (a C harness, 2026-10-25); the model's `stage` uses the computed form. A SAW
    proof of `btfy_64` against `btfy9` will read the real table (concrete indices), so it will
    re-establish the entries it uses.
-5. **Not yet.** `make hqc-fft-5` as a single run (above). The model lemmas `encode == encodeIdx` and
-   `decode == decodeIdx` (the index-form statements the SAW proofs use against the matrix form of
-   item 2): Cryptol `:check` only, rme ran out of memory on them. The AVX2 variant of the artifact.
+5. **Not yet.** `make hqc-fft-5` as a single run (above). The AVX2 variant of the artifact.
+   (Done 2026-10-26: the model lemmas. `make hqc-fft-lemmas` proves by abc, in one Cryptol process,
+   exit 0 in 1152 s on the M4 Pro, that `encode`/`decode` equal the index-form `encodeIdx`/`decodeIdx`
+   of item 2 at all three sizes, and that the batch runs `dbytes3`/`dbytes5` of the partwise
+   `decode_64` proofs cover `decode3`/`decode5` at every part and offset; rme had run out of memory on
+   the first two.)
    All of part (1), the Isabelle proof that `mulT (inputT a) (inputT b)` is the product modulo x^n - 1.
 6. **Reference test.** The artifact's `polymul-non2len-test` needs its benchmark header; a harness with
    the same schoolbook reference (`polymul_ref`) agrees with `polymul_17920_*` on 50 random 280-word

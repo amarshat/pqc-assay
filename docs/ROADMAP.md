@@ -58,7 +58,8 @@ results in A-HQC-FFT item 3; `make hqc-fft` 761 s and `make hqc-fft-3` 5561 s ex
 F2-linear maps (`encode_64` via a `linear_map_x8` override under z3; `decode_64` under rme with a
 `transpose_8x8` override, in batch-range parts at hqc-3/5: 4576 s and 11368 s) and the basis
 conversions (closed-form division layers; 18 GB at hqc-5). Next: part (1) in Isabelle, starting from
-the model lemmas `encode == encodeIdx`, `decode == decodeIdx` (unproved) and the statement that
+the statement (the model lemmas `encode == encodeIdx`, `decode == decodeIdx` are proved by abc in `make
+hqc-fft-lemmas`) that
 `mulT (inputT a) (inputT b)` is the product modulo x^n - 1; then the AVX2 variant.
 
 1. Done 2026-10-22: `gf.c` (SAW, z3) and Reed-Solomon encoding for all three parameter sets
