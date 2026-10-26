@@ -52,11 +52,14 @@ multiplication modulo x^n - 1 for every valid HQC input (the Cryptol model and i
 (2) Prove that the actual C, including its GF(2^64) arithmetic and memory operations, implements
 that model (SAW, stage by stage, reference variant first, then AVX2). Started 2026-10-25 with the
 SAW layer, because it is the deterministic part and it produces the model part (1) needs:
-`target/hqc-fft/gf264_ref` vendored, `make hqc-fft` proves the leaves, the Karatsuba ladder, the
-pointwise product and the butterfly kernels against `FFTRef.cry` (266 s, 29 mutants rejected). Next in
-order: the butterfly networks (`btfy_64` against `btfy9`), `encode_64`/`decode_64` against the linear
-maps in `FFTEnc.cry`, the basis conversion `bc_1` (a transcription model or the recursive definition),
-then `polymul_280U64_mul` as the composition; then part (1) in Isabelle (A-HQC-FFT in ASSUMPTIONS).
+`target/hqc-fft/gf264_ref` vendored; by 2026-10-26 every routine and the entry points at all three
+HQC lengths are proved against the Cryptol model (`make hqc-fft`, `hqc-fft-3`, `hqc-fft-5`; per-script
+results in A-HQC-FFT item 3, the make targets as single runs pending). The heavy goals were the
+F2-linear maps (`encode_64` via a `linear_map_x8` override under z3; `decode_64` under rme with a
+`transpose_8x8` override, in batch-range parts at hqc-3/5: 4576 s and 11368 s) and the basis
+conversions (closed-form division layers; 18 GB at hqc-5). Next: part (1) in Isabelle, starting from
+the model lemmas `encode == encodeIdx`, `decode == decodeIdx` (unproved) and the statement that
+`mulT (inputT a) (inputT b)` is the product modulo x^n - 1; then the AVX2 variant.
 
 1. Done 2026-10-22: `gf.c` (SAW, z3) and Reed-Solomon encoding for all three parameter sets
    (SAW, rme, a property spec). Done 2026-10-24: Reed-Muller encoding for all three sets (SAW, z3,

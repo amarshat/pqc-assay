@@ -128,16 +128,22 @@ compute the same polynomial, so they agree on the `VEC_N_SIZE_BYTES` bytes the A
 (unaligned load, per-lane shifts) have assumed specs; A-HQC item 12 lists them with the IR
 normalizations.
 
-### In progress: the additive-FFT multiplier
+### The additive-FFT multiplier (SAW layer done, Isabelle layer not started)
 
 `target/hqc-fft/gf264_ref/` vendors the GF(2^64) reference of the additive-FFT HQC multiplier (Chen,
-Chiu, Peng, Yang, TCHES 2026; public domain, commit c94c84d). `make hqc-fft` proves the first layer of
-the C against `model/cryptol/hqc-fft/FFTRef.cry` (2026-10-25, exit 0, 266 s, 29 mutants rejected): the
-64 x 64 carry-less leaf, GF(2^64) multiplication modulo x^64 + x^4 + x^3 + x + 1, the `karat_mult_128`
-to `_4096` ladder and the three-way `karat_mult_1536`, the pointwise product, and the butterfly kernels
-at every unit size. Not yet: the butterfly networks, encode/decode, the basis conversion, the
-composition, and the Isabelle proof that the composition is the product (A-HQC-FFT in
-`docs/ASSUMPTIONS.md`; the milestone is in `docs/ROADMAP.md`).
+Chiu, Peng, Yang, TCHES 2026; public domain, commit c94c84d). `make hqc-fft`, `make hqc-fft-3` and
+`make hqc-fft-5` prove the C against the Cryptol model in `model/cryptol/hqc-fft/` at the three HQC
+lengths, routine by routine (the 64 x 64 carry-less leaf, GF(2^64) multiplication modulo x^64 + x^4 +
+x^3 + x + 1, the Karatsuba ladder, the pointwise product, the butterfly kernels and the 9-, 10- and
+11-stage networks, the F2-linear `encode_64`/`decode_64`, the basis conversions `bc_1`/`ibc_1` at 16384
+to 131072 bits), then the entry points (`polymul_280U64_*`, `polymul_576U64_*`, the generic
+`polymul_input_transform`/`polymul_output` at 1024 words) as the composition of those routines with
+their proved specifications assumed. Every script exited 0 in its own SAW process (2026-10-25/26, one
+bit-flip mutant per spec rejected; per-script times and the two machines in A-HQC-FFT item 3 of
+`docs/ASSUMPTIONS.md`); the three make targets as single invocations are being run now and are not
+claimed yet. The `decode_64` specification allocates slack after its output (A-HQC-FFT item 7). Not
+done: the Isabelle proof that the composed model is polynomial multiplication (part (1) of the
+milestone in `docs/ROADMAP.md`), and the AVX2 variant.
 
 ## Checked once, not gated
 

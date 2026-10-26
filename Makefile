@@ -131,14 +131,15 @@ hqc-c-mutants: hqc
 FFT_SRC := target/hqc-fft/gf264_ref
 FFT_C   := polymul_hqclen_ref gf264 btfy dencoder cantor_to_gf264 cantor_to_gf264_2x bc_1_ref bc_256_ref btfy_consts_2stages polymul
 hqc-fft-bitcode: build/hqc-fft/fft_ref.bc
-## The SAW layer of the milestone (part 2), six processes: ref_1 .. ref_4b prove every routine against
+## The SAW layer of the milestone (part 2), seven processes: ref_1 .. ref_4b prove every routine against
 ## its model, fft_1 proves the two entry points with those specs assumed (A-HQC-FFT item 8). One process
 ## for all of it ran out of memory. -v 3 because the scripts have `fails` mutants (see the note under hqc).
 hqc-fft: build/hqc-fft/fft_ref.bc
 	@for s in ref_1 ref_2 ref_3 ref_3d ref_4 ref_4b fft_1; do echo ">> SAW: proof/hqc-fft/$$s.saw"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(SAW) -v 3 proof/hqc-fft/$$s.saw || exit 1; done
 	@echo "VERIFIED: additive-FFT gf264_ref (hqc-1): every routine == its model (FFTRef, FFTEnc, FFTBC; ref_1 to ref_4b) and polymul_280U64_input/mul == inputT/mulT (FFTTop; fft_1, with the routines' proved specs assumed, A-HQC-FFT item 8) (saw exit 0 seven times: every llvm_verify passed, every mutant rejected)"
 ## The same at the hqc-3 and hqc-5 lengths (five processes each; the hqc-5 entry points are the artifact's
-## generic polymul_input_transform / polymul_output at 1024 words).
+## generic polymul_input_transform / polymul_output at 1024 words). hqc-fft-5 peaks at 18 GB (r5_bc) and
+## about 25 GB (r5_dec, eight parts in one process).
 hqc-fft-3: build/hqc-fft/fft_ref.bc
 	@for s in ref_1 r3_net r3_enc r3_dec r3_bc fft_3; do echo ">> SAW: proof/hqc-fft/$$s.saw"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(SAW) -v 3 proof/hqc-fft/$$s.saw || exit 1; done
 	@echo "VERIFIED: additive-FFT gf264_ref (hqc-3): every routine == its model and polymul_576U64_input/mul == inputT3/mulT3 (FFTTop3; fft_3 with the routines' proved specs assumed) (saw exit 0 six times)"

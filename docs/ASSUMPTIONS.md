@@ -1293,7 +1293,7 @@ What that rests on:
     values under these two conditions.
 
 
-## A-HQC-FFT: the additive-FFT multiplier, GF(2^64) reference (recorded 2026-10-25, in progress)
+## A-HQC-FFT: the additive-FFT multiplier, GF(2^64) reference (recorded 2026-10-25, SAW layer complete 2026-10-26)
 
 Target: `target/hqc-fft/gf264_ref/`, the portable reference of the Frobenius additive-FFT multiplier
 over GF(2^64) from the artifact of Chen, Chiu, Peng and Yang (TCHES 2026, ePrint 2026/014), commit
@@ -1321,30 +1321,56 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    (scratch harnesses, not committed): `gf264_mul`, `cantor_to_gf264`, `encode_64`, `decode_64`,
    `bc_1`/`ibc_1` at both sizes (13 probes) and, on one random 280-word pair, the two entry points
    themselves (all 512 and 560 words agree).
-3. **Proved by SAW (`make hqc-fft`, `proof/hqc-fft/ref_1.saw`, 2026-10-25: exit 0, 266 s on the M2
-   Max, 29 mutants rejected).** `_mull_64 == mull64` (rme); `_gf264_mul` and `gf264_mul == gf264`
-   (rme; the wrapper with the inline as override); `karat_mult_128 .. _4096 == km2 .. km64` and
-   `karat_mult_1536 == km24`, each with the level below as a proved override and its model
-   uninterpreted (z3); `gf264v_mul(512) == gf264v` with the inline `_gf264_mul` as override;
-   `butterfly_64` and `i_butterfly_64` at every unit 2 .. 512 against `butterfly`/`ibutterfly`
-   (z3, `gf264` uninterpreted). Every spec has a bit-flip mutant that must fail; the claim lint
-   pairs them (spec-building functions with a size argument are keyed `kspec(32)`).
-   Also proved (2026-10-25): `btfy_64` and `ibtfy_64` (9 stages, 512 elements, scalar 2^41) against
-   `btfy9`/`ibtfy9` with the kernels as overrides (`ref_2.saw`, z3, 365 s including script 1; the
-   twiddles come from the real const tables at concrete indices); `ibc_1(poly, 4096)` and its three
-   routines `irepr_s8_1_32768`, `ibc_256(128)`, `ibc_1_256(128)` against `FFTBC.cry` (`ref_4b.saw`,
-   rme for the routines, 86 s). An earlier model with `pdiv`/`pmod` per layer made rme take 30 GB
-   on `repr_s8_1_16384` and was replaced by the closed form.
+3. **Proved by SAW, one process per script, each spec paired with a bit-flip mutant that must fail
+   (the claim lint pairs them; spec-building functions with a size argument are keyed `kspec(32)`).
+   Times are wall-clock for the whole script; "M4 Pro" marks runs on the 24 GB machine, the rest ran on
+   the M2 Max (64 GB).**
+   hqc-1 (`make hqc-fft`, seven processes). `ref_1.saw` (2026-10-25, 266 s, 29 mutants): `_mull_64 ==
+   mull64` (rme); `_gf264_mul` and `gf264_mul == gf264` (rme; the wrapper with the inline as override);
+   `karat_mult_128 .. _4096 == km2 .. km64` and `karat_mult_1536 == km24`, each with the level below
+   as a proved override and its model uninterpreted (z3); `gf264v_mul(512) == gf264v` with the inline
+   `_gf264_mul` as override; `butterfly_64` and `i_butterfly_64` at every unit 2 .. 512 against
+   `butterfly`/`ibutterfly` (z3, `gf264` uninterpreted). `ref_2.saw` (2026-10-25, 365 s including
+   script 1): `btfy_64`/`ibtfy_64` (9 stages, 512 elements, scalar 2^41) == `btfy9`/`ibtfy9` with the
+   kernels as overrides (z3; the twiddles come from the real const tables at concrete indices).
+   `ref_3.saw` (2026-10-26, 10 s, M4 Pro): `linear_map_x8 == lin8` (rme) and `encode_64(512, 32) ==
+   encode` with it as override (z3, `lin8` uninterpreted). `ref_3d.saw` (2026-10-26, 171 s, M4 Pro):
+   `transpose_8x8 == transpose8` (z3) and `decode_64(512) == decode` with it as override (rme, for the
+   mutant too: under abc the mutant run was killed at 2320 s on 24 GB). `ref_4.saw` (2026-10-25, 74 s):
+   `bc_1(poly, 2048)` == `bc1w` and `ibc_1(poly, 2048)` == `ibc1w` with their routines `repr_s8_1_16384`
+   / `irepr_s8_1_16384`, `bc_256(64)` / `ibc_256(64)`, `bc_1_256(64)` / `ibc_1_256(64)` proved first
+   (rme) and used as overrides. `ref_4b.saw` (2026-10-25, 86 s): `ibc_1(poly, 4096)` == `ibc1_32768w`
+   with `irepr_s8_1_32768`, `ibc_256(128)`, `ibc_1_256(128)` the same way. `fft_1.saw` (2026-10-26, 15 s,
+   331 MB): `polymul_280U64_input == inputT` and `polymul_280U64_mul == mulT` with the routines' specs
+   assumed (item 8).
+   hqc-3 (`make hqc-fft-3`, six processes). `r3_net.saw` (2026-10-26, 533 s, 1.6 GB; includes `ref_1`):
+   `gf264v_mul(1024)`, the kernels at unit 1024, and `btfy_64`/`ibtfy_64` (10 stages, scalar 2^42) ==
+   `btfy10`/`ibtfy10`. `r3_enc.saw` (10 s, M4 Pro): `encode_64(1024, 32) == encode3`. `r3_dec.saw`
+   (4576 s, M4 Pro): `decode_64(1024) == decode3` in 4 batch-range parts (rme). `r3_bc.saw` (335 s,
+   10 GB): `bc_1(4096)` == `bc1_32768wc`, `ibc_1(8192)` == `ibc1_65536w`, with `irepr_s8_1_65536`,
+   `bc_256(128)` / `ibc_256(256)`, `bc_1_256(128)` / `ibc_1_256(256)`. `fft_3.saw` (42 s):
+   `polymul_576U64_input/_mul == inputT3/mulT3`.
+   hqc-5 (`make hqc-fft-5`, six processes). `r5_net.saw` (2026-10-26, 1654 s, 1.6 GB; includes
+   `ref_1`): `gf264v_mul(2048)`, the kernels at units 1024 and 2048, `btfy_64`/`ibtfy_64` (11 stages,
+   scalar 2^43) == `btfy11`/`ibtfy11`. `r5_enc.saw` (15 s, M4 Pro): `encode_64(2048, 32) == encode5`.
+   `r5_dec.saw` (11368 s, 25.6 GB): `decode_64(2048) == decode5` in 8 batch-range parts (rme).
+   `r5_bc.saw` (1052 s, 18 GB): `bc_1(8192)` == `bc1_65536wc`, `ibc_1(16384)` == `ibc1_131072w` (the
+   generic `irepr_s8_1` / `ibc_256(512)` / `ibc_1_256(512)` path). `fft_5.saw` (135 s):
+   `polymul_input_transform(1024) / polymul_output(1024) == inputT5/mulT5`.
+   Every script above exited 0 on its own; the make targets as single invocations are being run now
+   (`make hqc-fft` and `make hqc-fft-3` on the M4 Pro, `make hqc-fft-5` on the M2 Max) and this item
+   will record their exit codes. An earlier model with `pdiv`/`pmod` per layer made rme take 30 GB on
+   `repr_s8_1_16384` and was replaced by the closed form; rme on `encode_64` in the byte-gather form of
+   the model reported every input as a counterexample at 1024 words, which is why the model is written
+   in index form and `encode_64` is proved through the `linear_map_x8` override.
 4. **Table identity, checked by evaluation, not proved.** `cantor_to_gf264_2x[k] == cantor_to_gf264(2k)`
    for all 16384 k (a C harness, 2026-10-25); the model's `stage` uses the computed form. A SAW
    proof of `btfy_64` against `btfy9` will read the real table (concrete indices), so it will
    re-establish the entries it uses.
-5. **Not yet.** `btfy_64`/`ibtfy_64` against `btfy9`/`ibtfy9` (2304 overridden butterflies per
-   network); `encode_64`/`decode_64` against `encode`/`decode`; `bc_1`/`ibc_1` (the basis
-   conversion: 1725 lines of unrolled shift-XOR layers, which need either a transcription model
-   or the mathematical definition); `polymul_280U64_{input,mul}` as the composition (FFT part on the
-   low 256 words, Karatsuba cross terms above); hqc-3 sizes; the AVX2 variant; and all of part (1),
-   the Isabelle proof that the composition is the product.
+5. **Not yet.** The make targets as single runs (above). The model lemmas `encode == encodeIdx` and
+   `decode == decodeIdx` (the index-form statements the SAW proofs use against the matrix form of
+   item 2): Cryptol `:check` only, rme ran out of memory on them. The AVX2 variant of the artifact.
+   All of part (1), the Isabelle proof that `mulT (inputT a) (inputT b)` is the product modulo x^n - 1.
 6. **Reference test.** The artifact's `polymul-non2len-test` needs its benchmark header; a harness with
    the same schoolbook reference (`polymul_ref`) agrees with `polymul_17920_*` on 50 random 280-word
    pairs (2026-10-25). Evidence that the vendored code is the working code, nothing more.
@@ -1365,10 +1391,10 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    about a different contract, so the texts are to be compared when either side changes. One SAW
    process for all of it ran out of memory on the `decode_64` goal (SAW's term cache grows over a
    long script; 2026-10-26), which is why the target is split. The same structure at the other two
-   lengths: `make hqc-fft-3` runs `ref_1`, `r3_net`, `r3_enc`, `r3_bc`, then `fft_3.saw`, which assumes
+   lengths: `make hqc-fft-3` runs `ref_1`, `r3_net`, `r3_enc`, `r3_dec`, `r3_bc`, then `fft_3.saw`, which assumes
    `karat_mult_4096`, `gf264v_mul` (1024), `btfy_64`/`ibtfy_64` (10 stages), `encode_64`/`decode_64`
    (1024 elements), `bc_1` (4096 bytes), `ibc_1` (8192 bytes); `make hqc-fft-5` runs `ref_1`, `r5_net`,
-   `r5_enc`, `r5_bc`, then `fft_5.saw`, which assumes `gf264v_mul` (2048), `btfy_64`/`ibtfy_64` (11
+   `r5_enc`, `r5_dec`, `r5_bc`, then `fft_5.saw`, which assumes `gf264v_mul` (2048), `btfy_64`/`ibtfy_64` (11
    stages), `encode_64`/`decode_64` (2048 elements), `bc_1` (8192 bytes), `ibc_1` (16384 bytes, the
    generic path). Each routine script also proves `linear_map_x8` and `transpose_8x8`, the helpers
    its `encode_64`/`decode_64` proofs use as overrides. At hqc-3 and hqc-5 the `decode_64` contract
