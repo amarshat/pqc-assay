@@ -1,0 +1,29 @@
+// Additive-FFT reference, hqc-3: the pointwise product at the hqc-3 length, the butterfly kernels at
+// the extra unit sizes, and the butterfly networks. ref_1.saw supplies the leaves, the ladder and the
+// kernels up to unit 512 (size-independent code).
+include "ref_1.saw";
+let w32 n = llvm_array n (llvm_int 32);
+
+gfv3 <- llvm_verify m "gf264v_mul" [gfi] false (gfv_spec 1024 {{ 1024 : [32] }} (\a b -> {{ gf264v a b }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "gf264v_mul" [gfi] false (gfv_spec 1024 {{ 1024 : [32] }} (\a b -> {{ gf264v a b ^ flip }})) (w4_unint_z3 ["gf264"]));
+bf1024 <- llvm_verify m "butterfly_64" [gfm] false (bf_spec 1024 {{ 1024 : [32] }} (\a x -> {{ butterfly`{512} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "butterfly_64" [gfm] false (bf_spec 1024 {{ 1024 : [32] }} (\a x -> {{ butterfly`{512} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+ibf1024 <- llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 1024 {{ 1024 : [32] }} (\a x -> {{ ibutterfly`{512} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 1024 {{ 1024 : [32] }} (\a x -> {{ ibutterfly`{512} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+
+// btfy_64(poly, 10, 2^42) and ibtfy_64 on 1024 words.
+let btfy3_spec post = do {
+  p <- llvm_alloc (w 1024);
+  x <- llvm_fresh_var "poly" (w 1024);
+  llvm_points_to p (llvm_term x);
+  llvm_execute_func [p, llvm_term {{ 10 : [32] }}, llvm_term {{ 1 << 42 : [64] }}];
+  llvm_points_to p (llvm_term (post x));
+};
+let bfs3 = [bf2, bf4, bf8, bf16, bf32, bf64, bf128, bf256, bf512, bf1024];
+let ibfs3 = [ibf2, ibf4, ibf8, ibf16, ibf32, ibf64, ibf128, ibf256, ibf512, ibf1024];
+bt3 <- llvm_verify m "btfy_64" bfs3 false (btfy3_spec (\x -> {{ btfy10 (1 << 42) x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "btfy_64" bfs3 false (btfy3_spec (\x -> {{ btfy10 (1 << 42) x ^ flip }})) (w4_unint_z3 ["gf264"]));
+ibt3 <- llvm_verify m "ibtfy_64" ibfs3 false (btfy3_spec (\x -> {{ ibtfy10 (1 << 42) x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "ibtfy_64" ibfs3 false (btfy3_spec (\x -> {{ ibtfy10 (1 << 42) x ^ flip }})) (w4_unint_z3 ["gf264"]));
+print "VERIFIED: hqc-3 btfy_64 / ibtfy_64 (1024, 2^42) == btfy10 / ibtfy10";
+

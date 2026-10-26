@@ -1,0 +1,33 @@
+// Additive-FFT reference, hqc-5: the pointwise product at the hqc-5 length, the butterfly kernels at
+// the extra unit sizes, and the butterfly networks. ref_1.saw supplies the leaves, the ladder and the
+// kernels up to unit 512 (size-independent code).
+include "ref_1.saw";
+let w32 n = llvm_array n (llvm_int 32);
+
+gfv5 <- llvm_verify m "gf264v_mul" [gfi] false (gfv_spec 2048 {{ 2048 : [32] }} (\a b -> {{ gf264v a b }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "gf264v_mul" [gfi] false (gfv_spec 2048 {{ 2048 : [32] }} (\a b -> {{ gf264v a b ^ flip }})) (w4_unint_z3 ["gf264"]));
+bf1024 <- llvm_verify m "butterfly_64" [gfm] false (bf_spec 1024 {{ 1024 : [32] }} (\a x -> {{ butterfly`{512} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "butterfly_64" [gfm] false (bf_spec 1024 {{ 1024 : [32] }} (\a x -> {{ butterfly`{512} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+bf2048 <- llvm_verify m "butterfly_64" [gfm] false (bf_spec 2048 {{ 2048 : [32] }} (\a x -> {{ butterfly`{1024} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "butterfly_64" [gfm] false (bf_spec 2048 {{ 2048 : [32] }} (\a x -> {{ butterfly`{1024} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+ibf1024 <- llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 1024 {{ 1024 : [32] }} (\a x -> {{ ibutterfly`{512} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 1024 {{ 1024 : [32] }} (\a x -> {{ ibutterfly`{512} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+ibf2048 <- llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 2048 {{ 2048 : [32] }} (\a x -> {{ ibutterfly`{1024} a x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 2048 {{ 2048 : [32] }} (\a x -> {{ ibutterfly`{1024} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
+
+// btfy_64(poly, 11, 2^43) and ibtfy_64 on 2048 words.
+let btfy5_spec post = do {
+  p <- llvm_alloc (w 2048);
+  x <- llvm_fresh_var "poly" (w 2048);
+  llvm_points_to p (llvm_term x);
+  llvm_execute_func [p, llvm_term {{ 11 : [32] }}, llvm_term {{ 1 << 43 : [64] }}];
+  llvm_points_to p (llvm_term (post x));
+};
+let bfs5 = [bf2, bf4, bf8, bf16, bf32, bf64, bf128, bf256, bf512, bf1024, bf2048];
+let ibfs5 = [ibf2, ibf4, ibf8, ibf16, ibf32, ibf64, ibf128, ibf256, ibf512, ibf1024, ibf2048];
+bt5 <- llvm_verify m "btfy_64" bfs5 false (btfy5_spec (\x -> {{ btfy11 (1 << 43) x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "btfy_64" bfs5 false (btfy5_spec (\x -> {{ btfy11 (1 << 43) x ^ flip }})) (w4_unint_z3 ["gf264"]));
+ibt5 <- llvm_verify m "ibtfy_64" ibfs5 false (btfy5_spec (\x -> {{ ibtfy11 (1 << 43) x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "ibtfy_64" ibfs5 false (btfy5_spec (\x -> {{ ibtfy11 (1 << 43) x ^ flip }})) (w4_unint_z3 ["gf264"]));
+print "VERIFIED: hqc-5 btfy_64 / ibtfy_64 (2048, 2^43) == btfy11 / ibtfy11";
+

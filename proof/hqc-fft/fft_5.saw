@@ -1,47 +1,49 @@
-// The GF(2^64) additive-FFT multiplier, reference C (target/hqc-fft/gf264_ref), hqc-5 size: the whole
-// SAW layer. The artifact's HQC wiring uses the generic entry points at this size,
-// polymul_input_transform(a_fft, a, 1024) and polymul_output(c, a_fft, b_fft, 1024): 65536-bit operands,
-// 2048 field elements, 11 butterfly stages, and the basis conversions at 65536 bits (the fast path) and
-// 131072 bits (the generic recursive path, cvt / rep_in_si / repr_s8_1). No Karatsuba cross terms.
-include "ref_1.saw";
+// Additive-FFT reference, hqc-5: the entry points against FFTTop5.cry with the routines' specs
+// ASSUMED (proved by r5_net.saw, r5_enc.saw, r5_bc.saw and ref_1.saw, which `make hqc-fft-5` runs
+// first in their own processes; A-HQC-FFT item 8). The spec texts are copies of the proved ones.
+import "FFTRef.cry";
 import "FFTEnc.cry";
 import "FFTBC.cry";
 import "FFTTop5.cry";
+m <- llvm_load_module "../../build/hqc-fft/fft_ref.bc";
+let w n = llvm_array n (llvm_int 64);
 let w32 n = llvm_array n (llvm_int 32);
+let flip = {{ [1] # zero }};
+let mats = do {
+  llvm_alloc_global "_enc_mat";
+  llvm_points_to (llvm_global "_enc_mat") (llvm_global_initializer "_enc_mat");
+  llvm_alloc_global "_dec_mat";
+  llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
+};
 
-gfv5 <- llvm_verify m "gf264v_mul" [gfi] false (gfv_spec 2048 {{ 2048 : [32] }} (\a b -> {{ gf264v a b }})) (w4_unint_z3 ["gf264"]);
-fails (llvm_verify m "gf264v_mul" [gfi] false (gfv_spec 2048 {{ 2048 : [32] }} (\a b -> {{ gf264v a b ^ flip }})) (w4_unint_z3 ["gf264"]));
-bf1024 <- llvm_verify m "butterfly_64" [gfm] false (bf_spec 1024 {{ 1024 : [32] }} (\a x -> {{ butterfly`{512} a x }})) (w4_unint_z3 ["gf264"]);
-fails (llvm_verify m "butterfly_64" [gfm] false (bf_spec 1024 {{ 1024 : [32] }} (\a x -> {{ butterfly`{512} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
-bf2048 <- llvm_verify m "butterfly_64" [gfm] false (bf_spec 2048 {{ 2048 : [32] }} (\a x -> {{ butterfly`{1024} a x }})) (w4_unint_z3 ["gf264"]);
-fails (llvm_verify m "butterfly_64" [gfm] false (bf_spec 2048 {{ 2048 : [32] }} (\a x -> {{ butterfly`{1024} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
-ibf1024 <- llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 1024 {{ 1024 : [32] }} (\a x -> {{ ibutterfly`{512} a x }})) (w4_unint_z3 ["gf264"]);
-fails (llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 1024 {{ 1024 : [32] }} (\a x -> {{ ibutterfly`{512} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
-ibf2048 <- llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 2048 {{ 2048 : [32] }} (\a x -> {{ ibutterfly`{1024} a x }})) (w4_unint_z3 ["gf264"]);
-fails (llvm_verify m "i_butterfly_64" [gfm] false (bf_spec 2048 {{ 2048 : [32] }} (\a x -> {{ ibutterfly`{1024} a x ^ flip }})) (w4_unint_z3 ["gf264"]));
-
-// btfy_64(poly, 11, 2^43) and ibtfy_64 on 2048 words.
+let kspec n post = do {
+  cp <- llvm_alloc (w (eval_size {| 2*n |}));
+  ap <- llvm_alloc_readonly (w n);
+  bp <- llvm_alloc_readonly (w n);
+  a <- llvm_fresh_var "a" (w n);
+  b <- llvm_fresh_var "b" (w n);
+  llvm_points_to ap (llvm_term a);
+  llvm_points_to bp (llvm_term b);
+  llvm_execute_func [cp, ap, bp];
+  llvm_points_to cp (llvm_term (post a b));
+};
+let gfv_spec n nt post = do {
+  cp <- llvm_alloc (w n);
+  ap <- llvm_alloc_readonly (w n);
+  bp <- llvm_alloc_readonly (w n);
+  a <- llvm_fresh_var "a" (w n);
+  b <- llvm_fresh_var "b" (w n);
+  llvm_points_to ap (llvm_term a);
+  llvm_points_to bp (llvm_term b);
+  llvm_execute_func [cp, ap, bp, llvm_term nt];
+  llvm_points_to cp (llvm_term (post a b));
+};
 let btfy5_spec post = do {
   p <- llvm_alloc (w 2048);
   x <- llvm_fresh_var "poly" (w 2048);
   llvm_points_to p (llvm_term x);
   llvm_execute_func [p, llvm_term {{ 11 : [32] }}, llvm_term {{ 1 << 43 : [64] }}];
   llvm_points_to p (llvm_term (post x));
-};
-let bfs5 = [bf2, bf4, bf8, bf16, bf32, bf64, bf128, bf256, bf512, bf1024, bf2048];
-let ibfs5 = [ibf2, ibf4, ibf8, ibf16, ibf32, ibf64, ibf128, ibf256, ibf512, ibf1024, ibf2048];
-bt5 <- llvm_verify m "btfy_64" bfs5 false (btfy5_spec (\x -> {{ btfy11 (1 << 43) x }})) (w4_unint_z3 ["gf264"]);
-fails (llvm_verify m "btfy_64" bfs5 false (btfy5_spec (\x -> {{ btfy11 (1 << 43) x ^ flip }})) (w4_unint_z3 ["gf264"]));
-ibt5 <- llvm_verify m "ibtfy_64" ibfs5 false (btfy5_spec (\x -> {{ ibtfy11 (1 << 43) x }})) (w4_unint_z3 ["gf264"]);
-fails (llvm_verify m "ibtfy_64" ibfs5 false (btfy5_spec (\x -> {{ ibtfy11 (1 << 43) x ^ flip }})) (w4_unint_z3 ["gf264"]));
-print "VERIFIED: hqc-5 btfy_64 / ibtfy_64 (2048, 2^43) == btfy11 / ibtfy11";
-
-// encode_64(rfx, 2048, fx, 32) and decode_64(rfx, fx, 2048); decode's 8 extra words as in A-HQC-FFT item 7.
-let mats = do {
-  llvm_alloc_global "_enc_mat";
-  llvm_points_to (llvm_global "_enc_mat") (llvm_global_initializer "_enc_mat");
-  llvm_alloc_global "_dec_mat";
-  llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
 };
 let enc5_spec post = do {
   mats;
@@ -52,32 +54,6 @@ let enc5_spec post = do {
   llvm_execute_func [rp, llvm_term {{ 2048 : [32] }}, fp, llvm_term {{ 32 : [32] }}];
   llvm_points_to rp (llvm_term (post x));
 };
-let lin_spec post = do {
-  mats;
-  rr <- llvm_alloc (w 8);
-  ip <- llvm_alloc_readonly (llvm_array 32 (llvm_int 8));
-  bits <- llvm_fresh_var "inbits" (llvm_array 32 (llvm_int 8));
-  llvm_points_to ip (llvm_term bits);
-  llvm_execute_func [rr, ip, llvm_term {{ 32 : [32] }}, llvm_global "_enc_mat"];
-  llvm_points_to rr (llvm_term (post bits));
-  // unchanged by the call, and restated so that SAW does not treat them as clobbered for the next batch
-  llvm_points_to ip (llvm_term bits);
-  llvm_points_to (llvm_global "_enc_mat") (llvm_global_initializer "_enc_mat");
-  llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
-};
-lin <- llvm_verify m "linear_map_x8" [] false (lin_spec (\b -> {{ lin8 b }})) rme;
-fails (llvm_verify m "linear_map_x8" [] false (lin_spec (\b -> {{ lin8 b ^ flip }})) abc);
-enc5 <- llvm_verify m "encode_64" [lin] false (enc5_spec (\x -> {{ encode5 x }})) (w4_unint_z3 ["lin8"]);
-fails (llvm_verify m "encode_64" [lin] false (enc5_spec (\x -> {{ encode5 x ^ flip }})) (w4_unint_z3 ["lin8"]));
-let tr_spec post = do {
-  p <- llvm_alloc (llvm_array 8 (llvm_int 8));
-  x <- llvm_fresh_var "mat0" (llvm_array 8 (llvm_int 8));
-  llvm_points_to p (llvm_term x);
-  llvm_execute_func [p];
-  llvm_points_to p (llvm_term (post x));
-};
-tr <- llvm_verify m "transpose_8x8" [] false (tr_spec (\x -> {{ transpose8 x }})) (w4_unint_z3 []);
-fails (llvm_verify m "transpose_8x8" [] false (tr_spec (\x -> {{ transpose8 x ^ [1, 0, 0, 0, 0, 0, 0, 0] }})) (w4_unint_z3 []));
 let dec5_spec post = do {
   mats;
   rp <- llvm_alloc (w 2056);
@@ -87,13 +63,6 @@ let dec5_spec post = do {
   llvm_execute_func [rp, fp, llvm_term {{ 2048 : [32] }}];
   llvm_points_to_untyped rp (llvm_term (post x));
 };
-dec5 <- llvm_verify m "decode_64" [tr] false (dec5_spec (\x -> {{ decode5 x }})) rme;
-fails (llvm_verify m "decode_64" [tr] false (dec5_spec (\x -> {{ decode5 x ^ flip }})) abc);
-decode5_lemma <- prove_print rme {{ \x -> decode5 x == decodeIdx5 x }};
-print "VERIFIED: hqc-5 encode_64(2048) == encode5, decode_64(2048) == decode5 == decodeIdx5";
-
-// bc_1(poly, 8192 bytes) = bc_1_65536 (fast path) and ibc_1(poly, 16384 bytes) = the generic path:
-// ibc_256(poly, 512) (the icvt recursion), ibc_1_256(poly, 512), irepr_s8_1(poly, 16384).
 let bc5_spec n args post = do {
   p <- llvm_alloc (w32 n);
   x <- llvm_fresh_var "poly" (w32 n);
@@ -101,27 +70,16 @@ let bc5_spec n args post = do {
   llvm_execute_func (concat [p] args);
   llvm_points_to p (llvm_term (post x));
 };
-let a256 = llvm_term {{ 256 : [32] }};
-let a512 = llvm_term {{ 512 : [32] }};
+
 let a8192 = llvm_term {{ 8192 : [32] }};
 let a16384 = llvm_term {{ 16384 : [32] }};
-rp5 <- llvm_verify m "repr_s8_1_65536" [] false (bc5_spec 2048 [] (\x -> {{ repr64W x }})) rme;
-fails (llvm_verify m "repr_s8_1_65536" [] false (bc5_spec 2048 [] (\x -> {{ repr64W x ^ flip }})) abc);
-b25 <- llvm_verify m "bc_256" [] false (bc5_spec 2048 [a256] (\x -> {{ bc256of64W x }})) rme;
-fails (llvm_verify m "bc_256" [] false (bc5_spec 2048 [a256] (\x -> {{ bc256of64W x ^ flip }})) abc);
-b15 <- llvm_verify m "bc_1_256" [] false (bc5_spec 2048 [a256] (\x -> {{ bc1of256of64W x }})) rme;
-fails (llvm_verify m "bc_1_256" [] false (bc5_spec 2048 [a256] (\x -> {{ bc1of256of64W x ^ flip }})) abc);
-bc5 <- llvm_verify m "bc_1" [rp5, b25, b15] false (bc5_spec 2048 [a8192] (\x -> {{ bc1_65536wc x }})) (w4_unint_z3 ["repr64W", "bc256of64W", "bc1of256of64W"]);
-fails (llvm_verify m "bc_1" [rp5, b25, b15] false (bc5_spec 2048 [a8192] (\x -> {{ bc1_65536wc x ^ flip }})) (w4_unint_z3 ["repr64W", "bc256of64W", "bc1of256of64W"]));
-irp5 <- llvm_verify m "irepr_s8_1" [] false (bc5_spec 4096 [a16384] (\x -> {{ irepr128W x }})) rme;
-fails (llvm_verify m "irepr_s8_1" [] false (bc5_spec 4096 [a16384] (\x -> {{ irepr128W x ^ flip }})) abc);
-ib25 <- llvm_verify m "ibc_256" [] false (bc5_spec 4096 [a512] (\x -> {{ icvt128W x }})) rme;
-fails (llvm_verify m "ibc_256" [] false (bc5_spec 4096 [a512] (\x -> {{ icvt128W x ^ flip }})) abc);
-ib15 <- llvm_verify m "ibc_1_256" [] false (bc5_spec 4096 [a512] (\x -> {{ ibc1of256of128W x }})) rme;
-fails (llvm_verify m "ibc_1_256" [] false (bc5_spec 4096 [a512] (\x -> {{ ibc1of256of128W x ^ flip }})) abc);
-ibc5 <- llvm_verify m "ibc_1" [irp5, ib25, ib15] false (bc5_spec 4096 [a16384] (\x -> {{ ibc1_131072w x }})) (w4_unint_z3 ["irepr128W", "icvt128W", "ibc1of256of128W"]);
-fails (llvm_verify m "ibc_1" [irp5, ib25, ib15] false (bc5_spec 4096 [a16384] (\x -> {{ ibc1_131072w x ^ flip }})) (w4_unint_z3 ["irepr128W", "icvt128W", "ibc1of256of128W"]));
-print "VERIFIED: hqc-5 bc_1(8192) == bc1_65536wc and ibc_1(16384) == ibc1_131072w, with their routines";
+gfv5 <- llvm_unsafe_assume_spec m "gf264v_mul" (gfv_spec 2048 {{ 2048 : [32] }} (\a b -> {{ gf264v a b }}));
+bt5 <- llvm_unsafe_assume_spec m "btfy_64" (btfy5_spec (\x -> {{ btfy11 (1 << 43) x }}));
+ibt5 <- llvm_unsafe_assume_spec m "ibtfy_64" (btfy5_spec (\x -> {{ ibtfy11 (1 << 43) x }}));
+enc5 <- llvm_unsafe_assume_spec m "encode_64" (enc5_spec (\x -> {{ encode5 x }}));
+dec5 <- llvm_unsafe_assume_spec m "decode_64" (dec5_spec (\x -> {{ decode5 x }}));
+bc5 <- llvm_unsafe_assume_spec m "bc_1" (bc5_spec 2048 [a8192] (\x -> {{ bc1_65536wc x }}));
+ibc5 <- llvm_unsafe_assume_spec m "ibc_1" (bc5_spec 4096 [a16384] (\x -> {{ ibc1_131072w x }}));
 
 // The entry points. polymul_output's output buffer gets the 8 extra words its decode_64 call needs.
 let in5_spec post = do {

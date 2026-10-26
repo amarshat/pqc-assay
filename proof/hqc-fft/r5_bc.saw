@@ -1,0 +1,47 @@
+// Additive-FFT reference, hqc-5: the basis conversions this size uses, each as its routines against
+// their layers (FFTBC.cry), then the composition.
+import "FFTRef.cry";
+import "FFTEnc.cry";
+import "FFTBC.cry";
+m <- llvm_load_module "../../build/hqc-fft/fft_ref.bc";
+let w n = llvm_array n (llvm_int 64);
+let w32 n = llvm_array n (llvm_int 32);
+let flip = {{ [1] # zero }};
+let mats = do {
+  llvm_alloc_global "_enc_mat";
+  llvm_points_to (llvm_global "_enc_mat") (llvm_global_initializer "_enc_mat");
+  llvm_alloc_global "_dec_mat";
+  llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
+};
+
+// bc_1(poly, 8192 bytes) = bc_1_65536 (fast path) and ibc_1(poly, 16384 bytes) = the generic path:
+// ibc_256(poly, 512) (the icvt recursion), ibc_1_256(poly, 512), irepr_s8_1(poly, 16384).
+let bc5_spec n args post = do {
+  p <- llvm_alloc (w32 n);
+  x <- llvm_fresh_var "poly" (w32 n);
+  llvm_points_to p (llvm_term x);
+  llvm_execute_func (concat [p] args);
+  llvm_points_to p (llvm_term (post x));
+};
+let a256 = llvm_term {{ 256 : [32] }};
+let a512 = llvm_term {{ 512 : [32] }};
+let a8192 = llvm_term {{ 8192 : [32] }};
+let a16384 = llvm_term {{ 16384 : [32] }};
+rp5 <- llvm_verify m "repr_s8_1_65536" [] false (bc5_spec 2048 [] (\x -> {{ repr64W x }})) rme;
+fails (llvm_verify m "repr_s8_1_65536" [] false (bc5_spec 2048 [] (\x -> {{ repr64W x ^ flip }})) abc);
+b25 <- llvm_verify m "bc_256" [] false (bc5_spec 2048 [a256] (\x -> {{ bc256of64W x }})) rme;
+fails (llvm_verify m "bc_256" [] false (bc5_spec 2048 [a256] (\x -> {{ bc256of64W x ^ flip }})) abc);
+b15 <- llvm_verify m "bc_1_256" [] false (bc5_spec 2048 [a256] (\x -> {{ bc1of256of64W x }})) rme;
+fails (llvm_verify m "bc_1_256" [] false (bc5_spec 2048 [a256] (\x -> {{ bc1of256of64W x ^ flip }})) abc);
+bc5 <- llvm_verify m "bc_1" [rp5, b25, b15] false (bc5_spec 2048 [a8192] (\x -> {{ bc1_65536wc x }})) (w4_unint_z3 ["repr64W", "bc256of64W", "bc1of256of64W"]);
+fails (llvm_verify m "bc_1" [rp5, b25, b15] false (bc5_spec 2048 [a8192] (\x -> {{ bc1_65536wc x ^ flip }})) (w4_unint_z3 ["repr64W", "bc256of64W", "bc1of256of64W"]));
+irp5 <- llvm_verify m "irepr_s8_1" [] false (bc5_spec 4096 [a16384] (\x -> {{ irepr128W x }})) rme;
+fails (llvm_verify m "irepr_s8_1" [] false (bc5_spec 4096 [a16384] (\x -> {{ irepr128W x ^ flip }})) abc);
+ib25 <- llvm_verify m "ibc_256" [] false (bc5_spec 4096 [a512] (\x -> {{ icvt128W x }})) rme;
+fails (llvm_verify m "ibc_256" [] false (bc5_spec 4096 [a512] (\x -> {{ icvt128W x ^ flip }})) abc);
+ib15 <- llvm_verify m "ibc_1_256" [] false (bc5_spec 4096 [a512] (\x -> {{ ibc1of256of128W x }})) rme;
+fails (llvm_verify m "ibc_1_256" [] false (bc5_spec 4096 [a512] (\x -> {{ ibc1of256of128W x ^ flip }})) abc);
+ibc5 <- llvm_verify m "ibc_1" [irp5, ib25, ib15] false (bc5_spec 4096 [a16384] (\x -> {{ ibc1_131072w x }})) (w4_unint_z3 ["irepr128W", "icvt128W", "ibc1of256of128W"]);
+fails (llvm_verify m "ibc_1" [irp5, ib25, ib15] false (bc5_spec 4096 [a16384] (\x -> {{ ibc1_131072w x ^ flip }})) (w4_unint_z3 ["irepr128W", "icvt128W", "ibc1of256of128W"]));
+print "VERIFIED: hqc-5 bc_1(8192) == bc1_65536wc and ibc_1(16384) == ibc1_131072w, with their routines";
+

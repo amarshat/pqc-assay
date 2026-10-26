@@ -1362,5 +1362,13 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    assumed spec texts are copies of the proved ones; a mismatch would make the entry-point proofs
    about a different contract, so the texts are to be compared when either side changes. One SAW
    process for all of it ran out of memory on the `decode_64` goal (SAW's term cache grows over a
-   long script; 2026-10-26), which is why the target is split.
+   long script; 2026-10-26), which is why the target is split. The same structure at the other two
+   lengths: `make hqc-fft-3` runs `ref_1`, `r3_net`, `r3_enc`, `r3_bc`, then `fft_3.saw`, which assumes
+   `karat_mult_4096`, `gf264v_mul` (1024), `btfy_64`/`ibtfy_64` (10 stages), `encode_64`/`decode_64`
+   (1024 elements), `bc_1` (4096 bytes), `ibc_1` (8192 bytes); `make hqc-fft-5` runs `ref_1`, `r5_net`,
+   `r5_enc`, `r5_bc`, then `fft_5.saw`, which assumes `gf264v_mul` (2048), `btfy_64`/`ibtfy_64` (11
+   stages), `encode_64`/`decode_64` (2048 elements), `bc_1` (8192 bytes), `ibc_1` (16384 bytes, the
+   generic path). Each routine script also proves `linear_map_x8` and `transpose_8x8`, the helpers
+   its `encode_64`/`decode_64` proofs use as overrides. None of the hqc-3 or hqc-5 scripts has
+   passed yet as this is written; item 3 lists what has.
 
