@@ -1310,7 +1310,8 @@ What that rests on:
 
 17. **Native differential test, evidence and not a proof (`scripts/hqc_native/run.sh`, 2026-10-26).**
     The repaired AVX2 `vect_mul` (hqc-1/3; hqc-5 as shipped) against the reference `vect_mul`, both
-    compiled for x86-64 with Apple clang 14.0.3 at `-O0`, at `-O3 -flto` (the upstream flags) and with
+    compiled for x86-64 with Apple clang 14.0.3 (built on the M2 Max) and again with Apple clang 17.0.0
+    (the committed script, built and run on the M4 Pro) at `-O0`, at `-O3 -flto` (the upstream flags) and with
     `-O1 -fsanitize=address`, run under Rosetta 2 on the M4 Pro (macOS 15.8). Per set and configuration
     3016 operand pairs (316 with ASan): 3000 random of degree below n and the 16 pairs from {0, 1,
     x^(n-1), all ones}. Result: 0 mismatches in all nine runs, no byte written past
