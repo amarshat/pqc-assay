@@ -11,6 +11,21 @@ let mats = do {
   llvm_alloc_global "_dec_mat";
   llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
 };
+// decode_64(rfx, fx, n_u64 = 512): 512 words out (32768 bits), written byte by byte. Both linear maps
+// are proved by rme (encode: 2026-10-25; decode with transpose_8x8 as an override: 110 s on the M4 Pro,
+// 2026-10-26; z3 did not finish either in 40 minutes, and rme on decode without the override ran out of
+// memory). The spec
+// allocates 8 extra words after the output, never written and unconstrained by the postcondition;
+// without them symbolic execution does not complete (A-HQC-FFT item 7).
+let dec_spec post = do {
+  mats;
+  rp <- llvm_alloc (w 520);
+  fp <- llvm_alloc_readonly (w 512);
+  x <- llvm_fresh_var "fx" (w 512);
+  llvm_points_to fp (llvm_term x);
+  llvm_execute_func [rp, fp, llvm_term {{ 512 : [32] }}];
+  llvm_points_to_untyped rp (llvm_term (post x));
+};
 // transpose_8x8(mat0): in place on 8 bytes.
 let tr_spec post = do {
   p <- llvm_alloc (llvm_array 8 (llvm_int 8));

@@ -47,20 +47,5 @@ enc <- llvm_verify m "encode_64" [lin] false (enc_spec (\x -> {{ encode x }})) (
 fails (llvm_verify m "encode_64" [lin] false (enc_spec (\x -> {{ encode x ^ flip }})) (w4_unint_z3 ["lin8"]));
 print "VERIFIED: encode_64(512, 32) == encode";
 
-// decode_64(rfx, fx, n_u64 = 512): 512 words out (32768 bits), written byte by byte. Both linear maps
-// are proved by rme (encode: 2026-10-25; decode with transpose_8x8 as an override: 110 s on the M4 Pro,
-// 2026-10-26; z3 did not finish either in 40 minutes, and rme on decode without the override ran out of
-// memory). The spec
-// allocates 8 extra words after the output, never written and unconstrained by the postcondition;
-// without them symbolic execution does not complete (A-HQC-FFT item 7).
-let dec_spec post = do {
-  mats;
-  rp <- llvm_alloc (w 520);
-  fp <- llvm_alloc_readonly (w 512);
-  x <- llvm_fresh_var "fx" (w 512);
-  llvm_points_to fp (llvm_term x);
-  llvm_execute_func [rp, fp, llvm_term {{ 512 : [32] }}];
-  llvm_points_to_untyped rp (llvm_term (post x));
-};
 // decode_64 at this length is proved by ref_3d.saw, in its own SAW process: after the encode goals in the
 // same process its rme goal did not finish within 24 GB, alone it takes 110 s (M4 Pro, 2026-10-26).
