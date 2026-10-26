@@ -56,7 +56,7 @@ let enc3_spec post = do {
 };
 let dec3_spec post = do {
   mats;
-  rp <- llvm_alloc (w 1032);
+  rp <- llvm_alloc (w 1040);
   fp <- llvm_alloc_readonly (w 1024);
   x <- llvm_fresh_var "fx" (w 1024);
   llvm_points_to fp (llvm_term x);

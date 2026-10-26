@@ -158,24 +158,47 @@ encode3 fx = join [ lin8 (collect128 fx i) | i <- [0 ..< 128] : [128][13] ]
 encode5 : [1024][64] -> [2048][64]
 encode5 fx = join [ lin8 (collect256 fx i) | i <- [0 ..< 256] : [256][14] ]
 
-// decode_64 as the C computes it, without computed indices: batch i (8 elements) gives the eight images
-// rr; for each byte position kb the 8 x 8 bit matrix of the kb-th bytes of rr is transposed and its
-// row j is output byte i + k (8 kb + j). Ordering the output bytes by kb, then j, then i is exactly
-// that layout. This is the form SAW proves decode_64 against (rme, transpose_8x8 as an override); the
-// index statement decodeIdx is the specification, and decodeK == decodeIdx is a model lemma.
-decodeK : {k} (fin k, k >= 1) => [8 * k][64] -> [8 * k][64]
-decodeK fx = reverse (split (join (reverse outBytes)))
-  where
-    rows : [k][8][64]
-    rows = [ [ linmap`{64} decMat x | x <- blk ] | blk <- split`{k} fx ]
-    tt : [k][8][8][8]
-    tt = [ [ transpose8 [ byteOf r kb | r <- rr ] | kb <- [0 .. 7] : [8][3] ] | rr <- rows ]
-    outBytes : [64 * k][8]
-    outBytes = join [ join [ [ (t @ kb) @ j | t <- tt ] | j <- [0 .. 7] : [8][3] ] | kb <- [0 .. 7] : [8][3] ]
+// decode_64 as the C computes it: batch i (8 elements) gives the eight images rr; for each byte position
+// k the 8 x 8 bit matrix of the k-th bytes of rr is transposed and its row j is output byte i + 64 (8 k + j)
+// (128 and 256 in place of 64 at the other lengths). This is the form SAW proves decode_64 against (rme,
+// transpose_8x8 as an override, 110 s at hqc-1 on the M4 Pro); the index statement decodeIdx is the
+// specification. A batch/transpose form without computed indices (decodeK) made rme run out of memory.
 
 decode : [512][64] -> [512][64]
-decode = decodeK`{64}
+decode fx = unflat2 (join (reverse [ outByte q | q <- [0 ..< 4096] : [4096][12] ]))
+  where
+    outByte : [12] -> [8]
+    outByte q = (transpose8 [ byteOf r k | r <- rr ]) @ j
+      where i = drop`{6} q            // output byte q = i + 64 (8 k + j)
+            t = take`{6} q
+            k = take`{3} t
+            j = drop`{3} t
+            rr = rows @ i
+    rows : [64][8][64]
+    rows = [ [ linmap`{64} decMat x | x <- blk ] | blk <- split`{64} fx ]
+
 decode3 : [1024][64] -> [1024][64]
-decode3 = decodeK`{128}
+decode3 fx = unflat23 (join (reverse [ outByte q | q <- [0 ..< 8192] : [8192][13] ]))
+  where
+    outByte : [13] -> [8]
+    outByte q = (transpose8 [ byteOf r k | r <- rr ]) @ j
+      where i = drop`{6} q            // output byte q = i + 64 (8 k + j)
+            t = take`{6} q
+            k = take`{3} t
+            j = drop`{3} t
+            rr = rows @ i
+    rows : [128][8][64]
+    rows = [ [ linmap`{64} decMat x | x <- blk ] | blk <- split`{128} fx ]
+
 decode5 : [2048][64] -> [2048][64]
-decode5 = decodeK`{256}
+decode5 fx = unflat25 (join (reverse [ outByte q | q <- [0 ..< 16384] : [16384][14] ]))
+  where
+    outByte : [14] -> [8]
+    outByte q = (transpose8 [ byteOf r k | r <- rr ]) @ j
+      where i = drop`{6} q            // output byte q = i + 64 (8 k + j)
+            t = take`{6} q
+            k = take`{3} t
+            j = drop`{3} t
+            rr = rows @ i
+    rows : [256][8][64]
+    rows = [ [ linmap`{64} decMat x | x <- blk ] | blk <- split`{256} fx ]

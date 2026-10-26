@@ -52,7 +52,7 @@ tr <- llvm_verify m "transpose_8x8" [] false (tr_spec (\x -> {{ transpose8 x }})
 fails (llvm_verify m "transpose_8x8" [] false (tr_spec (\x -> {{ transpose8 x ^ [1, 0, 0, 0, 0, 0, 0, 0] }})) (w4_unint_z3 []));
 let dec5_spec post = do {
   mats;
-  rp <- llvm_alloc (w 2056);
+  rp <- llvm_alloc (w 2080);
   fp <- llvm_alloc_readonly (w 2048);
   x <- llvm_fresh_var "fx" (w 2048);
   llvm_points_to fp (llvm_term x);

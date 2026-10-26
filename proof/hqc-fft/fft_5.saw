@@ -56,7 +56,7 @@ let enc5_spec post = do {
 };
 let dec5_spec post = do {
   mats;
-  rp <- llvm_alloc (w 2056);
+  rp <- llvm_alloc (w 2080);
   fp <- llvm_alloc_readonly (w 2048);
   x <- llvm_fresh_var "fx" (w 2048);
   llvm_points_to fp (llvm_term x);
@@ -95,7 +95,7 @@ pin5 <- llvm_verify m "polymul_input_transform" [bc5, enc5, bt5] false (in5_spec
 fails (llvm_verify m "polymul_input_transform" [bc5, enc5, bt5] false (in5_spec (\a -> {{ inputT5 a ^ flip }})) (w4_unint_z3 ["bc1_65536wc", "encode5", "btfy11"]));
 let out5_spec post = do {
   mats;   // the encode/decode overrides read the matrices, so the caller allocates them
-  cp <- llvm_alloc (w 2056);
+  cp <- llvm_alloc (w 2080);
   afp <- llvm_alloc_readonly (w 2048);
   bfp <- llvm_alloc_readonly (w 2048);
   af <- llvm_fresh_var "a_fft" (w 2048);

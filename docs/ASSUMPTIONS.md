@@ -1348,9 +1348,10 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
 6. **Reference test.** The artifact's `polymul-non2len-test` needs its benchmark header; a harness with
    the same schoolbook reference (`polymul_ref`) agrees with `polymul_17920_*` on 50 random 280-word
    pairs (2026-10-25). Evidence that the vendored code is the working code, nothing more.
-7. **Slack in the `decode_64` specification.** The spec allocates 520 words for the 512-word output;
-   the extra 8 words are never written and the postcondition says nothing about them. Without them
-   Crucible stops inside the function. The reason is a property of the C that is being handled per
+7. **Slack in the `decode_64` specification.** The spec allocates 520 words for the 512-word output
+   at hqc-1 (1040 for 1024 at hqc-3, 2080 for 2048 at hqc-5); the extra 8, 16 or 32 words are never
+   written and the postcondition says nothing about them. Without them Crucible stops inside the
+   function, and with too few of them it reports every input as a counterexample. The reason is a property of the C that is being handled per
    CONTRIBUTING.md (responsible disclosure) and is not described here yet; the proof of `decode_64`
    therefore carries an assumption of the same kind as the AVX2 slack of item 12 (A-HQC).
 8. **Assumed specifications in `fft_1.saw` (the entry points).** `make hqc-fft` runs six SAW processes
