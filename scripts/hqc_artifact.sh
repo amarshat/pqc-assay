@@ -13,6 +13,7 @@ OUT=dist/hqc-artifact
 rm -rf "$OUT" dist/hqc-artifact.zip; mkdir -p "$OUT"
 
 git archive HEAD Makefile LICENSE model/cryptol/hqc proof/hqc spec/isabelle/hqc target/hqc target/README.md \
+  target/hqc-fft model/cryptol/hqc-fft proof/hqc-fft \
   scripts/setup.sh scripts/setup_isabelle_cryptol.sh scripts/hqc_avx_ir.py scripts/hqc_solver_study.sh \
   scripts/hqc_rme_scaling.sh scripts/hqc_c_mutants.sh scripts/saw_mutant_pairs.py scripts/check_target_identity.sh scripts/lift_check_all.sh \
   | tar -x -C "$OUT"
@@ -35,8 +36,9 @@ open(p, 'w').write('# Vendored target\n\n' + s[i:] if j < 0 else '# Vendored tar
 # ASSUMPTIONS: the A-HQC section and the HQC open finding.
 s = open('docs/ASSUMPTIONS.md').read()
 i = s.index('## A-HQC'); j = s.find('\n## ', i + 1); hqc = s[i:] if j < 0 else s[i:j]
+i = s.index('## A-HQC-FFT'); j = s.find('\n## ', i + 1); hqc = hqc.rstrip('\n') + '\n\n' + (s[i:] if j < 0 else s[i:j])
 k = s.index('- **OF-5'); l = s.find('\n- **OF-', k + 1); of5 = s[k:] if l < 0 else s[k:l]
-open(f'{out}/ASSUMPTIONS-HQC.md', 'w').write('# Assumptions and open findings (HQC)\n\nThe A-HQC section of the repository\'s docs/ASSUMPTIONS.md, and its HQC entry under "Open findings".\n\n' + hqc.rstrip('\n') + '\n\n## Open findings\n\n' + of5.rstrip('\n') + '\n')
+open(f'{out}/ASSUMPTIONS-HQC.md', 'w').write('# Assumptions and open findings (HQC)\n\nThe A-HQC and A-HQC-FFT sections of the repository\'s docs/ASSUMPTIONS.md, and its HQC entry under "Open findings".\n\n' + hqc.rstrip('\n') + '\n\n## Open findings\n\n' + of5.rstrip('\n') + '\n')
 PY
 
 cat > "$OUT/README.md" <<'MD'
@@ -63,12 +65,14 @@ beside it). For the bitwuzla row of the solver study, Homebrew `gmp` and `mpfr`.
 | Command | What it checks | Time (Apple M2 Max) |
 |---|---|---|
 | `make hqc` | reference `vect_mul` = Karatsuba model (SAW), GF(2^8), Reed-Solomon, Reed-Muller and `code_encode` against their code properties; every spec's mutant rejected | 28 to 34 min |
-| `make hqc-avx` | AVX2 `vect_mul` = Toom/Karatsuba model, three sets, mutants rejected | 263 s + 1167 s + 2062 s (58 min) |
-| `make hqc-isabelle` | the lifted models compute (a*b) mod (x^n - 1), oracle-free (`HQC_Gate`) | about 30 s |
+| `make hqc-avx` | AVX2 `vect_mul` = Toom/Karatsuba model, three sets (hqc-1/3 on the repaired source), poison lanes checked never read and quantified over, mutants rejected | 68 min on a loaded machine (hqc-1 alone 267 s idle) |
+| `make hqc-isabelle` | the lifted models compute (a*b) mod (x^n - 1); `HQC_Gate` fails the build on an oracle, a skipped proof, or an axiom beyond Main that is not a definition or generated type axiom | about 30 s |
 | `make lift-check` | every committed lifted theory equals `cryptol-to-isabelle` of its Cryptol source | about 1 min |
 | `scripts/check_target_identity.sh` | the vendored bytes match the pinned hashes | seconds |
 | `make hqc-avx-asis` | the AVX2 proofs on the source as shipped (hqc-1/3 with one vector of symbolic slack on `W0`/`W2`); the gated `make hqc-avx` proves the repaired hqc-1/3 source | same as `make hqc-avx` |
 | `make hqc-solvers`, `make hqc-rme-scaling` | the solver tables of the paper (both depend on `make hqc`, which runs first if its outputs are absent) | up to 50 min, 11 min |
+| `make hqc-fft`, `make hqc-fft-3`, `make hqc-fft-5` | additive-FFT reference C (`target/hqc-fft`) = Cryptol model (`model/cryptol/hqc-fft`), every routine and the entry points, at the three lengths; mutants rejected | 761 s and 5561 s (Apple M4 Pro, 24 GB); 14585 s with 25.7 GB peak (M2 Max) |
+| `make hqc-fft-lemmas` | the model lemmas those proofs use (Cryptol, abc) | 1152 s (M4 Pro) |
 | `make hqc-c-mutants` | seven one-line source mutants of copies of the C against the unchanged hqc-1 scripts, nine rows with the two concrete-input rows (the Mutants paragraphs); depends on `make hqc` | about 90 min after `make hqc` |
 
 `make` with no target runs `hqc`, `hqc-avx` and `hqc-isabelle`.
@@ -101,13 +105,13 @@ import re, sys
 out = sys.argv[1]; s = open('Makefile').read()
 header = s[:s.index('\n## ')]                      # variables up to the first target comment
 blocks = re.split(r'\n(?=## )', s)
-keep = [b for b in blocks if re.search(r'^hqc[-\w]*:', b, re.M) and not re.search(r'^hqc-fft', b, re.M)]
+keep = [b for b in blocks if re.search(r'^hqc[-\w]*:', b, re.M)]
 keep = [b.replace('(run 40120098008)', '(a CI run)') for b in keep]
 for b in keep:
     assert not re.search(r'\$\((TARGET_C|BITCODE|SAW_SCRIPT|ISA_SESSION)\)', b), b[:80]
 tail = ('## Every committed lifted theory equals cryptol-to-isabelle of its Cryptol source.\nlift-check:\n'
         '\t./scripts/lift_check_all.sh\n\nclean:\n\trm -rf build\n')
-phony = '.PHONY: hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants lift-check clean'
+phony = '.PHONY: hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants hqc-fft hqc-fft-3 hqc-fft-5 hqc-fft-lemmas hqc-fft-bitcode lift-check clean'
 header = re.sub(r'^\.PHONY:.*$', phony, header, flags=re.M)
 header = header.replace('# Assay — one-command reproduction.\n# Each target fails loudly; `make verify` is the whole pipeline.', '# One-command reproduction of the HQC proofs. Each target fails loudly.')
 header = re.sub(r'^(TARGET_C|BITCODE|SAW_SCRIPT|ISA_SESSION)\s*:=.*\n', '', header, flags=re.M)
@@ -143,11 +147,11 @@ sub('scripts/check_target_identity.sh', [
 # commit recorded in target/README.md.
 """),
     ('echo ">> verifying vendored target bytes (PQClean $PQCLEAN_COMMIT, tracks pq-crystals $PQCRYSTALS_COMMIT; HQC $HQC_COMMIT; HQC-FFT $FFT_COMMIT)"',
-     'echo ">> verifying vendored target bytes (HQC $HQC_COMMIT)"'),
+     'echo ">> verifying vendored target bytes (HQC $HQC_COMMIT; additive-FFT artifact $FFT_COMMIT)"'),
 ])
 p2 = f'{out}/scripts/check_target_identity.sh'; s2 = open(p2).read()
-s2 = re.sub(r'^(PQCLEAN_COMMIT|PQCRYSTALS_COMMIT|FFT_COMMIT)=.*\n', '', s2, flags=re.M)
-s2 = '\n'.join(l for l in s2.split('\n') if 'target/hqc-fft' not in l) + '\n'; open(p2, 'w').write(s2)
+s2 = re.sub(r'^(PQCLEAN_COMMIT|PQCRYSTALS_COMMIT)=.*\n', '', s2, flags=re.M)
+open(p2, 'w').write(s2)
 sub('scripts/lift_check_all.sh', [
     ("""# scripts/lift_check.sh enforced that for MLDSA_NTT and lift_check_barrett.sh for the Barrett lift,
 # which left two lifts ungated: the ML-KEM model and the FIPS-204 reference transcription. Both were
