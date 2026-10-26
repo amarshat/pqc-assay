@@ -1,0 +1,10 @@
+:m FFTEnc
+:set prover=abc
+:prove encode_is_encodeIdx
+:prove decode_is_decodeIdx
+:prove encode3_is_encodeIdx3
+:prove decode3_is_decodeIdx3
+:prove dbytes3_cover
+:prove encode5_is_encodeIdx5
+:prove decode5_is_decodeIdx5
+:prove dbytes5_cover

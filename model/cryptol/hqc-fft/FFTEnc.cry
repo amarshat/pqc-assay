@@ -224,3 +224,20 @@ property dbytes5_is_decode5 (x : [2048][64]) =
   and [ dbytes5 x i0 t == [ obytes @ ((zext i0 : [14]) + 256 * (zext t) + j) | j <- [0 ..< 32] : [32][14] ]
       | (i0, t) <- [(0,0), (32,5), (224,63)] : [3]([8],[6]) ]
   where obytes = reverse (split`{16384} (join (reverse (decode5 x))))
+
+// The index-form statements of item 2 (A-HQC-FFT) against the forms the SAW proofs use, and the
+// batch runs against the whole decoding at every (i0, t): proved by abc (`make hqc-fft-lemmas`).
+property encode_is_encodeIdx (x : [256][64]) = encode x == encodeIdx x
+property encode3_is_encodeIdx3 (x : [512][64]) = encode3 x == encodeIdx3 x
+property encode5_is_encodeIdx5 (x : [1024][64]) = encode5 x == encodeIdx5 x
+property decode_is_decodeIdx (x : [512][64]) = decode x == decodeIdx x
+property decode3_is_decodeIdx3 (x : [1024][64]) = decode3 x == decodeIdx3 x
+property decode5_is_decodeIdx5 (x : [2048][64]) = decode5 x == decodeIdx5 x
+property dbytes5_cover (x : [2048][64]) =
+  and [ dbytes5 x i0 t == [ obytes @ ((zext i0 : [14]) + 256 * (zext t) + j) | j <- [0 ..< 32] : [32][14] ]
+      | i0 <- [0, 32 .. 224] : [8][8], t <- [0 .. 63] : [64][6] ]
+  where obytes = reverse (split`{16384} (join (reverse (decode5 x))))
+property dbytes3_cover (x : [1024][64]) =
+  and [ dbytes3 x i0 t == [ obytes @ ((zext i0 : [13]) + 128 * (zext t) + j) | j <- [0 ..< 32] : [32][13] ]
+      | i0 <- [0, 32 .. 96] : [4][7], t <- [0 .. 63] : [64][6] ]
+  where obytes = reverse (split`{8192} (join (reverse (decode3 x))))

@@ -9,6 +9,7 @@ TOOLS_BIN   := $(CURDIR)/.tools/bin
 export PATH := $(TOOLS_BIN):$(PATH)
 
 SAW         := $(TOOLS_BIN)/saw
+CRYPTOL     := $(TOOLS_BIN)/cryptol
 ISABELLE    := $(TOOLS_BIN)/isabelle
 CLANG       ?= clang
 
@@ -151,6 +152,12 @@ build/hqc-fft/fft_ref.bc: $(addprefix $(FFT_SRC)/,$(addsuffix .c,$(FFT_C)))
 	for f in $(FFT_C); do $(AVX_CLANG) -O0 -std=c11 -I $(FFT_SRC) -c -emit-llvm -o build/hqc-fft/$$f.bc $(FFT_SRC)/$$f.c || exit 1; done
 	$(dir $(AVX_CLANG))llvm-link -o $@ $(addprefix build/hqc-fft/,$(addsuffix .bc,$(FFT_C)))
 	@echo "BUILT: $@ ($$($(dir $(AVX_CLANG))llvm-dis -o - $@ | grep -c '^define') functions)"
+
+## The model lemmas of the additive-FFT proofs (A-HQC-FFT item 2): the index-form encode/decode statements
+## equal the forms the SAW scripts prove against, and the batch runs of r3_dec/r5_dec assemble to the whole
+## decoding. Cryptol :prove under abc, one process; the target fails unless every :prove line says Q.E.D.
+hqc-fft-lemmas:
+	@mkdir -p build/hqc-fft; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(CRYPTOL) -b proof/hqc-fft/lemmas.icry 2>&1 | tee build/hqc-fft/lemmas.log; n=$$(grep -c '^:prove' proof/hqc-fft/lemmas.icry); q=$$(grep -c '^Q.E.D.' build/hqc-fft/lemmas.log); [ "$$q" = "$$n" ] || { echo "FAILED: $$q of $$n lemmas proved (build/hqc-fft/lemmas.log)"; exit 1; }; echo "VERIFIED: $$n FFTEnc lemmas (encode/decode index form == proved form at hqc-1/3/5, batch runs cover decode3/decode5) by abc"
 
 ## Out of band, a measurement: how rme scales with the leaf size (scripts/hqc_rme_scaling.sh).
 hqc-rme-scaling: hqc
