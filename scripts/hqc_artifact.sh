@@ -106,7 +106,8 @@ import re, sys
 out = sys.argv[1]; s = open('Makefile').read()
 header = s[:s.index('\n## ')]                      # variables up to the first target comment
 blocks = re.split(r'\n(?=## )', s)
-keep = [b for b in blocks if re.search(r'^hqc[-\w]*:', b, re.M)]
+keep = [b for b in blocks if re.search(r'^hqc[-\w]*:', b, re.M)
+        or re.search(r'^(AVX|FFT|HQC)_\w*\s*[:?]?=', b, re.M)]   # variable blocks the hqc targets use
 keep = [b.replace('(run 40120098008)', '(a CI run)') for b in keep]
 for b in keep:
     assert not re.search(r'\$\((TARGET_C|BITCODE|SAW_SCRIPT|ISA_SESSION)\)', b), b[:80]
@@ -177,5 +178,11 @@ fi
 if grep -rIn -i -E '\bamar\b' "$OUT" | grep -v -i hadamard | grep -q .; then
   echo "!! identifying strings remain" >&2; exit 1
 fi
+# Every documented target must expand with no undefined variable (a dropped variable block once left
+# AVX_CLANG empty, which only showed when hqc-avx ran).
+for t in all hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants hqc-fft hqc-fft-3 hqc-fft-5 hqc-fft-lemmas lift-check; do
+  u=$( (cd "$OUT" && make -n --warn-undefined-variables "$t" 2>&1 >/dev/null) | grep 'undefined variable' || true)
+  [ -z "$u" ] || { echo "!! make $t in the artifact uses an undefined variable: $u" >&2; exit 1; }
+done
 ( cd dist && zip -qr hqc-artifact.zip hqc-artifact )
 echo ">> dist/hqc-artifact.zip: $(find "$OUT" -type f | wc -l | tr -d ' ') files, $(du -sh dist/hqc-artifact.zip | cut -f1)"
