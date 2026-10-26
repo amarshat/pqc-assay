@@ -202,3 +202,25 @@ decode5 fx = unflat25 (join (reverse [ outByte q | q <- [0 ..< 16384] : [16384][
             rr = rows @ i
     rows : [256][8][64]
     rows = [ [ linmap`{64} decMat x | x <- blk ] | blk <- split`{256} fx ]
+
+// decode_64 by batches, for proofs in parts (A-HQC-FFT item 8): decBatch<size> x i is the eight
+// transposed byte matrices of batch i (kb-th bytes of the eight images); output byte i + k (8 kb + jj)
+// is decBatch x i @ kb @ jj. dbytes<size> x i0 t is the run of 32 output bytes at offset i0 + k t,
+// which is contiguous because the batch index varies fastest in the layout.
+decBatch5 : [2048][64] -> [8] -> [8][8][8]
+decBatch5 x i = [ transpose8 [ byteOf r kb | r <- rr ] | kb <- [0 .. 7] : [8][3] ]
+  where rr = [ linmap`{64} decMat e | e <- (split`{256} x) @ i ]
+dbytes5 : [2048][64] -> [8] -> [6] -> [32][8]
+dbytes5 x i0 t = [ (decBatch5 x i) @ (t >> 3) @ (drop`{3} t) | i <- take`{32} [i0 ...] ]
+
+decBatch3 : [1024][64] -> [7] -> [8][8][8]
+decBatch3 x i = [ transpose8 [ byteOf r kb | r <- rr ] | kb <- [0 .. 7] : [8][3] ]
+  where rr = [ linmap`{64} decMat e | e <- (split`{128} x) @ i ]
+dbytes3 : [1024][64] -> [7] -> [6] -> [32][8]
+dbytes3 x i0 t = [ (decBatch3 x i) @ (t >> 3) @ (drop`{3} t) | i <- take`{32} [i0 ...] ]
+
+// The whole-array statements are these runs assembled: checked on probes against decode5 / decode3.
+property dbytes5_is_decode5 (x : [2048][64]) =
+  and [ dbytes5 x i0 t == [ obytes @ ((zext i0 : [14]) + 256 * (zext t) + j) | j <- [0 ..< 32] : [32][14] ]
+      | (i0, t) <- [(0,0), (32,5), (224,63)] : [3]([8],[6]) ]
+  where obytes = reverse (split`{16384} (join (reverse (decode5 x))))
