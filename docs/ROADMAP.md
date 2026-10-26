@@ -54,7 +54,7 @@ that model (SAW, stage by stage, reference variant first, then AVX2). Started 20
 SAW layer, because it is the deterministic part and it produces the model part (1) needs:
 `target/hqc-fft/gf264_ref` vendored; by 2026-10-26 every routine and the entry points at all three
 HQC lengths are proved against the Cryptol model (`make hqc-fft`, `hqc-fft-3`, `hqc-fft-5`; per-script
-results in A-HQC-FFT item 3, the make targets as single runs pending). The heavy goals were the
+results in A-HQC-FFT item 3; `make hqc-fft` 761 s and `make hqc-fft-3` 5561 s exit 0 on the M4 Pro, `make hqc-fft-5` as a single run pending). The heavy goals were the
 F2-linear maps (`encode_64` via a `linear_map_x8` override under z3; `decode_64` under rme with a
 `transpose_8x8` override, in batch-range parts at hqc-3/5: 4576 s and 11368 s) and the basis
 conversions (closed-form division layers; 18 GB at hqc-5). Next: part (1) in Isabelle, starting from

@@ -140,8 +140,8 @@ to 131072 bits), then the entry points (`polymul_280U64_*`, `polymul_576U64_*`, 
 `polymul_input_transform`/`polymul_output` at 1024 words) as the composition of those routines with
 their proved specifications assumed. Every script exited 0 in its own SAW process (2026-10-25/26, one
 bit-flip mutant per spec rejected; per-script times and the two machines in A-HQC-FFT item 3 of
-`docs/ASSUMPTIONS.md`); the three make targets as single invocations are being run now and are not
-claimed yet. The `decode_64` specification allocates slack after its output (A-HQC-FFT item 7). Not
+`docs/ASSUMPTIONS.md`); `make hqc-fft` (761 s) and `make hqc-fft-3` (5561 s) exited 0 as single invocations
+on the M4 Pro; `make hqc-fft-5` as one invocation is running and not claimed yet. The `decode_64` specification allocates slack after its output (A-HQC-FFT item 7). Not
 done: the Isabelle proof that the composed model is polynomial multiplication (part (1) of the
 milestone in `docs/ROADMAP.md`), and the AVX2 variant.
 

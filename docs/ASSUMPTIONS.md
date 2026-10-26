@@ -1357,9 +1357,10 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    `r5_bc.saw` (1052 s, 18 GB): `bc_1(8192)` == `bc1_65536wc`, `ibc_1(16384)` == `ibc1_131072w` (the
    generic `irepr_s8_1` / `ibc_256(512)` / `ibc_1_256(512)` path). `fft_5.saw` (135 s):
    `polymul_input_transform(1024) / polymul_output(1024) == inputT5/mulT5`.
-   Every script above exited 0 on its own; the make targets as single invocations are being run now
-   (`make hqc-fft` and `make hqc-fft-3` on the M4 Pro, `make hqc-fft-5` on the M2 Max) and this item
-   will record their exit codes. An earlier model with `pdiv`/`pmod` per layer made rme take 30 GB on
+   Every script above exited 0 on its own. As single invocations (2026-10-26, M4 Pro): `make hqc-fft`
+   exit 0 in 761 s with 78 anticipated failures (the mutants of its seven scripts, `ref_2` and the
+   network scripts re-running `ref_1`'s), `make hqc-fft-3` exit 0 in 5561 s with 80; `make hqc-fft-5`
+   as one invocation is running on the M2 Max and is not claimed yet. An earlier model with `pdiv`/`pmod` per layer made rme take 30 GB on
    `repr_s8_1_16384` and was replaced by the closed form; rme on `encode_64` in the byte-gather form of
    the model reported every input as a counterexample at 1024 words, which is why the model is written
    in index form and `encode_64` is proved through the `linear_map_x8` override.
@@ -1367,7 +1368,7 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    for all 16384 k (a C harness, 2026-10-25); the model's `stage` uses the computed form. A SAW
    proof of `btfy_64` against `btfy9` will read the real table (concrete indices), so it will
    re-establish the entries it uses.
-5. **Not yet.** The make targets as single runs (above). The model lemmas `encode == encodeIdx` and
+5. **Not yet.** `make hqc-fft-5` as a single run (above). The model lemmas `encode == encodeIdx` and
    `decode == decodeIdx` (the index-form statements the SAW proofs use against the matrix form of
    item 2): Cryptol `:check` only, rme ran out of memory on them. The AVX2 variant of the artifact.
    All of part (1), the Isabelle proof that `mulT (inputT a) (inputT b)` is the product modulo x^n - 1.
