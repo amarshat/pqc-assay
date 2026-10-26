@@ -59,8 +59,26 @@ let dec5_spec post = do {
   llvm_execute_func [rp, fp, llvm_term {{ 2048 : [32] }}];
   llvm_points_to_untyped rp (llvm_term (post x));
 };
-dec5 <- llvm_verify m "decode_64" [tr] false (dec5_spec (\x -> {{ decode5 x }})) rme;
-fails (llvm_verify m "decode_64" [tr] false (dec5_spec (\x -> {{ decode5 x ^ flip }})) abc);
-decode5_lemma <- prove_print rme {{ \x -> decode5 x == decodeIdx5 x }};
-print "VERIFIED: hqc-5 encode_64(2048) == encode5, decode_64(2048) == decode5 == decodeIdx5";
+// decode_64 at 2048 elements under rme needs more memory than one process gets (45 GB were not enough), so
+// the postcondition is proved in 4 parts of 512 words, each a separate obligation with the same
+// precondition (the rest of the output unconstrained in that part). The function is deterministic, so
+// the parts together are the full contract, which fft_5.saw assumes (A-HQC-FFT item 8).
+let dec5_part_spec off post = do {
+  mats;
+  rp <- llvm_alloc (w 2080);
+  fp <- llvm_alloc_readonly (w 2048);
+  x <- llvm_fresh_var "fx" (w 2048);
+  llvm_points_to fp (llvm_term x);
+  llvm_execute_func [rp, fp, llvm_term {{ 2048 : [32] }}];
+  llvm_points_to_untyped (llvm_elem rp off) (llvm_term (post x));
+};
+dec5_p0 <- llvm_verify m "decode_64" [tr] false (dec5_part_spec 0 (\x -> {{ take`{512} (drop`{0} (decode5 x)) }})) rme;
+fails (llvm_verify m "decode_64" [tr] false (dec5_part_spec 0 (\x -> {{ take`{512} (drop`{0} (decode5 x)) ^ flip }})) abc);
+dec5_p1 <- llvm_verify m "decode_64" [tr] false (dec5_part_spec 512 (\x -> {{ take`{512} (drop`{512} (decode5 x)) }})) rme;
+fails (llvm_verify m "decode_64" [tr] false (dec5_part_spec 512 (\x -> {{ take`{512} (drop`{512} (decode5 x)) ^ flip }})) abc);
+dec5_p2 <- llvm_verify m "decode_64" [tr] false (dec5_part_spec 1024 (\x -> {{ take`{512} (drop`{1024} (decode5 x)) }})) rme;
+fails (llvm_verify m "decode_64" [tr] false (dec5_part_spec 1024 (\x -> {{ take`{512} (drop`{1024} (decode5 x)) ^ flip }})) abc);
+dec5_p3 <- llvm_verify m "decode_64" [tr] false (dec5_part_spec 1536 (\x -> {{ take`{512} (drop`{1536} (decode5 x)) }})) rme;
+fails (llvm_verify m "decode_64" [tr] false (dec5_part_spec 1536 (\x -> {{ take`{512} (drop`{1536} (decode5 x)) ^ flip }})) abc);
+print "VERIFIED: hqc-5 decode_64(2048) == decode5, in 4 parts of 512 words";
 

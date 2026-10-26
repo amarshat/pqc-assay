@@ -1370,6 +1370,9 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    `r5_enc`, `r5_bc`, then `fft_5.saw`, which assumes `gf264v_mul` (2048), `btfy_64`/`ibtfy_64` (11
    stages), `encode_64`/`decode_64` (2048 elements), `bc_1` (8192 bytes), `ibc_1` (16384 bytes, the
    generic path). Each routine script also proves `linear_map_x8` and `transpose_8x8`, the helpers
-   its `encode_64`/`decode_64` proofs use as overrides. None of the hqc-3 or hqc-5 scripts has
-   passed yet as this is written; item 3 lists what has.
+   its `encode_64`/`decode_64` proofs use as overrides. At hqc-3 and hqc-5 the `decode_64` contract
+   is proved in parts (2 x 512 and 4 x 512 output words, each its own `llvm_verify` with the same
+   precondition and the rest of the output unconstrained; one obligation for the whole output needed
+   more than 45 GB under rme at hqc-5), and the top script assumes the whole contract: the function
+   is deterministic, so the parts together are that contract. Item 3 lists what has passed.
 

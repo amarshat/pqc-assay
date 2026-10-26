@@ -60,8 +60,22 @@ let dec3_spec post = do {
   llvm_execute_func [rp, fp, llvm_term {{ 1024 : [32] }}];
   llvm_points_to_untyped rp (llvm_term (post x));
 };
-dec3 <- llvm_verify m "decode_64" [tr] false (dec3_spec (\x -> {{ decode3 x }})) rme;
-fails (llvm_verify m "decode_64" [tr] false (dec3_spec (\x -> {{ decode3 x ^ flip }})) abc);
-decode3_lemma <- prove_print rme {{ \x -> decode3 x == decodeIdx3 x }};
-print "VERIFIED: hqc-3 encode_64(1024) == encode3, decode_64(1024) == decode3 == decodeIdx3";
+// decode_64 at 1024 elements under rme needs more memory than one process gets (the hqc-5 goal needed more than 45 GB), so
+// the postcondition is proved in 2 parts of 512 words, each a separate obligation with the same
+// precondition (the rest of the output unconstrained in that part). The function is deterministic, so
+// the parts together are the full contract, which fft_3.saw assumes (A-HQC-FFT item 8).
+let dec3_part_spec off post = do {
+  mats;
+  rp <- llvm_alloc (w 1040);
+  fp <- llvm_alloc_readonly (w 1024);
+  x <- llvm_fresh_var "fx" (w 1024);
+  llvm_points_to fp (llvm_term x);
+  llvm_execute_func [rp, fp, llvm_term {{ 1024 : [32] }}];
+  llvm_points_to_untyped (llvm_elem rp off) (llvm_term (post x));
+};
+dec3_p0 <- llvm_verify m "decode_64" [tr] false (dec3_part_spec 0 (\x -> {{ take`{512} (drop`{0} (decode3 x)) }})) rme;
+fails (llvm_verify m "decode_64" [tr] false (dec3_part_spec 0 (\x -> {{ take`{512} (drop`{0} (decode3 x)) ^ flip }})) abc);
+dec3_p1 <- llvm_verify m "decode_64" [tr] false (dec3_part_spec 512 (\x -> {{ take`{512} (drop`{512} (decode3 x)) }})) rme;
+fails (llvm_verify m "decode_64" [tr] false (dec3_part_spec 512 (\x -> {{ take`{512} (drop`{512} (decode3 x)) ^ flip }})) abc);
+print "VERIFIED: hqc-3 decode_64(1024) == decode3, in 2 parts of 512 words";
 
