@@ -59,8 +59,10 @@ unflat : [16384] -> [256][64]
 unflat v = reverse (split v)
 
 // encode_64(rfx, 512, fx, 32): element e = _enc_mat applied to column e of the 32 x 512 bit view.
-encodeIdx : [256][64] -> [512][64]
-encodeIdx fx = [ linmap`{32} encMat (reverse [ fb ! (512 * j + e) | j <- [0 ..< 32] ]) | e <- [0 ..< 512] : [512][14] ]
+// (This index form is what SAW proves encode_64 against, by rme; a form that mirrored the C's byte
+// gathers made rme use far more memory, 2026-10-26.)
+encode : [256][64] -> [512][64]
+encode fx = [ linmap`{32} encMat (reverse [ fb ! (512 * j + e) | j <- [0 ..< 32] ]) | e <- [0 ..< 512] : [512][14] ]
   where fb = flat fx
 
 // decode_64(rfx, fx, 512), two ways. decodeIdx is the statement: bit 512 t + e of the output (t < 64,
@@ -105,8 +107,8 @@ flat3 fx = join (reverse fx)
 flat5 : [1024][64] -> [65536]
 flat5 fx = join (reverse fx)
 // encode_64(rfx, 1024, fx, 32): element e = _enc_mat applied to column e of the 32 x 512 bit view.
-encodeIdx3 : [512][64] -> [1024][64]
-encodeIdx3 fx = [ linmap`{32} encMat (reverse [ fb ! (1024 * j + e) | j <- [0 ..< 32] ]) | e <- [0 ..< 1024] : [1024][16] ]
+encode3 : [512][64] -> [1024][64]
+encode3 fx = [ linmap`{32} encMat (reverse [ fb ! (1024 * j + e) | j <- [0 ..< 32] ]) | e <- [0 ..< 1024] : [1024][16] ]
   where fb = flat3 fx
 
 // decode_64(rfx, fx, 1024), two ways. decodeIdx3 is the statement: bit 512 t + e of the output (t < 64,
@@ -139,8 +141,8 @@ decode3 fx = unflat23 (join (reverse [ outByte q | q <- [0 ..< 8192] : [8192][13
 
 // ---- hqc-5 size (generic path, 1024 input words): 2048 elements, 2048 output words ----
 // encode_64(rfx, 2048, fx, 32): element e = _enc_mat applied to column e of the 32 x 512 bit view.
-encodeIdx5 : [1024][64] -> [2048][64]
-encodeIdx5 fx = [ linmap`{32} encMat (reverse [ fb ! (2048 * j + e) | j <- [0 ..< 32] ]) | e <- [0 ..< 2048] : [2048][17] ]
+encode5 : [1024][64] -> [2048][64]
+encode5 fx = [ linmap`{32} encMat (reverse [ fb ! (2048 * j + e) | j <- [0 ..< 32] ]) | e <- [0 ..< 2048] : [2048][17] ]
   where fb = flat5 fx
 
 // decode_64(rfx, fx, 2048), two ways. decodeIdx5 is the statement: bit 512 t + e of the output (t < 64,
@@ -170,30 +172,3 @@ decode5 fx = unflat25 (join (reverse [ outByte q | q <- [0 ..< 16384] : [16384][
             rr = rows @ i
     rows : [256][8][64]
     rows = [ [ linmap`{64} decMat x | x <- blk ] | blk <- split`{256} fx ]
-
-// encode_64 as the C computes it: batch i (of 64) and byte position kk give element 8 i + kk, which is
-// the XOR over j < 32 of _enc_mat[j] when bit kk of input byte j * 64 + i is set (collect_inputbits_x8
-// gathers those bytes, linear_map_x8 applies the mask). The SAW proof of encode_64 is against this;
-// encode == encodeIdx is a lemma about the model alone.
-encode : [256][64] -> [512][64]
-encode fx = join [ [ foldl (^) 0 [ if (bytes @ (j * 64 + i)) ! kk then encMat @ j else 0 | j <- [0 ..< 32] : [32][11] ]
-                      | kk <- [0 ..< 8] : [8][3] ] | i <- [0 ..< 64] : [64][11] ]
-  where bytes = reverse (split`{2048} (flat fx))
-
-// encode_64 as the C computes it: batch i (of 128) and byte position kk give element 8 i + kk, which is
-// the XOR over j < 32 of _enc_mat[j] when bit kk of input byte j * 128 + i is set (collect_inputbits_x8
-// gathers those bytes, linear_map_x8 applies the mask). The SAW proof of encode_64 is against this;
-// encode3 == encodeIdx3 is a lemma about the model alone.
-encode3 : [512][64] -> [1024][64]
-encode3 fx = join [ [ foldl (^) 0 [ if (bytes @ (j * 128 + i)) ! kk then encMat @ j else 0 | j <- [0 ..< 32] : [32][12] ]
-                      | kk <- [0 ..< 8] : [8][3] ] | i <- [0 ..< 128] : [128][12] ]
-  where bytes = reverse (split`{4096} (flat3 fx))
-
-// encode_64 as the C computes it: batch i (of 256) and byte position kk give element 8 i + kk, which is
-// the XOR over j < 32 of _enc_mat[j] when bit kk of input byte j * 256 + i is set (collect_inputbits_x8
-// gathers those bytes, linear_map_x8 applies the mask). The SAW proof of encode_64 is against this;
-// encode5 == encodeIdx5 is a lemma about the model alone.
-encode5 : [1024][64] -> [2048][64]
-encode5 fx = join [ [ foldl (^) 0 [ if (bytes @ (j * 256 + i)) ! kk then encMat @ j else 0 | j <- [0 ..< 32] : [32][13] ]
-                      | kk <- [0 ..< 8] : [8][3] ] | i <- [0 ..< 256] : [256][13] ]
-  where bytes = reverse (split`{8192} (flat5 fx))
