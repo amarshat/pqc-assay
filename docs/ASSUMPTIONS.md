@@ -1371,8 +1371,12 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    stages), `encode_64`/`decode_64` (2048 elements), `bc_1` (8192 bytes), `ibc_1` (16384 bytes, the
    generic path). Each routine script also proves `linear_map_x8` and `transpose_8x8`, the helpers
    its `encode_64`/`decode_64` proofs use as overrides. At hqc-3 and hqc-5 the `decode_64` contract
-   is proved in parts (2 x 512 and 4 x 512 output words, each its own `llvm_verify` with the same
-   precondition and the rest of the output unconstrained; one obligation for the whole output needed
-   more than 45 GB under rme at hqc-5), and the top script assumes the whole contract: the function
-   is deterministic, so the parts together are that contract. Item 3 lists what has passed.
+   is proved in parts by batch range (`r3_dec.saw`: 4 parts of 32 batches; `r5_dec.saw`: 8 parts of
+   32 batches): output byte i + k (8 kb + jj) comes from batch i, so a part's expected output is 64
+   contiguous runs of 32 bytes (`dbytes<size> x i0 t`), each its own `llvm_points_to_untyped`, and a
+   part's goal depends on 256 input words only. Each part is its own `llvm_verify` with the same
+   precondition, the rest of the output unconstrained, and a mutant (one run flipped) that must fail;
+   one obligation for the whole output needed more than 45 GB under rme at hqc-5, a part about 13 GB
+   (714 s). The top script assumes the whole contract: the function is deterministic and the parts
+   cover every output byte, so the parts together are that contract. Item 3 lists what has passed.
 

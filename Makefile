@@ -140,11 +140,11 @@ hqc-fft: build/hqc-fft/fft_ref.bc
 ## The same at the hqc-3 and hqc-5 lengths (five processes each; the hqc-5 entry points are the artifact's
 ## generic polymul_input_transform / polymul_output at 1024 words).
 hqc-fft-3: build/hqc-fft/fft_ref.bc
-	@for s in ref_1 r3_net r3_enc r3_bc fft_3; do echo ">> SAW: proof/hqc-fft/$$s.saw"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(SAW) -v 3 proof/hqc-fft/$$s.saw || exit 1; done
-	@echo "VERIFIED: additive-FFT gf264_ref (hqc-3): every routine == its model and polymul_576U64_input/mul == inputT3/mulT3 (FFTTop3; fft_3 with the routines' proved specs assumed) (saw exit 0 five times)"
+	@for s in ref_1 r3_net r3_enc r3_dec r3_bc fft_3; do echo ">> SAW: proof/hqc-fft/$$s.saw"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(SAW) -v 3 proof/hqc-fft/$$s.saw || exit 1; done
+	@echo "VERIFIED: additive-FFT gf264_ref (hqc-3): every routine == its model and polymul_576U64_input/mul == inputT3/mulT3 (FFTTop3; fft_3 with the routines' proved specs assumed) (saw exit 0 six times)"
 hqc-fft-5: build/hqc-fft/fft_ref.bc
-	@for s in ref_1 r5_net r5_enc r5_bc fft_5; do echo ">> SAW: proof/hqc-fft/$$s.saw"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(SAW) -v 3 proof/hqc-fft/$$s.saw || exit 1; done
-	@echo "VERIFIED: additive-FFT gf264_ref (hqc-5): every routine == its model and polymul_input_transform/polymul_output(1024) == inputT5/mulT5 (FFTTop5; fft_5 with the routines' proved specs assumed) (saw exit 0 five times)"
+	@for s in ref_1 r5_net r5_enc r5_dec r5_bc fft_5; do echo ">> SAW: proof/hqc-fft/$$s.saw"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(SAW) -v 3 proof/hqc-fft/$$s.saw || exit 1; done
+	@echo "VERIFIED: additive-FFT gf264_ref (hqc-5): every routine == its model and polymul_input_transform/polymul_output(1024) == inputT5/mulT5 (FFTTop5; fft_5 with the routines' proved specs assumed) (saw exit 0 six times)"
 build/hqc-fft/fft_ref.bc: $(addprefix $(FFT_SRC)/,$(addsuffix .c,$(FFT_C)))
 	mkdir -p build/hqc-fft
 	for f in $(FFT_C); do $(AVX_CLANG) -O0 -std=c11 -I $(FFT_SRC) -c -emit-llvm -o build/hqc-fft/$$f.bc $(FFT_SRC)/$$f.c || exit 1; done
