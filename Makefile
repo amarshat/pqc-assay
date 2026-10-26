@@ -131,12 +131,12 @@ hqc-c-mutants: hqc
 FFT_SRC := target/hqc-fft/gf264_ref
 FFT_C   := polymul_hqclen_ref gf264 btfy dencoder cantor_to_gf264 cantor_to_gf264_2x bc_1_ref bc_256_ref btfy_consts_2stages polymul
 hqc-fft-bitcode: build/hqc-fft/fft_ref.bc
-## The SAW layer of the milestone (part 2): fft_1.saw includes ref_1 .. ref_4b (every routine against its
-## model) and proves the two entry points as their composition; -v 3 because the scripts have `fails`
-## mutants (see the note under hqc). A-HQC-FFT in docs/ASSUMPTIONS.md.
+## The SAW layer of the milestone (part 2), six processes: ref_1 .. ref_4b prove every routine against
+## its model, fft_1 proves the two entry points with those specs assumed (A-HQC-FFT item 8). One process
+## for all of it ran out of memory. -v 3 because the scripts have `fails` mutants (see the note under hqc).
 hqc-fft: build/hqc-fft/fft_ref.bc
-	CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(SAW) -v 3 proof/hqc-fft/fft_1.saw
-	@echo "VERIFIED: additive-FFT gf264_ref (hqc-1): every routine == its model (FFTRef, FFTEnc, FFTBC) and polymul_280U64_input/mul == inputT/mulT (FFTTop) with the routines as overrides (saw exit 0: every llvm_verify passed, every mutant rejected)"
+	@for s in ref_1 ref_2 ref_3 ref_4 ref_4b fft_1; do echo ">> SAW: proof/hqc-fft/$$s.saw"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(SAW) -v 3 proof/hqc-fft/$$s.saw || exit 1; done
+	@echo "VERIFIED: additive-FFT gf264_ref (hqc-1): every routine == its model (FFTRef, FFTEnc, FFTBC; ref_1 to ref_4b) and polymul_280U64_input/mul == inputT/mulT (FFTTop; fft_1, with the routines' proved specs assumed, A-HQC-FFT item 8) (saw exit 0 six times: every llvm_verify passed, every mutant rejected)"
 build/hqc-fft/fft_ref.bc: $(addprefix $(FFT_SRC)/,$(addsuffix .c,$(FFT_C)))
 	mkdir -p build/hqc-fft
 	for f in $(FFT_C); do $(AVX_CLANG) -O0 -std=c11 -I $(FFT_SRC) -c -emit-llvm -o build/hqc-fft/$$f.bc $(FFT_SRC)/$$f.c || exit 1; done

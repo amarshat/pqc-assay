@@ -2,7 +2,9 @@
 // 32768 bits, ibc_1(poly, 4096), which polymul_280U64_mul applies to the product: its three routines
 // (irepr_s8_1_32768, ibc_256(128), ibc_1_256(128)) against their layers, then the composition.
 import "FFTBC.cry";
-// Library: included by fft_1.saw after ref_1.saw and ref_4.saw (the module m, flip, w32 come from there).
+m <- llvm_load_module "../../build/hqc-fft/fft_ref.bc";
+let flip = {{ [1] # zero }};
+let w32 n = llvm_array n (llvm_int 32);
 let bc_spec args post = do {
   p <- llvm_alloc (w32 1024);
   x <- llvm_fresh_var "poly" (w32 1024);

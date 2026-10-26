@@ -107,6 +107,7 @@ print "VERIFIED: hqc-3 bc_1(4096) == bc1_32768wc and ibc_1(8192) == ibc1_65536w,
 
 // The entry points.
 let in3_spec post = do {
+  mats;   // the encode/decode overrides read the matrices, so the caller allocates them
   op <- llvm_alloc (w 1024);
   ap <- llvm_alloc_readonly (w 576);
   a <- llvm_fresh_var "a" (w 576);
@@ -117,6 +118,7 @@ let in3_spec post = do {
 pin3 <- llvm_verify m "polymul_576U64_input" [bc3, enc3, bt3] false (in3_spec (\a -> {{ inputT3 a }})) (w4_unint_z3 ["bc1_32768wc", "encode3", "btfy10"]);
 fails (llvm_verify m "polymul_576U64_input" [bc3, enc3, bt3] false (in3_spec (\a -> {{ inputT3 a ^ flip }})) (w4_unint_z3 ["bc1_32768wc", "encode3", "btfy10"]));
 let mul3_spec post = do {
+  mats;   // the encode/decode overrides read the matrices, so the caller allocates them
   cp <- llvm_alloc (w 1152);
   ap <- llvm_alloc_readonly (w 576);
   bp <- llvm_alloc_readonly (w 576);

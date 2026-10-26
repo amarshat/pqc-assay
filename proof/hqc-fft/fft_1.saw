@@ -1,17 +1,99 @@
-// The GF(2^64) additive-FFT multiplier, reference C (target/hqc-fft/gf264_ref), hqc-1 size: the
-// whole SAW layer. Scripts 1 to 4b prove every routine against its model; this file proves the two
-// entry points against FFTTop.cry with those routines as overrides and their models uninterpreted,
-// so the obligation here is only the plumbing between stages (buffer views, offsets, the cross terms).
-// Part (2) of the milestone in docs/ROADMAP.md is this script's exit status. Part (1), that
-// mulT a b (inputT a) (inputT b) is the product, is for Isabelle.
-include "ref_2.saw";
-include "ref_3.saw";
-include "ref_4.saw";
-include "ref_4b.saw";
+// The GF(2^64) additive-FFT multiplier, reference C (target/hqc-fft/gf264_ref), hqc-1 size: the two
+// entry points polymul_280U64_input / _mul against FFTTop.cry, with every routine they call as an
+// override and the routines' models uninterpreted, so the obligation here is the plumbing between
+// stages (buffer views, offsets, the Karatsuba cross terms).
+//
+// The routines' specifications are ASSUMED here (llvm_unsafe_assume_spec) and PROVED by the other
+// scripts of `make hqc-fft`, which runs them first in their own SAW processes: ref_1.saw (leaves,
+// ladder, pointwise, butterfly kernels), ref_2.saw (the networks), ref_3.saw (encode_64, decode_64),
+// ref_4.saw (bc_1 on 2048 bytes), ref_4b.saw (ibc_1 on 4096 bytes). One process for everything ran out
+// of memory on the decode_64 goal (SAW's term cache grows over a long script); the split keeps each
+// process small. The spec texts below are copies of the ones those scripts prove (A-HQC-FFT item 8).
+import "FFTRef.cry";
+import "FFTEnc.cry";
+import "FFTBC.cry";
 import "FFTTop.cry";
+m <- llvm_load_module "../../build/hqc-fft/fft_ref.bc";
+let w n = llvm_array n (llvm_int 64);
+let w32 n = llvm_array n (llvm_int 32);
+let flip = {{ [1] # zero }};
 
+// --- the routines (assumed; proved in ref_1 .. ref_4b) ------------------------------------------
+let kspec n post = do {
+  cp <- llvm_alloc (w (eval_size {| 2*n |}));
+  ap <- llvm_alloc_readonly (w n);
+  bp <- llvm_alloc_readonly (w n);
+  a <- llvm_fresh_var "a" (w n);
+  b <- llvm_fresh_var "b" (w n);
+  llvm_points_to ap (llvm_term a);
+  llvm_points_to bp (llvm_term b);
+  llvm_execute_func [cp, ap, bp];
+  llvm_points_to cp (llvm_term (post a b));
+};
+k8 <- llvm_unsafe_assume_spec m "karat_mult_512" (kspec 8 (\a b -> {{ km8 a b }}));
+k16 <- llvm_unsafe_assume_spec m "karat_mult_1024" (kspec 16 (\a b -> {{ km16 a b }}));
+k24 <- llvm_unsafe_assume_spec m "karat_mult_1536" (kspec 24 (\a b -> {{ km24 a b }}));
+let gfv_spec n nt post = do {
+  cp <- llvm_alloc (w n);
+  ap <- llvm_alloc_readonly (w n);
+  bp <- llvm_alloc_readonly (w n);
+  a <- llvm_fresh_var "a" (w n);
+  b <- llvm_fresh_var "b" (w n);
+  llvm_points_to ap (llvm_term a);
+  llvm_points_to bp (llvm_term b);
+  llvm_execute_func [cp, ap, bp, llvm_term nt];
+  llvm_points_to cp (llvm_term (post a b));
+};
+gfv <- llvm_unsafe_assume_spec m "gf264v_mul" (gfv_spec 512 {{ 512 : [32] }} (\a b -> {{ gf264v a b }}));
+let btfy_spec post = do {
+  p <- llvm_alloc (w 512);
+  x <- llvm_fresh_var "poly" (w 512);
+  llvm_points_to p (llvm_term x);
+  llvm_execute_func [p, llvm_term {{ 9 : [32] }}, llvm_term {{ 1 << 41 : [64] }}];
+  llvm_points_to p (llvm_term (post x));
+};
+bt <- llvm_unsafe_assume_spec m "btfy_64" (btfy_spec (\x -> {{ btfy9 (1 << 41) x }}));
+ibt <- llvm_unsafe_assume_spec m "ibtfy_64" (btfy_spec (\x -> {{ ibtfy9 (1 << 41) x }}));
+let mats = do {
+  llvm_alloc_global "_enc_mat";
+  llvm_points_to (llvm_global "_enc_mat") (llvm_global_initializer "_enc_mat");
+  llvm_alloc_global "_dec_mat";
+  llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
+};
+let enc_spec post = do {
+  mats;
+  rp <- llvm_alloc (w 512);
+  fp <- llvm_alloc_readonly (w 256);
+  x <- llvm_fresh_var "fx" (w 256);
+  llvm_points_to fp (llvm_term x);
+  llvm_execute_func [rp, llvm_term {{ 512 : [32] }}, fp, llvm_term {{ 32 : [32] }}];
+  llvm_points_to rp (llvm_term (post x));
+};
+enc <- llvm_unsafe_assume_spec m "encode_64" (enc_spec (\x -> {{ encode x }}));
+let dec_spec post = do {
+  mats;
+  rp <- llvm_alloc (w 520);
+  fp <- llvm_alloc_readonly (w 512);
+  x <- llvm_fresh_var "fx" (w 512);
+  llvm_points_to fp (llvm_term x);
+  llvm_execute_func [rp, fp, llvm_term {{ 512 : [32] }}];
+  llvm_points_to_untyped rp (llvm_term (post x));
+};
+dec <- llvm_unsafe_assume_spec m "decode_64" (dec_spec (\x -> {{ decode x }}));
+let bc_spec n args post = do {
+  p <- llvm_alloc (w32 n);
+  x <- llvm_fresh_var "poly" (w32 n);
+  llvm_points_to p (llvm_term x);
+  llvm_execute_func (concat [p] args);
+  llvm_points_to p (llvm_term (post x));
+};
+bc <- llvm_unsafe_assume_spec m "bc_1" (bc_spec 512 [llvm_term {{ 2048 : [32] }}] (\x -> {{ bc1w x }}));
+ibc4096 <- llvm_unsafe_assume_spec m "ibc_1" (bc_spec 1024 [llvm_term {{ 4096 : [32] }}] (\x -> {{ ibc1_32768w x }}));
+
+// --- the entry points ---------------------------------------------------------------------------
 // polymul_280U64_input(a_fft, a): writes 512 words of a_fft from the low 256 words of a.
 let in_spec post = do {
+  mats;   // the encode/decode overrides read the matrices, so the caller allocates them
   op <- llvm_alloc (w 512);
   ap <- llvm_alloc_readonly (w 280);
   a <- llvm_fresh_var "a" (w 280);
@@ -23,8 +105,10 @@ pin <- llvm_verify m "polymul_280U64_input" [bc, enc, bt] false (in_spec (\a -> 
 fails (llvm_verify m "polymul_280U64_input" [bc, enc, bt] false (in_spec (\a -> {{ inputT a ^ flip }})) (w4_unint_z3 ["bc1w", "encode", "btfy9"]));
 print "VERIFIED: polymul_280U64_input == inputT (bc_1, encode_64, btfy_64 as overrides)";
 
-// polymul_280U64_mul(c, a, b, a_fft, b_fft): 560 words of c.
+// polymul_280U64_mul(c, a, b, a_fft, b_fft): 560 words of c (the decode_64 override needs 8 words of
+// slack after the 512 it writes, which the 560-word buffer provides).
 let mul_spec post = do {
+  mats;   // the encode/decode overrides read the matrices, so the caller allocates them
   cp <- llvm_alloc (w 560);
   ap <- llvm_alloc_readonly (w 280);
   bp <- llvm_alloc_readonly (w 280);

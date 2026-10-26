@@ -110,6 +110,7 @@ print "VERIFIED: hqc-5 bc_1(8192) == bc1_65536wc and ibc_1(16384) == ibc1_131072
 
 // The entry points. polymul_output's output buffer gets the 8 extra words its decode_64 call needs.
 let in5_spec post = do {
+  mats;   // the encode/decode overrides read the matrices, so the caller allocates them
   op <- llvm_alloc (w 2048);
   ap <- llvm_alloc_readonly (w 1024);
   a <- llvm_fresh_var "a" (w 1024);
@@ -120,6 +121,7 @@ let in5_spec post = do {
 pin5 <- llvm_verify m "polymul_input_transform" [bc5, enc5, bt5] false (in5_spec (\a -> {{ inputT5 a }})) (w4_unint_z3 ["bc1_65536wc", "encode5", "btfy11"]);
 fails (llvm_verify m "polymul_input_transform" [bc5, enc5, bt5] false (in5_spec (\a -> {{ inputT5 a ^ flip }})) (w4_unint_z3 ["bc1_65536wc", "encode5", "btfy11"]));
 let out5_spec post = do {
+  mats;   // the encode/decode overrides read the matrices, so the caller allocates them
   cp <- llvm_alloc (w 2056);
   afp <- llvm_alloc_readonly (w 2048);
   bfp <- llvm_alloc_readonly (w 2048);

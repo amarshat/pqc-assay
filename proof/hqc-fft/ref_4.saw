@@ -3,7 +3,8 @@
 // against its layers (pdiv / pmod by two-term polynomials), then bc_1 and ibc_1 as the composition with
 // the routines as overrides and their models uninterpreted. The C works on uint32 words.
 import "FFTBC.cry";
-// Library: included by fft_1.saw after ref_1.saw (the module m and flip come from there).
+m <- llvm_load_module "../../build/hqc-fft/fft_ref.bc";
+let flip = {{ [1] # zero }};
 let w32 n = llvm_array n (llvm_int 32);
 
 // In place on 512 words; `args` are the extra concrete arguments after the pointer.

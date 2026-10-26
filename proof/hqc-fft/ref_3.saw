@@ -3,7 +3,9 @@
 // elements and 512 elements to 512 words, through the constant matrices _enc_mat and _dec_mat (the
 // real globals). Both are linear, so rme proves them (z3 did not finish encode in 40 minutes).
 import "FFTEnc.cry";
-// Library: included by fft_1.saw after ref_1.saw (the module m, w, flip come from there).
+m <- llvm_load_module "../../build/hqc-fft/fft_ref.bc";
+let w n = llvm_array n (llvm_int 64);
+let flip = {{ [1] # zero }};
 
 let mats = do {
   llvm_alloc_global "_enc_mat";
