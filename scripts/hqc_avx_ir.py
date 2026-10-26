@@ -14,7 +14,9 @@ places, each listed in docs/ASSUMPTIONS.md (A-HQC-AVX) because the proof is abou
    poison constant are re-inserted after the load), and the sidecar `<out.bc>.poison.saw` lists the
    globals so that the SAW specs allocate each with fresh symbolic contents. A proof on that bitcode
    therefore holds for every value of every poison lane: it does not refine poison to one value,
-   it quantifies over it (the lanes are in fact overwritten before use, and the proof shows the
+   it quantifies over it. Before rewriting, poison_never_read checks that no poison lane is ever read
+   (every chain overwrites it, every shuffle selects around it), so the rewrite does not change the
+   program's semantics and the symbolic globals are a second line of evidence (the proof shows the
    result does not depend on them). --poison=zero and --poison=ones are the earlier single-value
    refinements, kept for the record (make hqc-avx-poison measured both before 2026-10-25).
 
@@ -38,6 +40,55 @@ import subprocess
 import sys
 
 
+def poison_never_read(ll):
+    """Check, per function, that no poison lane can be observed. Two shapes occur: (a) an
+    insertelement chain that starts from a vector with poison lanes and whose intermediates have
+    no use except the next insertelement of the chain, ending in a vector with every lane written;
+    (b) a shufflevector whose second operand is poison and whose mask selects only lanes of the first
+    operand. Any other instruction with a poison operand fails the build. When this holds, the
+    program's value at every instruction other than the chain intermediates is the same whatever the
+    poison lanes are, so replacing them by globals of any contents does not change the semantics.
+    Returns (chains, shuffles)."""
+    chains = shuffles = 0
+    for fn in re.split(r'\ndefine ', ll)[1:]:
+        fn = fn.split('\n}\n')[0]
+        uses, defs = {}, {}
+        for l in fn.split('\n')[1:]:
+            if l.lstrip().startswith(';'):
+                continue
+            m = re.match(r'\s*(%[\w.]+) = (.*)', l)
+            if m:
+                defs[m.group(1)] = m.group(2)
+            for u in re.findall(r'%[\w.]+', m.group(2) if m else l):
+                uses.setdefault(u, []).append(m.group(1) if m else None)
+        for v, d in defs.items():
+            if not re.search(r'\bpoison\b', d):
+                continue
+            if d.startswith('insertelement'):
+                n = int(re.search(r'<(\d+) x', d).group(1))
+                c = re.match(r'insertelement <\d+ x i\d+> (poison|<[^>]*>),', d).group(1)
+                undef = set(range(n)) if c == 'poison' else {i for i, t in enumerate(c.strip('<>').split(', ')) if 'poison' in t}
+                cur, dd = v, d
+                while True:
+                    undef.discard(int(re.search(r'i32 (\d+)\s*$', dd).group(1)))
+                    if not undef:
+                        break
+                    us = uses.get(cur, [])
+                    nx = us[0] if len(us) == 1 else None
+                    assert nx and re.match(r'insertelement <[^>]*> ' + re.escape(cur) + r',', defs.get(nx, '')), \
+                        f'poison lanes {sorted(undef)} of {v} reach a use other than insertelement: {us}'
+                    cur, dd = nx, defs[nx]
+                chains += 1
+            elif d.startswith('shufflevector'):
+                m = re.match(r'shufflevector <(\d+) x \w+> %[\w.]+, <\d+ x \w+> poison, <\d+ x i32> <(.*)>$', d.strip())
+                assert m and all(int(x.split()[-1]) < int(m.group(1)) for x in m.group(2).split(', ')), \
+                    f'a shufflevector may select a poison lane: {d}'
+                shuffles += 1
+            else:
+                raise AssertionError(f'poison operand outside the two handled shapes: {v} = {d}')
+    return chains, shuffles
+
+
 def main():
     bindir, src, dst = sys.argv[1:4]
     slack = '--slack' in sys.argv[4:]
@@ -48,6 +99,7 @@ def main():
     assert mode in ('symbolic', 'zero', 'ones'), mode
     ll = subprocess.run([f'{bindir}/llvm-dis', src, '-o', '-'], check=True, capture_output=True, text=True).stdout
     n_poison = len(re.findall(r'\bpoison\b', re.sub(r'^;.*$', '', ll, flags=re.M)))
+    n_chains, n_shuf = poison_never_read(ll)
     globals_ = []                                   # (name, lane width) for the sidecar SAW snippet
     if mode == 'symbolic':
         # Each poison operand becomes a load from its own fresh global @__poison_k, declared at the
@@ -99,7 +151,14 @@ def main():
         assert n_slack == 2, f'expected W0 and W2, found {n_slack}'
     gep = re.compile(r'getelementptr inbounds \(i64, ptr getelementptr inbounds \(\[(\d+) x <4 x i64>\], '
                      r'ptr (@[\w.]+), i64 0, i64 (\d+)\), i64 -(\d+)\)')
-    ll, n_gep = gep.subn(lambda m: f'getelementptr inbounds (i8, ptr {m.group(2)}, i64 {int(m.group(3)) * 32 - int(m.group(4)) * 8})', ll)
+    def gep_bytes(m):
+        # &arr[T] - k as i64 words is byte 32 T - 8 k of arr; the rewrite is only made when that byte
+        # offset lies inside the array, so the new address is the old one and is in bounds.
+        size, t, k = int(m.group(1)), int(m.group(3)), int(m.group(4))
+        off = t * 32 - k * 8
+        assert 0 <= off <= size * 32 and t <= size, f'GEP rewrite out of range: {m.group(0)}'
+        return f'getelementptr inbounds (i8, ptr {m.group(2)}, i64 {off})'
+    ll, n_gep = gep.subn(gep_bytes, ll)
     assert not re.search(r'getelementptr[^\n]*, i64 -\d', ll), 'a negative constant index remains'
     subprocess.run([f'{bindir}/llvm-as', '-', '-o', dst], check=True, input=ll, text=True)
     with open(dst + '.poison.saw', 'w') as f:
@@ -107,7 +166,7 @@ def main():
                 '// with fresh symbolic contents by the specs, so the proofs quantify over every lane value.\n')
         f.write('let poison_globals = [' + ', '.join(f'("{n}", {b})' for n, b in globals_) + '];\n')
     how = {'symbolic': f'replaced by {len(globals_)} fresh symbolic globals', 'zero': 'set to zero', 'ones': 'set to all ones'}[mode]
-    print(f'{dst}: {n_poison} poison lanes {how}, {n_slack} arrays given one vector of slack, {n_gep} constant GEPs rewritten')
+    print(f'{dst}: {n_poison} poison lanes (never read: {n_chains} insertelement chains, {n_shuf} shuffles) {how}, {n_slack} arrays given one vector of slack, {n_gep} constant GEPs rewritten')
 
 
 if __name__ == '__main__':
