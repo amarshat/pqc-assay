@@ -1354,12 +1354,13 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    function, and with too few of them it reports every input as a counterexample. The reason is a property of the C that is being handled per
    CONTRIBUTING.md (responsible disclosure) and is not described here yet; the proof of `decode_64`
    therefore carries an assumption of the same kind as the AVX2 slack of item 12 (A-HQC).
-8. **Assumed specifications in `fft_1.saw` (the entry points).** `make hqc-fft` runs six SAW processes
-   in order: `ref_1.saw`, `ref_2.saw`, `ref_3.saw`, `ref_4.saw`, `ref_4b.saw` prove every routine against
+8. **Assumed specifications in `fft_1.saw` (the entry points).** `make hqc-fft` runs seven SAW processes
+   in order: `ref_1.saw`, `ref_2.saw`, `ref_3.saw`, `ref_3d.saw`, `ref_4.saw`, `ref_4b.saw` prove every routine against
    its model, and `fft_1.saw` then proves `polymul_280U64_input` and `polymul_280U64_mul` with those
    routines as overrides whose specifications it assumes (`llvm_unsafe_assume_spec`): `karat_mult_512`,
    `karat_mult_1024`, `karat_mult_1536` (ref_1), `gf264v_mul` (ref_1), `btfy_64`, `ibtfy_64` (ref_2),
-   `encode_64`, `decode_64` (ref_3), `bc_1` on 2048 bytes (ref_4), `ibc_1` on 4096 bytes (ref_4b). The
+   `encode_64` (ref_3), `decode_64` (ref_3d, its own process: after other goals in one process its
+   rme goal did not finish within 24 GB, alone it takes 110 s), `bc_1` on 2048 bytes (ref_4), `ibc_1` on 4096 bytes (ref_4b). The
    assumed spec texts are copies of the proved ones; a mismatch would make the entry-point proofs
    about a different contract, so the texts are to be compared when either side changes. One SAW
    process for all of it ran out of memory on the `decode_64` goal (SAW's term cache grows over a

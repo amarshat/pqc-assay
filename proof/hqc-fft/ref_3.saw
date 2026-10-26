@@ -62,19 +62,5 @@ let dec_spec post = do {
   llvm_execute_func [rp, fp, llvm_term {{ 512 : [32] }}];
   llvm_points_to_untyped rp (llvm_term (post x));
 };
-// transpose_8x8(mat0): in place on 8 bytes.
-let tr_spec post = do {
-  p <- llvm_alloc (llvm_array 8 (llvm_int 8));
-  x <- llvm_fresh_var "mat0" (llvm_array 8 (llvm_int 8));
-  llvm_points_to p (llvm_term x);
-  llvm_execute_func [p];
-  llvm_points_to p (llvm_term (post x));
-};
-tr <- llvm_verify m "transpose_8x8" [] false (tr_spec (\x -> {{ transpose8 x }})) (w4_unint_z3 []);
-fails (llvm_verify m "transpose_8x8" [] false (tr_spec (\x -> {{ transpose8 x ^ [1, 0, 0, 0, 0, 0, 0, 0] }})) (w4_unint_z3 []));
-dec <- llvm_verify m "decode_64" [tr] false (dec_spec (\x -> {{ decode x }})) rme;
-fails (llvm_verify m "decode_64" [tr] false (dec_spec (\x -> {{ decode x ^ flip }})) abc);
-print "VERIFIED: decode_64(512) == decode (transpose_8x8 as override)";
-// The model lemma: the C-shaped decode is the index statement.
-decode_lemma <- prove_print rme {{ \x -> decode x == decodeIdx x }};
-print "VERIFIED: decode == decodeIdx (model lemma)";
+// decode_64 at this length is proved by ref_3d.saw, in its own SAW process: after the encode goals in the
+// same process its rme goal did not finish within 24 GB, alone it takes 110 s (M4 Pro, 2026-10-26).
