@@ -1308,6 +1308,16 @@ What that rests on:
     256-bit loads and stores require. "For all inputs" in the README and the paper means all input
     values under these two conditions.
 
+17. **Native differential test, evidence and not a proof (`scripts/hqc_native/run.sh`, 2026-10-26).**
+    The repaired AVX2 `vect_mul` (hqc-1/3; hqc-5 as shipped) against the reference `vect_mul`, both
+    compiled for x86-64 with Apple clang 14.0.3 at `-O0`, at `-O3 -flto` (the upstream flags) and with
+    `-O1 -fsanitize=address`, run under Rosetta 2 on the M4 Pro (macOS 15.8). Per set and configuration
+    3016 operand pairs (316 with ASan): 3000 random of degree below n and the 16 pairs from {0, 1,
+    x^(n-1), all ones}. Result: 0 mismatches in all nine runs, no byte written past
+    `VEC_N_SIZE_BYTES`, bits at and above n zero, no ASan report. Negative control: hqc-1 with
+    `W2[i] ^= _mm256_lddqu_si256` replaced by `=` differs on 215 of 216 pairs. This covers the gap
+    between the `-O0` bitcode the proofs are about and the production flags only by testing.
+
 
 ## A-HQC-FFT: the additive-FFT multiplier, GF(2^64) reference (recorded 2026-10-25, SAW layer complete 2026-10-26)
 
