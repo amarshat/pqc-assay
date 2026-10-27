@@ -53,9 +53,10 @@ case "$UNAME_S/$UNAME_M" in
 esac
 SAW_URL="https://github.com/GaloisInc/saw-script/releases/download/v${SAW_VERSION}/${SAW_ASSET}"
 ISA_URL="https://isabelle.in.tum.de/dist/${ISA_ASSET}"
-# Official Cambridge mirror, used when the TUM server is unreachable (it was down for hours on
-# 2026-10-04 and failed a CI run). Either source is checked against ISA_SHA256 where one is pinned.
-ISA_MIRROR="https://www.cl.cam.ac.uk/research/hvg/Isabelle/dist/${ISA_ASSET}"
+# Fallback when /dist fails (TUM was down for hours on 2026-10-04, and on 2026-10-27 /dist redirected
+# to an unreachable host). The release's own page keeps the tarballs; the Cambridge mirror returned 404
+# on 2026-10-27. Either source is checked against ISA_SHA256 where one is pinned.
+ISA_MIRROR="https://isabelle.in.tum.de/website-Isabelle${ISABELLE_VERSION}/dist/${ISA_ASSET}"
 
 # Bitwuzla: the abstraction-refinement SMT solver that discharges wide-domain Barrett reduction
 # where eager bit-blasters (z3/cvc5/yices/abc, all bundled with SAW) stall. SAW calls it via the
