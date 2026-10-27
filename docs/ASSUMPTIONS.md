@@ -1318,6 +1318,19 @@ What that rests on:
     `VEC_N_SIZE_BYTES`, bits at and above n zero, no ASan report. Negative control: hqc-1 with
     `W2[i] ^= _mm256_lddqu_si256` replaced by `=` differs on 215 of 216 pairs. This covers the gap
     between the `-O0` bitcode the proofs are about and the production flags only by testing.
+18. **Clean-room run of the review artifact (2026-10-27).** `dist/hqc-artifact.zip` as built by
+    `scripts/hqc_artifact.sh` at f5e6f72 (146 files), unpacked into an empty directory on the M2 Max and
+    run with `HOME` set to an empty directory and `PATH` limited to the system directories, so no tool
+    from this checkout or from `~/.isabelle` was visible. The artifact's `setup.sh` fetched and checked
+    SAW, the solvers and Cryptol (exit 0). The TUM Isabelle server was unreachable that day and the
+    Cambridge mirror returned 404, so the pinned Isabelle2025-2 directory was copied in from this
+    checkout's `.tools` and the rest of the Isabelle setup ran from the artifact (exit 0, 529 s). Plain
+    `make` then ran `hqc`, `hqc-avx` and `hqc-isabelle`: every SAW script exited 0 with its mutants
+    rejected (gf, `code_<p>`, `karatsuba_<p>` and `avx_<p>` for all three sets) and session `HQC`
+    finished with the oracle and axiom gates in place, `make` exit 0 after 5185 s, peak SAW RSS
+    15193 MB. The first attempt, on the zip from 11d922f, failed at `hqc-avx` because the packaging
+    script had dropped the Makefile block defining `AVX_CLANG`; f5e6f72 keeps those blocks and makes
+    the packaging fail when a documented target expands an undefined variable.
 
 
 ## A-HQC-FFT: the additive-FFT multiplier, GF(2^64) reference (recorded 2026-10-25, SAW layer complete 2026-10-26)
