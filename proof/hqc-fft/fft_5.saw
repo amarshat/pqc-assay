@@ -1,87 +1,23 @@
 // Additive-FFT reference, hqc-5: the entry points against FFTTop5.cry with the routines' specs
 // ASSUMED (proved by r5_net.saw, r5_enc.saw, r5_bc.saw and ref_1.saw, which `make hqc-fft-5` runs
-// first in their own processes; A-HQC-FFT item 8). The spec texts are copies of the proved ones.
+// first in their own processes). Each assumed spec is an expression over specs.saw that those scripts
+// pass to llvm_verify verbatim; scripts/hqc_fft_links.py checks this (A-HQC-FFT item 8).
 import "FFTRef.cry";
 import "FFTEnc.cry";
 import "FFTBC.cry";
 import "FFTTop5.cry";
 m <- llvm_load_module "../../build/hqc-fft/fft_ref.bc";
-let w n = llvm_array n (llvm_int 64);
-let w32 n = llvm_array n (llvm_int 32);
-let flip = {{ [1] # zero }};
-let mats = do {
-  llvm_alloc_global "_enc_mat";
-  llvm_points_to (llvm_global "_enc_mat") (llvm_global_initializer "_enc_mat");
-  llvm_alloc_global "_dec_mat";
-  llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
-};
+include "specs.saw";
 
-let kspec n post = do {
-  cp <- llvm_alloc (w (eval_size {| 2*n |}));
-  ap <- llvm_alloc_readonly (w n);
-  bp <- llvm_alloc_readonly (w n);
-  a <- llvm_fresh_var "a" (w n);
-  b <- llvm_fresh_var "b" (w n);
-  llvm_points_to ap (llvm_term a);
-  llvm_points_to bp (llvm_term b);
-  llvm_execute_func [cp, ap, bp];
-  llvm_points_to cp (llvm_term (post a b));
-};
-let gfv_spec n nt post = do {
-  cp <- llvm_alloc (w n);
-  ap <- llvm_alloc_readonly (w n);
-  bp <- llvm_alloc_readonly (w n);
-  a <- llvm_fresh_var "a" (w n);
-  b <- llvm_fresh_var "b" (w n);
-  llvm_points_to ap (llvm_term a);
-  llvm_points_to bp (llvm_term b);
-  llvm_execute_func [cp, ap, bp, llvm_term nt];
-  llvm_points_to cp (llvm_term (post a b));
-};
-let btfy5_spec post = do {
-  p <- llvm_alloc (w 2048);
-  x <- llvm_fresh_var "poly" (w 2048);
-  llvm_points_to p (llvm_term x);
-  llvm_execute_func [p, llvm_term {{ 11 : [32] }}, llvm_term {{ 1 << 43 : [64] }}];
-  llvm_points_to p (llvm_term (post x));
-};
-let enc5_spec post = do {
-  mats;
-  rp <- llvm_alloc (w 2048);
-  fp <- llvm_alloc_readonly (w 1024);
-  x <- llvm_fresh_var "fx" (w 1024);
-  llvm_points_to fp (llvm_term x);
-  llvm_execute_func [rp, llvm_term {{ 2048 : [32] }}, fp, llvm_term {{ 32 : [32] }}];
-  llvm_points_to rp (llvm_term (post x));
-};
-let dec5_spec post = do {
-  mats;
-  rp <- llvm_alloc (w 2080);
-  fp <- llvm_alloc_readonly (w 2048);
-  x <- llvm_fresh_var "fx" (w 2048);
-  llvm_points_to fp (llvm_term x);
-  llvm_execute_func [rp, fp, llvm_term {{ 2048 : [32] }}];
-  llvm_points_to_untyped rp (llvm_term (post x));
-};
-let bc5_spec n args post = do {
-  p <- llvm_alloc (w32 n);
-  x <- llvm_fresh_var "poly" (w32 n);
-  llvm_points_to p (llvm_term x);
-  llvm_execute_func (concat [p] args);
-  llvm_points_to p (llvm_term (post x));
-};
-
-let a8192 = llvm_term {{ 8192 : [32] }};
-let a16384 = llvm_term {{ 16384 : [32] }};
 gfv5 <- llvm_unsafe_assume_spec m "gf264v_mul" (gfv_spec 2048 {{ 2048 : [32] }} (\a b -> {{ gf264v a b }}));
-bt5 <- llvm_unsafe_assume_spec m "btfy_64" (btfy5_spec (\x -> {{ btfy11 (1 << 43) x }}));
-ibt5 <- llvm_unsafe_assume_spec m "ibtfy_64" (btfy5_spec (\x -> {{ ibtfy11 (1 << 43) x }}));
-enc5 <- llvm_unsafe_assume_spec m "encode_64" (enc5_spec (\x -> {{ encode5 x }}));
-dec5 <- llvm_unsafe_assume_spec m "decode_64" (dec5_spec (\x -> {{ decode5 x }}));
-bc5 <- llvm_unsafe_assume_spec m "bc_1" (bc5_spec 2048 [a8192] (\x -> {{ bc1_65536wc x }}));
-ibc5 <- llvm_unsafe_assume_spec m "ibc_1" (bc5_spec 4096 [a16384] (\x -> {{ ibc1_131072w x }}));
+bt5 <- llvm_unsafe_assume_spec m "btfy_64" (btfy_spec 2048 {{ 11 : [32] }} {{ 1 << 43 : [64] }} (\x -> {{ btfy11 (1 << 43) x }}));
+ibt5 <- llvm_unsafe_assume_spec m "ibtfy_64" (btfy_spec 2048 {{ 11 : [32] }} {{ 1 << 43 : [64] }} (\x -> {{ ibtfy11 (1 << 43) x }}));
+enc5 <- llvm_unsafe_assume_spec m "encode_64" (enc_spec 2048 1024 {{ 2048 : [32] }} (\x -> {{ encode5 x }}));
+dec5 <- llvm_unsafe_assume_spec m "decode_64" (dec_spec 2048 0 {{ 2048 : [32] }} (\x -> {{ decode5 x }}));
+bc5 <- llvm_unsafe_assume_spec m "bc_1" (bc_spec 2048 [n8192] (\x -> {{ bc1_65536wc x }}));
+ibc5 <- llvm_unsafe_assume_spec m "ibc_1" (bc_spec 4096 [n16384] (\x -> {{ ibc1_131072w x }}));
 
-// The entry points. polymul_output's output buffer gets the 8 extra words its decode_64 call needs.
+// The entry points. polymul_output writes 2048 words; the buffer is exactly that size.
 let in5_spec post = do {
   mats;   // the encode/decode overrides read the matrices, so the caller allocates them
   op <- llvm_alloc (w 2048);
@@ -95,7 +31,7 @@ pin5 <- llvm_verify m "polymul_input_transform" [bc5, enc5, bt5] false (in5_spec
 fails (llvm_verify m "polymul_input_transform" [bc5, enc5, bt5] false (in5_spec (\a -> {{ inputT5 a ^ flip }})) (w4_unint_z3 ["bc1_65536wc", "encode5", "btfy11"]));
 let out5_spec post = do {
   mats;   // the encode/decode overrides read the matrices, so the caller allocates them
-  cp <- llvm_alloc (w 2080);
+  cp <- llvm_alloc (w 2048);
   afp <- llvm_alloc_readonly (w 2048);
   bfp <- llvm_alloc_readonly (w 2048);
   af <- llvm_fresh_var "a_fft" (w 2048);

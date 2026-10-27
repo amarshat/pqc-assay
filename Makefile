@@ -18,7 +18,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: hqc-fft-bitcode hqc-fft hqc-fft-3 hqc-fft-5 hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: hqc-fft-bitcode hqc-fft hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -136,22 +136,44 @@ hqc-fft-bitcode: build/hqc-fft/fft_ref.bc
 ## its model, fft_1 proves the two entry points with those specs assumed (A-HQC-FFT item 8). One process
 ## for all of it ran out of memory. -v 3 because the scripts have `fails` mutants (see the note under hqc).
 hqc-fft: build/hqc-fft/fft_ref.bc
+	@python3 scripts/hqc_fft_links.py
 	@for s in ref_1 ref_2 ref_3 ref_3d ref_4 ref_4b fft_1; do echo ">> SAW: proof/hqc-fft/$$s.saw"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(SAW) -v 3 proof/hqc-fft/$$s.saw || exit 1; done
 	@echo "VERIFIED: additive-FFT gf264_ref (hqc-1): every routine == its model (FFTRef, FFTEnc, FFTBC; ref_1 to ref_4b) and polymul_280U64_input/mul == inputT/mulT (FFTTop; fft_1, with the routines' proved specs assumed, A-HQC-FFT item 8) (saw exit 0 seven times: every llvm_verify passed, every mutant rejected)"
 ## The same at the hqc-3 and hqc-5 lengths (five processes each; the hqc-5 entry points are the artifact's
 ## generic polymul_input_transform / polymul_output at 1024 words). hqc-fft-5 peaks at 18 GB (r5_bc) and
 ## about 25 GB (r5_dec, eight parts in one process).
 hqc-fft-3: build/hqc-fft/fft_ref.bc
+	@python3 scripts/hqc_fft_links.py
 	@for s in ref_1 r3_net r3_enc r3_dec r3_bc fft_3; do echo ">> SAW: proof/hqc-fft/$$s.saw"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(SAW) -v 3 proof/hqc-fft/$$s.saw || exit 1; done
 	@echo "VERIFIED: additive-FFT gf264_ref (hqc-3): every routine == its model and polymul_576U64_input/mul == inputT3/mulT3 (FFTTop3; fft_3 with the routines' proved specs assumed) (saw exit 0 six times)"
 hqc-fft-5: build/hqc-fft/fft_ref.bc
+	@python3 scripts/hqc_fft_links.py
 	@for s in ref_1 r5_net r5_enc r5_dec r5_bc fft_5; do echo ">> SAW: proof/hqc-fft/$$s.saw"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(SAW) -v 3 proof/hqc-fft/$$s.saw || exit 1; done
 	@echo "VERIFIED: additive-FFT gf264_ref (hqc-5): every routine == its model and polymul_input_transform/polymul_output(1024) == inputT5/mulT5 (FFTTop5; fft_5 with the routines' proved specs assumed) (saw exit 0 six times)"
-build/hqc-fft/fft_ref.bc: $(addprefix $(FFT_SRC)/,$(addsuffix .c,$(FFT_C)))
+## decode_64 advances its output pointer once more after its last store, forming an address up to
+## n/8 - 1 bytes past one-past-the-end (undefined in C; A-HQC-FFT item 7). The proofs use a copy in
+## build/hqc-fft/src with the store indexed instead (one line changed, one deleted; target/ untouched);
+## fft_asis.bc is the source as shipped, for make hqc-fft-asis.
+FFT_FIX_SED = -e 's/ptr\[0\] = mat0\[j\];/ptr[(k*8+j)*step] = mat0[j];/' -e '/^ *ptr += step;$$/d'
+build/hqc-fft/src/dencoder.c: $(FFT_SRC)/dencoder.c
+	mkdir -p build/hqc-fft/src
+	sed $(FFT_FIX_SED) $< > $@
+	@[ "$$(diff $< $@ | grep -c '^<')" = 2 ] && [ "$$(diff $< $@ | grep -c '^>')" = 1 ] || { echo "!! the decode_64 repair did not apply as one changed and one deleted line"; exit 1; }
+build/hqc-fft/fft_ref.bc: $(addprefix $(FFT_SRC)/,$(addsuffix .c,$(FFT_C))) build/hqc-fft/src/dencoder.c
 	mkdir -p build/hqc-fft
-	for f in $(FFT_C); do $(AVX_CLANG) -O0 -std=c11 -I $(FFT_SRC) -c -emit-llvm -o build/hqc-fft/$$f.bc $(FFT_SRC)/$$f.c || exit 1; done
+	for f in $(FFT_C); do src=$(FFT_SRC)/$$f.c; [ $$f = dencoder ] && src=build/hqc-fft/src/$$f.c; $(AVX_CLANG) -O0 -std=c11 -I $(FFT_SRC) -c -emit-llvm -o build/hqc-fft/$$f.bc $$src || exit 1; done
 	$(dir $(AVX_CLANG))llvm-link -o $@ $(addprefix build/hqc-fft/,$(addsuffix .bc,$(FFT_C)))
-	@echo "BUILT: $@ ($$($(dir $(AVX_CLANG))llvm-dis -o - $@ | grep -c '^define') functions)"
+	@echo "BUILT: $@ ($$($(dir $(AVX_CLANG))llvm-dis -o - $@ | grep -c '^define') functions, decode_64 repaired)"
+build/hqc-fft/fft_asis.bc: $(addprefix $(FFT_SRC)/,$(addsuffix .c,$(FFT_C)))
+	mkdir -p build/hqc-fft/asis
+	for f in $(FFT_C); do $(AVX_CLANG) -O0 -std=c11 -I $(FFT_SRC) -c -emit-llvm -o build/hqc-fft/asis/$$f.bc $(FFT_SRC)/$$f.c || exit 1; done
+	$(dir $(AVX_CLANG))llvm-link -o $@ $(addprefix build/hqc-fft/asis/,$(addsuffix .bc,$(FFT_C)))
+## decode_64 as shipped, hqc-1 length: proved with 8 words of slack after the output, and rejected
+## (fails) with none, which is the finding of A-HQC-FFT item 7 checked by the tool.
+hqc-fft-asis: build/hqc-fft/fft_asis.bc
+	@CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(SAW) -v 5 proof/hqc-fft/asis_1.saw > build/hqc-fft/asis_1.log 2>&1 || { tail -20 build/hqc-fft/asis_1.log; exit 1; }
+	@grep -aq 'pointer to an address outside of the allocation' build/hqc-fft/asis_1.log || { echo "!! the no-slack run was rejected for another reason (build/hqc-fft/asis_1.log)"; exit 1; }
+	@echo "VERIFIED: decode_64 as shipped (hqc-1) == decode with 8 words of slack, and rejected without slack because it forms a pointer outside the output allocation (saw exit 0)"
 
 ## The model lemmas of the additive-FFT proofs (A-HQC-FFT item 2): the index-form encode/decode statements
 ## equal the forms the SAW scripts prove against, and the batch runs of r3_dec/r5_dec assemble to the whole

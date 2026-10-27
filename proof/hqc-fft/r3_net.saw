@@ -2,7 +2,6 @@
 // the extra unit sizes, and the butterfly networks. ref_1.saw supplies the leaves, the ladder and the
 // kernels up to unit 512 (size-independent code).
 include "ref_1.saw";
-let w32 n = llvm_array n (llvm_int 32);
 
 gfv3 <- llvm_verify m "gf264v_mul" [gfi] false (gfv_spec 1024 {{ 1024 : [32] }} (\a b -> {{ gf264v a b }})) (w4_unint_z3 ["gf264"]);
 fails (llvm_verify m "gf264v_mul" [gfi] false (gfv_spec 1024 {{ 1024 : [32] }} (\a b -> {{ gf264v a b ^ flip }})) (w4_unint_z3 ["gf264"]));
@@ -21,9 +20,9 @@ let btfy3_spec post = do {
 };
 let bfs3 = [bf2, bf4, bf8, bf16, bf32, bf64, bf128, bf256, bf512, bf1024];
 let ibfs3 = [ibf2, ibf4, ibf8, ibf16, ibf32, ibf64, ibf128, ibf256, ibf512, ibf1024];
-bt3 <- llvm_verify m "btfy_64" bfs3 false (btfy3_spec (\x -> {{ btfy10 (1 << 42) x }})) (w4_unint_z3 ["gf264"]);
-fails (llvm_verify m "btfy_64" bfs3 false (btfy3_spec (\x -> {{ btfy10 (1 << 42) x ^ flip }})) (w4_unint_z3 ["gf264"]));
-ibt3 <- llvm_verify m "ibtfy_64" ibfs3 false (btfy3_spec (\x -> {{ ibtfy10 (1 << 42) x }})) (w4_unint_z3 ["gf264"]);
-fails (llvm_verify m "ibtfy_64" ibfs3 false (btfy3_spec (\x -> {{ ibtfy10 (1 << 42) x ^ flip }})) (w4_unint_z3 ["gf264"]));
+bt3 <- llvm_verify m "btfy_64" bfs3 false (btfy_spec 1024 {{ 10 : [32] }} {{ 1 << 42 : [64] }} (\x -> {{ btfy10 (1 << 42) x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "btfy_64" bfs3 false (btfy_spec 1024 {{ 10 : [32] }} {{ 1 << 42 : [64] }} (\x -> {{ btfy10 (1 << 42) x ^ flip }})) (w4_unint_z3 ["gf264"]));
+ibt3 <- llvm_verify m "ibtfy_64" ibfs3 false (btfy_spec 1024 {{ 10 : [32] }} {{ 1 << 42 : [64] }} (\x -> {{ ibtfy10 (1 << 42) x }})) (w4_unint_z3 ["gf264"]);
+fails (llvm_verify m "ibtfy_64" ibfs3 false (btfy_spec 1024 {{ 10 : [32] }} {{ 1 << 42 : [64] }} (\x -> {{ ibtfy10 (1 << 42) x ^ flip }})) (w4_unint_z3 ["gf264"]));
 print "VERIFIED: hqc-3 btfy_64 / ibtfy_64 (1024, 2^42) == btfy10 / ibtfy10";
 

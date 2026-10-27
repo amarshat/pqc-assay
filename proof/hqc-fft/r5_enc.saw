@@ -4,41 +4,10 @@ import "FFTRef.cry";
 import "FFTEnc.cry";
 import "FFTBC.cry";
 m <- llvm_load_module "../../build/hqc-fft/fft_ref.bc";
-let w n = llvm_array n (llvm_int 64);
-let w32 n = llvm_array n (llvm_int 32);
-let flip = {{ [1] # zero }};
-let mats = do {
-  llvm_alloc_global "_enc_mat";
-  llvm_points_to (llvm_global "_enc_mat") (llvm_global_initializer "_enc_mat");
-  llvm_alloc_global "_dec_mat";
-  llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
-};
+include "specs.saw";
 
-// encode_64(rfx, 2048, fx, 32) and decode_64(rfx, fx, 2048); decode's 8 extra words as in A-HQC-FFT item 7.
-let enc5_spec post = do {
-  mats;
-  rp <- llvm_alloc (w 2048);
-  fp <- llvm_alloc_readonly (w 1024);
-  x <- llvm_fresh_var "fx" (w 1024);
-  llvm_points_to fp (llvm_term x);
-  llvm_execute_func [rp, llvm_term {{ 2048 : [32] }}, fp, llvm_term {{ 32 : [32] }}];
-  llvm_points_to rp (llvm_term (post x));
-};
-let lin_spec post = do {
-  mats;
-  rr <- llvm_alloc (w 8);
-  ip <- llvm_alloc_readonly (llvm_array 32 (llvm_int 8));
-  bits <- llvm_fresh_var "inbits" (llvm_array 32 (llvm_int 8));
-  llvm_points_to ip (llvm_term bits);
-  llvm_execute_func [rr, ip, llvm_term {{ 32 : [32] }}, llvm_global "_enc_mat"];
-  llvm_points_to rr (llvm_term (post bits));
-  // unchanged by the call, and restated so that SAW does not treat them as clobbered for the next batch
-  llvm_points_to ip (llvm_term bits);
-  llvm_points_to (llvm_global "_enc_mat") (llvm_global_initializer "_enc_mat");
-  llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
-};
 lin <- llvm_verify m "linear_map_x8" [] false (lin_spec (\b -> {{ lin8 b }})) rme;
 fails (llvm_verify m "linear_map_x8" [] false (lin_spec (\b -> {{ lin8 b ^ flip }})) abc);
-enc5 <- llvm_verify m "encode_64" [lin] false (enc5_spec (\x -> {{ encode5 x }})) (w4_unint_z3 ["lin8"]);
-fails (llvm_verify m "encode_64" [lin] false (enc5_spec (\x -> {{ encode5 x ^ flip }})) (w4_unint_z3 ["lin8"]));
+enc5 <- llvm_verify m "encode_64" [lin] false (enc_spec 2048 1024 {{ 2048 : [32] }} (\x -> {{ encode5 x }})) (w4_unint_z3 ["lin8"]);
+fails (llvm_verify m "encode_64" [lin] false (enc_spec 2048 1024 {{ 2048 : [32] }} (\x -> {{ encode5 x ^ flip }})) (w4_unint_z3 ["lin8"]));
 // decode_64 at this length is proved by r5_dec.saw, in parts by batch range.

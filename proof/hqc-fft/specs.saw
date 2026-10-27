@@ -1,0 +1,153 @@
+// The specifications of the additive-FFT routines, defined once. Every script of make hqc-fft,
+// hqc-fft-3, hqc-fft-5 and hqc-fft-asis includes this file: the scripts that prove a routine call
+// llvm_verify with an expression built from these definitions, and fft_<p>.saw assumes the routine
+// (llvm_unsafe_assume_spec) with the same expression. scripts/hqc_fft_links.py checks, before any SAW
+// process runs, that every assumed (function, expression) pair is verified character for character
+// by a script of the same target (A-HQC-FFT item 8). Nothing here refers to a module.
+let w n = llvm_array n (llvm_int 64);
+let w32 n = llvm_array n (llvm_int 32);
+let u64 = llvm_int 64;
+let flip = {{ [1] # zero }};
+
+let mats = do {
+  llvm_alloc_global "_enc_mat";
+  llvm_points_to (llvm_global "_enc_mat") (llvm_global_initializer "_enc_mat");
+  llvm_alloc_global "_dec_mat";
+  llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
+};
+
+// _mull_64(c0*, c1*, a, b): the 64 x 64 carry-less product as two output words.
+let mull_spec post = do {
+  c0 <- llvm_alloc u64;
+  c1 <- llvm_alloc u64;
+  a <- llvm_fresh_var "a" u64;
+  b <- llvm_fresh_var "b" u64;
+  llvm_execute_func [c0, c1, llvm_term a, llvm_term b];
+  let r = post a b;
+  llvm_points_to c0 (llvm_term {{ r @ 0 }});
+  llvm_points_to c1 (llvm_term {{ r @ 1 }});
+};
+
+// _gf264_mul / gf264_mul: the field product, modulus x^64 + x^4 + x^3 + x + 1.
+let gf_spec post = do {
+  a <- llvm_fresh_var "a" u64;
+  b <- llvm_fresh_var "b" u64;
+  llvm_execute_func [llvm_term a, llvm_term b];
+  llvm_return (llvm_term (post a b));
+};
+
+// karat_mult_<bits>(C, A, B): n words in, 2n out.
+let kspec n post = do {
+  cp <- llvm_alloc (w (eval_size {| 2*n |}));
+  ap <- llvm_alloc_readonly (w n);
+  bp <- llvm_alloc_readonly (w n);
+  a <- llvm_fresh_var "a" (w n);
+  b <- llvm_fresh_var "b" (w n);
+  llvm_points_to ap (llvm_term a);
+  llvm_points_to bp (llvm_term b);
+  llvm_execute_func [cp, ap, bp];
+  llvm_points_to cp (llvm_term (post a b));
+};
+
+// gf264v_mul(c, a, b, len): pointwise products of n elements; nt is n as a [32] term.
+let gfv_spec n nt post = do {
+  cp <- llvm_alloc (w n);
+  ap <- llvm_alloc_readonly (w n);
+  bp <- llvm_alloc_readonly (w n);
+  a <- llvm_fresh_var "a" (w n);
+  b <- llvm_fresh_var "b" (w n);
+  llvm_points_to ap (llvm_term a);
+  llvm_points_to bp (llvm_term b);
+  llvm_execute_func [cp, ap, bp, llvm_term nt];
+  llvm_points_to cp (llvm_term (post a b));
+};
+
+// butterfly_64(poly, unit, a) and i_butterfly_64, in place on u words.
+let bf_spec u ut post = do {
+  p <- llvm_alloc (w u);
+  x <- llvm_fresh_var "poly" (w u);
+  a <- llvm_fresh_var "a" u64;
+  llvm_points_to p (llvm_term x);
+  llvm_execute_func [p, llvm_term ut, llvm_term a];
+  llvm_points_to p (llvm_term (post a x));
+};
+
+// btfy_64(poly, log_n, scalar_a) and ibtfy_64, in place on n = 2^log_n words.
+let btfy_spec n logn sc post = do {
+  p <- llvm_alloc (w n);
+  x <- llvm_fresh_var "poly" (w n);
+  llvm_points_to p (llvm_term x);
+  llvm_execute_func [p, llvm_term logn, llvm_term sc];
+  llvm_points_to p (llvm_term (post x));
+};
+
+// encode_64(rfx, n_u64 = n, fx, src_bits = 32): h = n/2 input words; the C reads fx byte by byte.
+let enc_spec n h nt post = do {
+  mats;
+  rp <- llvm_alloc (w n);
+  fp <- llvm_alloc_readonly (w h);
+  x <- llvm_fresh_var "fx" (w h);
+  llvm_points_to fp (llvm_term x);
+  llvm_execute_func [rp, llvm_term nt, fp, llvm_term {{ 32 : [32] }}];
+  llvm_points_to rp (llvm_term (post x));
+};
+
+// linear_map_x8(rrx8, inbits, 32, _enc_mat): 32 bytes to 8 words.
+let lin_spec post = do {
+  mats;
+  rr <- llvm_alloc (w 8);
+  ip <- llvm_alloc_readonly (llvm_array 32 (llvm_int 8));
+  bits <- llvm_fresh_var "inbits" (llvm_array 32 (llvm_int 8));
+  llvm_points_to ip (llvm_term bits);
+  llvm_execute_func [rr, ip, llvm_term {{ 32 : [32] }}, llvm_global "_enc_mat"];
+  llvm_points_to rr (llvm_term (post bits));
+  // unchanged by the call, and restated so that SAW does not treat them as clobbered for the next batch
+  llvm_points_to ip (llvm_term bits);
+  llvm_points_to (llvm_global "_enc_mat") (llvm_global_initializer "_enc_mat");
+  llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
+};
+
+// transpose_8x8(mat0): in place on 8 bytes.
+let tr_spec post = do {
+  p <- llvm_alloc (llvm_array 8 (llvm_int 8));
+  x <- llvm_fresh_var "mat0" (llvm_array 8 (llvm_int 8));
+  llvm_points_to p (llvm_term x);
+  llvm_execute_func [p];
+  llvm_points_to p (llvm_term (post x));
+};
+
+// decode_64(rfx, fx, n_u64 = n): n words out, written byte by byte. dec_pre is the setup and the call;
+// the output allocation is n words plus s words of slack. The repaired source (build/hqc-fft/src) is
+// proved with s = 0; the source as shipped needs s = n/64 (A-HQC-FFT item 7, make hqc-fft-asis).
+// dec_spec states the whole output; the parts of r3_dec.saw / r5_dec.saw state 64 runs of 32 bytes
+// each, through the same dec_pre, on a byte view of the same allocation.
+let dec_pre n s nt = do {
+  mats;
+  rp <- llvm_alloc (w (eval_size {| n + s |}));
+  fp <- llvm_alloc_readonly (w n);
+  x <- llvm_fresh_var "fx" (w n);
+  llvm_points_to fp (llvm_term x);
+  llvm_execute_func [rp, fp, llvm_term nt];
+  return (rp, x);
+};
+let dec_spec n s nt post = do {
+  (rp, x) <- dec_pre n s nt;
+  llvm_points_to_untyped rp (llvm_term (post x));
+};
+
+// The basis conversions, in place on n uint32 words; args are the arguments after the pointer.
+let bc_spec n args post = do {
+  p <- llvm_alloc (w32 n);
+  x <- llvm_fresh_var "poly" (w32 n);
+  llvm_points_to p (llvm_term x);
+  llvm_execute_func (concat [p] args);
+  llvm_points_to p (llvm_term (post x));
+};
+let n64 = llvm_term {{ 64 : [32] }};
+let n128 = llvm_term {{ 128 : [32] }};
+let n256 = llvm_term {{ 256 : [32] }};
+let n512 = llvm_term {{ 512 : [32] }};
+let n2048 = llvm_term {{ 2048 : [32] }};
+let n4096 = llvm_term {{ 4096 : [32] }};
+let n8192 = llvm_term {{ 8192 : [32] }};
+let n16384 = llvm_term {{ 16384 : [32] }};

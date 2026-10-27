@@ -1400,7 +1400,13 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    Every script above exited 0 on its own. As single invocations (2026-10-26, M4 Pro): `make hqc-fft`
    exit 0 in 761 s with 78 anticipated failures (the mutants of its seven scripts, `ref_2` and the
    network scripts re-running `ref_1`'s), `make hqc-fft-3` exit 0 in 5561 s with 80; `make hqc-fft-5` exit 0 in 14585 s with 86
-   (2026-10-26, M2 Max, peak SAW resident set 25.7 GB). An earlier model with `pdiv`/`pmod` per layer made rme take 30 GB on
+   (2026-10-26, M2 Max, peak SAW resident set 25.7 GB). Rerun 2026-10-27 after the `decode_64`
+   repair (item 7) and the shared specifications (item 8), one SAW process per script in the make
+   targets' order, every script exit 0: hqc-1 762 s (M4 Pro; ref_1 206, ref_2 260, ref_3 6, ref_3d 173,
+   ref_4 50, ref_4b 57, fft_1 10), hqc-3 5544 s (M4 Pro; ref_1 211, r3_net 437, r3_enc 8, r3_dec 4601,
+   r3_bc 255, fft_3 32), hqc-5 14847 s (M2 Max; ref_1 281, r5_net 1730, r5_enc 15, r5_dec 11632 at
+   25.1 GB peak, r5_bc 1053 at 18.5 GB, fft_5 136), with 78, 80 and 86 anticipated failures, the same
+   counts as before. An earlier model with `pdiv`/`pmod` per layer made rme take 30 GB on
    `repr_s8_1_16384` and was replaced by the closed form; rme on `encode_64` in the byte-gather form of
    the model reported every input as a counterexample at 1024 words, which is why the model is written
    in index form and `encode_64` is proved through the `linear_map_x8` override.
@@ -1415,15 +1421,25 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    `decode_64` proofs cover `decode3`/`decode5` at every part and offset; rme had run out of memory on
    the first two.)
    All of part (1), the Isabelle proof that `mulT (inputT a) (inputT b)` is the product modulo x^n - 1.
-6. **Reference test.** The artifact's `polymul-non2len-test` needs its benchmark header; a harness with
-   the same schoolbook reference (`polymul_ref`) agrees with `polymul_17920_*` on 50 random 280-word
-   pairs (2026-10-25). Evidence that the vendored code is the working code, nothing more.
-7. **Slack in the `decode_64` specification.** The spec allocates 520 words for the 512-word output
-   at hqc-1 (1040 for 1024 at hqc-3, 2080 for 2048 at hqc-5); the extra 8, 16 or 32 words are never
-   written and the postcondition says nothing about them. Without them Crucible stops inside the
-   function, and with too few of them it reports every input as a counterexample. The reason is a property of the C that is being handled per
-   CONTRIBUTING.md (responsible disclosure) and is not described here yet; the proof of `decode_64`
-   therefore carries an assumption of the same kind as the AVX2 slack of item 12 (A-HQC).
+6. **Reference test.** `scripts/hqc_fft_native/run.sh` compiles the ten files natively (the repaired
+   `dencoder.c` of item 7 and the file as shipped, each at `-O0`, `-O2`, and `-O1` with
+   AddressSanitizer and UndefinedBehaviorSanitizer) and compares the entry points at all three lengths
+   with a schoolbook product: 36 boundary pairs (zero, one, single bits at the word and length edges,
+   all ones) and 500 random pairs (100 under the sanitizers), alternately of degree below n and of full
+   buffer width. 2026-10-27: no mismatch in any configuration, no sanitizer report; the negative
+   control (one bit of `decode_64` flipped) disagreed on all 46 of its pairs at each length. Evidence
+   that the vendored code is the working code and that the repair changes no output, nothing more.
+7. **`decode_64` repaired in a copy.** `decode_64` advances its output pointer `ptr += step` after its
+   last store, so for batch i it forms the address i bytes past one-past-the-end of the output (up to
+   63, 127, 255 bytes at the three lengths). The pointer is never dereferenced; forming it is undefined
+   behaviour in C (C11 6.5.6p8) and Crucible stops there. The proofs run on `build/hqc-fft/src/dencoder.c`,
+   made by `FFT_FIX_SED` in the Makefile: the store is indexed (`ptr[(k*8+j)*step]`) and the increment
+   deleted, one line changed and one deleted, which the rule checks; `target/` is not edited.
+   `make hqc-fft-asis` covers the file as shipped at hqc-1 (`asis_1.saw`): `decode_64 == decode` with
+   8 words of slack after the output (and a flip mutant rejected), and `fails` without the slack, the
+   log naming "a pointer to an address outside of the allocation" (2026-10-27, M2 Max, exit 0, 230 s,
+   22 GB). Reported to the authors on 2026-10-27. Until 2026-10-26 the proofs used the shipped file
+   with that slack (8, 16, 32 words) in the specification.
 8. **Assumed specifications in `fft_1.saw` (the entry points).** `make hqc-fft` runs seven SAW processes
    in order: `ref_1.saw`, `ref_2.saw`, `ref_3.saw`, `ref_3d.saw`, `ref_4.saw`, `ref_4b.saw` prove every routine against
    its model, and `fft_1.saw` then proves `polymul_280U64_input` and `polymul_280U64_mul` with those
@@ -1440,7 +1456,14 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    (1024 elements), `bc_1` (4096 bytes), `ibc_1` (8192 bytes); `make hqc-fft-5` runs `ref_1`, `r5_net`,
    `r5_enc`, `r5_dec`, `r5_bc`, then `fft_5.saw`, which assumes `gf264v_mul` (2048), `btfy_64`/`ibtfy_64` (11
    stages), `encode_64`/`decode_64` (2048 elements), `bc_1` (8192 bytes), `ibc_1` (16384 bytes, the
-   generic path). Each routine script also proves `linear_map_x8` and `transpose_8x8`, the helpers
+   generic path). Since 2026-10-27 every specification is a SAWScript function in
+   `proof/hqc-fft/specs.saw`, included by all scripts, and each assumed specification is an expression
+   over it; `scripts/hqc_fft_links.py`, run by the three make targets before SAW, fails unless each
+   `llvm_unsafe_assume_spec` in `fft_<p>.saw` has a `llvm_verify` of the same function with the same
+   expression (whitespace aside) in a script of the same target, no script redefines a name of
+   `specs.saw`, and only `fft_<p>` assumes (it found 10, 8 and 7 links; two planted mismatches, a
+   `bc_1` buffer one byte short and a `decode_64` output with slack, were rejected). The exception is
+   below. Each routine script also proves `linear_map_x8` and `transpose_8x8`, the helpers
    its `encode_64`/`decode_64` proofs use as overrides. At hqc-3 and hqc-5 the `decode_64` contract
    is proved in parts by batch range (`r3_dec.saw`: 4 parts of 32 batches; `r5_dec.saw`: 8 parts of
    32 batches): output byte i + k (8 kb + jj) comes from batch i, so a part's expected output is 64
@@ -1449,5 +1472,23 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    precondition, the rest of the output unconstrained, and a mutant (one run flipped) that must fail;
    one obligation for the whole output needed more than 45 GB under rme at hqc-5, a part about 13 GB
    (714 s). The top script assumes the whole contract: the function is deterministic and the parts
-   cover every output byte, so the parts together are that contract. Item 3 lists what has passed.
+   cover every output byte, so the parts together are that contract. This step is not checked by a
+   tool. What is checked: `scripts/hqc_fft_dec.py` generates `r3_dec.saw` and `r5_dec.saw` (`--check`
+   compares them with the committed files, which `hqc_fft_links.py` runs), every part uses the same
+   `dec_pre` precondition as the assumed `dec_spec`, and the generator asserts that the runs cover each
+   output byte once; `make hqc-fft-lemmas` proves that the runs `dbytes3`/`dbytes5` assemble to
+   `decode3`/`decode5`. Item 3 lists what has passed.
+9. **Source mutants** (`scripts/hqc_fft_c_mutants.sh`, 2026-10-27, M2 Max, 1800 s and 36 GB per run;
+   a mutant counts as caught only if SAW fails on a goal after the last anticipated failure, a crash or
+   limit is "no result"). Four one-line edits to copies of the C, each in code that runs at hqc-1,
+   against the unchanged scripts: a dropped Karatsuba cross term in `polymul_280U64_mul` (fft_1, z3)
+   caught in 115 s; one layer of `bc_256` (ref_4, rme) and one row of `linear_map_x8` (ref_3, rme) no
+   result, rme exceeding 24 GB in 36 s and 491 s; a twiddle index `k^1` in `btfy_64` (ref_2, z3) no
+   result in 1800 s, also under yices. Variants with a different solver or input: the `bc_256` and
+   `linear_map_x8` mutants caught by abc in 10 s and 6 s, the twiddle mutant caught when `btfy_64` runs
+   on the concrete input 1 .. 512 (302 s), on which the unchanged C passes (302 s). So the gated scripts
+   catch one of four. Two first choices, a shift in the generic `cvt` of `bc_256` (runs only for sizes
+   other than 64, 128, 256) and `j<<2` in `btfy_64` (j is always 0 at hqc-1), edited dead code and SAW
+   accepted them; they were replaced.
+
 

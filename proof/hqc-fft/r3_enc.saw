@@ -4,42 +4,10 @@ import "FFTRef.cry";
 import "FFTEnc.cry";
 import "FFTBC.cry";
 m <- llvm_load_module "../../build/hqc-fft/fft_ref.bc";
-let w n = llvm_array n (llvm_int 64);
-let w32 n = llvm_array n (llvm_int 32);
-let flip = {{ [1] # zero }};
-let mats = do {
-  llvm_alloc_global "_enc_mat";
-  llvm_points_to (llvm_global "_enc_mat") (llvm_global_initializer "_enc_mat");
-  llvm_alloc_global "_dec_mat";
-  llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
-};
+include "specs.saw";
 
-// encode_64(rfx, 1024, fx, 32) and decode_64(rfx, fx, 1024); the matrices are the real globals; the
-// decode spec allocates 8 extra words (A-HQC-FFT item 7); transpose_8x8 is an override.
-let enc3_spec post = do {
-  mats;
-  rp <- llvm_alloc (w 1024);
-  fp <- llvm_alloc_readonly (w 512);
-  x <- llvm_fresh_var "fx" (w 512);
-  llvm_points_to fp (llvm_term x);
-  llvm_execute_func [rp, llvm_term {{ 1024 : [32] }}, fp, llvm_term {{ 32 : [32] }}];
-  llvm_points_to rp (llvm_term (post x));
-};
-let lin_spec post = do {
-  mats;
-  rr <- llvm_alloc (w 8);
-  ip <- llvm_alloc_readonly (llvm_array 32 (llvm_int 8));
-  bits <- llvm_fresh_var "inbits" (llvm_array 32 (llvm_int 8));
-  llvm_points_to ip (llvm_term bits);
-  llvm_execute_func [rr, ip, llvm_term {{ 32 : [32] }}, llvm_global "_enc_mat"];
-  llvm_points_to rr (llvm_term (post bits));
-  // unchanged by the call, and restated so that SAW does not treat them as clobbered for the next batch
-  llvm_points_to ip (llvm_term bits);
-  llvm_points_to (llvm_global "_enc_mat") (llvm_global_initializer "_enc_mat");
-  llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
-};
 lin <- llvm_verify m "linear_map_x8" [] false (lin_spec (\b -> {{ lin8 b }})) rme;
 fails (llvm_verify m "linear_map_x8" [] false (lin_spec (\b -> {{ lin8 b ^ flip }})) abc);
-enc3 <- llvm_verify m "encode_64" [lin] false (enc3_spec (\x -> {{ encode3 x }})) (w4_unint_z3 ["lin8"]);
-fails (llvm_verify m "encode_64" [lin] false (enc3_spec (\x -> {{ encode3 x ^ flip }})) (w4_unint_z3 ["lin8"]));
+enc3 <- llvm_verify m "encode_64" [lin] false (enc_spec 1024 512 {{ 1024 : [32] }} (\x -> {{ encode3 x }})) (w4_unint_z3 ["lin8"]);
+fails (llvm_verify m "encode_64" [lin] false (enc_spec 1024 512 {{ 1024 : [32] }} (\x -> {{ encode3 x ^ flip }})) (w4_unint_z3 ["lin8"]));
 // decode_64 at this length is proved by r3_dec.saw, in parts by batch range.

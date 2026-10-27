@@ -1,0 +1,13 @@
+// decode_64 as shipped (target/hqc-fft at c94c84d, not repaired), hqc-1 length: equal to decode when the
+// output buffer has 8 words after the 512 it writes, and rejected when it has none, because the pointer
+// the loop forms after its last store lies up to 63 bytes past one-past-the-end (A-HQC-FFT item 7).
+import "FFTRef.cry";
+import "FFTEnc.cry";
+m <- llvm_load_module "../../build/hqc-fft/fft_asis.bc";
+include "specs.saw";
+tr <- llvm_verify m "transpose_8x8" [] false (tr_spec (\x -> {{ transpose8 x }})) (w4_unint_z3 []);
+dec <- llvm_verify m "decode_64" [tr] false (dec_spec 512 8 {{ 512 : [32] }} (\x -> {{ decode x }})) rme;
+fails (llvm_verify m "decode_64" [tr] false (dec_spec 512 8 {{ 512 : [32] }} (\x -> {{ decode x ^ flip }})) rme);
+print "VERIFIED: decode_64 as shipped (512) == decode, with 8 words of slack";
+fails (llvm_verify m "decode_64" [tr] false (dec_spec 512 0 {{ 512 : [32] }} (\x -> {{ decode x }})) rme);
+print "VERIFIED: decode_64 as shipped (512) is rejected with no slack";

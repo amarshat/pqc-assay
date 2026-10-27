@@ -138,10 +138,14 @@ x^3 + x + 1, the Karatsuba ladder, the pointwise product, the butterfly kernels 
 11-stage networks, the F2-linear `encode_64`/`decode_64`, the basis conversions `bc_1`/`ibc_1` at 16384
 to 131072 bits), then the entry points (`polymul_280U64_*`, `polymul_576U64_*`, the generic
 `polymul_input_transform`/`polymul_output` at 1024 words) as the composition of those routines with
-their proved specifications assumed. Every script exited 0 in its own SAW process (2026-10-25/26, one
+their proved specifications assumed. Every script exited 0 in its own SAW process (rerun 2026-10-27, one
 bit-flip mutant per spec rejected; per-script times and the two machines in A-HQC-FFT item 3 of
-`docs/ASSUMPTIONS.md`); `make hqc-fft` (761 s) and `make hqc-fft-3` (5561 s) exited 0 as single invocations
-on the M4 Pro, `make hqc-fft-5` (14585 s, 25.7 GB peak) on the M2 Max. The `decode_64` specification allocates slack after its output (A-HQC-FFT item 7). Not
+`docs/ASSUMPTIONS.md`): hqc-1 762 s and hqc-3 5544 s on the M4 Pro, hqc-5 14847 s with a 25.1 GB peak on
+the M2 Max. The specifications live in `proof/hqc-fft/specs.saw`, and `scripts/hqc_fft_links.py` checks
+that every assumed one is proved by a script of the same target (item 8). `decode_64` is proved on a
+copy with a two-line repair (item 7); `make hqc-fft-asis` proves the shipped file with slack after its
+output and shows that SAW rejects it without. A native differential test is in
+`scripts/hqc_fft_native/` (item 6), and the source mutants in `scripts/hqc_fft_c_mutants.sh` (item 9). Not
 done: the Isabelle proof that the composed model is polynomial multiplication (part (1) of the
 milestone in `docs/ROADMAP.md`), and the AVX2 variant.
 

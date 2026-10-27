@@ -3,23 +3,13 @@
 // (irepr_s8_1_32768, ibc_256(128), ibc_1_256(128)) against their layers, then the composition.
 import "FFTBC.cry";
 m <- llvm_load_module "../../build/hqc-fft/fft_ref.bc";
-let flip = {{ [1] # zero }};
-let w32 n = llvm_array n (llvm_int 32);
-let bc_spec args post = do {
-  p <- llvm_alloc (w32 1024);
-  x <- llvm_fresh_var "poly" (w32 1024);
-  llvm_points_to p (llvm_term x);
-  llvm_execute_func (concat [p] args);
-  llvm_points_to p (llvm_term (post x));
-};
-let n128 = llvm_term {{ 128 : [32] }};
-let n4096 = llvm_term {{ 4096 : [32] }};
-irp <- llvm_verify m "irepr_s8_1_32768" [] false (bc_spec [] (\x -> {{ irepr32W x }})) rme;
-fails (llvm_verify m "irepr_s8_1_32768" [] false (bc_spec [] (\x -> {{ irepr32W x ^ flip }})) abc);
-ib2 <- llvm_verify m "ibc_256" [] false (bc_spec [n128] (\x -> {{ ibc256of32W x }})) rme;
-fails (llvm_verify m "ibc_256" [] false (bc_spec [n128] (\x -> {{ ibc256of32W x ^ flip }})) abc);
-ib1 <- llvm_verify m "ibc_1_256" [] false (bc_spec [n128] (\x -> {{ ibc1of256of32W x }})) rme;
-fails (llvm_verify m "ibc_1_256" [] false (bc_spec [n128] (\x -> {{ ibc1of256of32W x ^ flip }})) abc);
-ibc4096 <- llvm_verify m "ibc_1" [irp, ib2, ib1] false (bc_spec [n4096] (\x -> {{ ibc1_32768w x }})) (w4_unint_z3 ["irepr32W", "ibc256of32W", "ibc1of256of32W"]);
-fails (llvm_verify m "ibc_1" [irp, ib2, ib1] false (bc_spec [n4096] (\x -> {{ ibc1_32768w x ^ flip }})) (w4_unint_z3 ["irepr32W", "ibc256of32W", "ibc1of256of32W"]));
+include "specs.saw";
+irp <- llvm_verify m "irepr_s8_1_32768" [] false (bc_spec 1024 [] (\x -> {{ irepr32W x }})) rme;
+fails (llvm_verify m "irepr_s8_1_32768" [] false (bc_spec 1024 [] (\x -> {{ irepr32W x ^ flip }})) abc);
+ib2 <- llvm_verify m "ibc_256" [] false (bc_spec 1024 [n128] (\x -> {{ ibc256of32W x }})) rme;
+fails (llvm_verify m "ibc_256" [] false (bc_spec 1024 [n128] (\x -> {{ ibc256of32W x ^ flip }})) abc);
+ib1 <- llvm_verify m "ibc_1_256" [] false (bc_spec 1024 [n128] (\x -> {{ ibc1of256of32W x }})) rme;
+fails (llvm_verify m "ibc_1_256" [] false (bc_spec 1024 [n128] (\x -> {{ ibc1of256of32W x ^ flip }})) abc);
+ibc4096 <- llvm_verify m "ibc_1" [irp, ib2, ib1] false (bc_spec 1024 [n4096] (\x -> {{ ibc1_32768w x }})) (w4_unint_z3 ["irepr32W", "ibc256of32W", "ibc1of256of32W"]);
+fails (llvm_verify m "ibc_1" [irp, ib2, ib1] false (bc_spec 1024 [n4096] (\x -> {{ ibc1_32768w x ^ flip }})) (w4_unint_z3 ["irepr32W", "ibc256of32W", "ibc1of256of32W"]));
 print "VERIFIED: ibc_1(4096 bytes) == ibc1_32768w, and its three routines";
