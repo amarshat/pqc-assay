@@ -187,5 +187,5 @@ for t in all hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling h
   u=$( (cd "$OUT" && make -n --warn-undefined-variables "$t" 2>&1 >/dev/null) | grep 'undefined variable' || true)
   [ -z "$u" ] || { echo "!! make $t in the artifact uses an undefined variable: $u" >&2; exit 1; }
 done
-( cd dist && zip -qr hqc-artifact.zip hqc-artifact )
+( cd dist && zip -qrX hqc-artifact.zip hqc-artifact )   # -X: no Unix UID/GID or extra attributes
 echo ">> dist/hqc-artifact.zip: $(find "$OUT" -type f | wc -l | tr -d ' ') files, $(du -sh dist/hqc-artifact.zip | cut -f1)"
