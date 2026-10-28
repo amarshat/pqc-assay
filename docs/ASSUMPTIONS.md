@@ -1440,7 +1440,7 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    deleted, one line changed and one deleted, which the rule checks; `target/` is not edited.
    `make hqc-fft-asis` covers the file as shipped at hqc-1 (`asis_1.saw`): `decode_64 == decode` with
    8 words of slack after the output (and a flip mutant rejected), and `fails` without the slack, the
-   log naming "a pointer to an address outside of the allocation" (2026-10-27, M2 Max, exit 0, 230 s,
+   log naming "a pointer to an address outside of the allocation" (2026-10-28, M2 Max, exit 0, 219 s, transpose_8x8 mutant included;
    22 GB). Reported to the authors on 2026-10-27. Until 2026-10-26 the proofs used the shipped file
    with that slack (8, 16, 32 words) in the specification.
 8. **Assumed specifications in `fft_1.saw` (the entry points).** `make hqc-fft` runs seven SAW processes
