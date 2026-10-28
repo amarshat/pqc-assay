@@ -72,7 +72,7 @@ beside it). For the bitwuzla row of the solver study, Homebrew `gmp` and `mpfr`.
 | `scripts/check_target_identity.sh` | the vendored bytes match the pinned hashes | seconds |
 | `make hqc-avx-asis` | the AVX2 proofs on the source as shipped (hqc-1/3 with one vector of symbolic slack on `W0`/`W2`); the gated `make hqc-avx` proves the repaired hqc-1/3 source | same as `make hqc-avx` |
 | `make hqc-solvers`, `make hqc-rme-scaling` | the solver tables of the paper (both depend on `make hqc`, which runs first if its outputs are absent) | up to 50 min, 11 min |
-| `make hqc-fft`, `make hqc-fft-3`, `make hqc-fft-5` | additive-FFT reference C (`target/hqc-fft`) = Cryptol model (`model/cryptol/hqc-fft`), every routine and the entry points, at the three lengths; mutants rejected | 762 s and 5544 s (Apple M4 Pro, 24 GB); 14847 s with 25.1 GB peak (M2 Max) |
+| `make hqc-fft`, `make hqc-fft-3`, `make hqc-fft-5` | additive-FFT reference C (`target/hqc-fft`) = Cryptol model (`model/cryptol/hqc-fft`), every routine and the entry points, at the three lengths; mutants rejected | 762 s and 5724 s (Apple M4 Pro, 24 GB); 14158 s with 18.5 GB peak (M2 Max) |
 | `make hqc-fft-asis` | `decode_64` as shipped (hqc-1): proved with 8 words of slack after the output, rejected without | 230 s, 22 GB |
 | `scripts/hqc_fft_native/run.sh` | evidence, not a proof: the FFT entry points against a schoolbook product at the three lengths, at `-O0`, `-O2` and with ASan/UBSan | a few minutes |
 | `scripts/hqc_native/run.sh` | evidence, not a proof: repaired AVX2 `vect_mul` against the reference natively at `-O0`, `-O3 -flto` and with ASan (x86-64, or Rosetta 2 on macOS 15) | a few minutes |

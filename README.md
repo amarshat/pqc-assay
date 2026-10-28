@@ -140,7 +140,7 @@ to 131072 bits), then the entry points (`polymul_280U64_*`, `polymul_576U64_*`, 
 `polymul_input_transform`/`polymul_output` at 1024 words) as the composition of those routines with
 their proved specifications assumed. Every script exited 0 in its own SAW process (rerun 2026-10-27, one
 bit-flip mutant per spec rejected; per-script times and the two machines in A-HQC-FFT item 3 of
-`docs/ASSUMPTIONS.md`): hqc-1 762 s and hqc-3 5544 s on the M4 Pro, hqc-5 14847 s with a 25.1 GB peak on
+`docs/ASSUMPTIONS.md`): hqc-1 762 s and hqc-3 5724 s on the M4 Pro, hqc-5 14158 s with an 18.5 GB peak on
 the M2 Max. The specifications live in `proof/hqc-fft/specs.saw`, and `scripts/hqc_fft_links.py` checks
 that every assumed one is proved by a script of the same target (item 8). `decode_64` is proved on a
 copy with a two-line repair (item 7); `make hqc-fft-asis` proves the shipped file with slack after its

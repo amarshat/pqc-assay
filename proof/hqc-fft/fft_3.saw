@@ -8,13 +8,19 @@ import "FFTBC.cry";
 import "FFTTop3.cry";
 m <- llvm_load_module "../../build/hqc-fft/fft_ref.bc";
 include "specs.saw";
+include "dec_runs.saw";
+// decode_64 is assumed in the run form that r3_dec.saw proves (dec3_runs); the model uses decode3.
+// asm3 assembles the runs (FFTEnc.cry); rme proves it equal to decode3 here, and the proof of the
+// entry point rewrites decode3 to asm3 (after unfolding mulT3, whose body holds decode3) and keeps
+// dbytes3 uninterpreted.
+asm3t <- prove_print rme {{ \x -> decode3 x == asm3 x }};
 
 k64 <- llvm_unsafe_assume_spec m "karat_mult_4096" (kspec 64 (\a b -> {{ km64 a b }}));
 gfv3 <- llvm_unsafe_assume_spec m "gf264v_mul" (gfv_spec 1024 {{ 1024 : [32] }} (\a b -> {{ gf264v a b }}));
 bt3 <- llvm_unsafe_assume_spec m "btfy_64" (btfy_spec 1024 {{ 10 : [32] }} {{ 1 << 42 : [64] }} (\x -> {{ btfy10 (1 << 42) x }}));
 ibt3 <- llvm_unsafe_assume_spec m "ibtfy_64" (btfy_spec 1024 {{ 10 : [32] }} {{ 1 << 42 : [64] }} (\x -> {{ ibtfy10 (1 << 42) x }}));
 enc3 <- llvm_unsafe_assume_spec m "encode_64" (enc_spec 1024 512 {{ 1024 : [32] }} (\x -> {{ encode3 x }}));
-dec3 <- llvm_unsafe_assume_spec m "decode_64" (dec_spec 1024 0 {{ 1024 : [32] }} (\x -> {{ decode3 x }}));
+dec3 <- llvm_unsafe_assume_spec m "decode_64" (dec3_runs (\r -> r));
 bc3 <- llvm_unsafe_assume_spec m "bc_1" (bc_spec 1024 [n4096] (\x -> {{ bc1_32768wc x }}));
 ibc3 <- llvm_unsafe_assume_spec m "ibc_1" (bc_spec 2048 [n8192] (\x -> {{ ibc1_65536w x }}));
 
@@ -48,7 +54,8 @@ let mul3_spec post = do {
   llvm_execute_func [cp, ap, bp, afp, bfp];
   llvm_points_to cp (llvm_term (post a b af bf));
 };
-let stages3 = ["gf264v", "ibtfy10", "decode3", "ibc1_65536w", "km64"];
-pm3 <- llvm_verify m "polymul_576U64_mul" [gfv3, ibt3, dec3, ibc3, k64] false (mul3_spec (\a b af bf -> {{ mulT3 a b af bf }})) (w4_unint_z3 stages3);
-fails (llvm_verify m "polymul_576U64_mul" [gfv3, ibt3, dec3, ibc3, k64] false (mul3_spec (\a b af bf -> {{ mulT3 a b af bf ^ flip }})) (w4_unint_z3 stages3));
+let stages3 = ["gf264v", "ibtfy10", "dbytes3", "ibc1_65536w", "km64"];
+let tac3 = do { unfolding ["mulT3"]; simplify (addsimp asm3t empty_ss); w4_unint_z3 stages3; };
+pm3 <- llvm_verify m "polymul_576U64_mul" [gfv3, ibt3, dec3, ibc3, k64] false (mul3_spec (\a b af bf -> {{ mulT3 a b af bf }})) tac3;
+fails (llvm_verify m "polymul_576U64_mul" [gfv3, ibt3, dec3, ibc3, k64] false (mul3_spec (\a b af bf -> {{ mulT3 a b af bf ^ flip }})) tac3);
 print "VERIFIED: hqc-3 polymul_576U64_input / _mul == inputT3 / mulT3";

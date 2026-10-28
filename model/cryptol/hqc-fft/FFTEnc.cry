@@ -219,6 +219,19 @@ decBatch3 x i = [ transpose8 [ byteOf r kb | r <- rr ] | kb <- [0 .. 7] : [8][3]
 dbytes3 : [1024][64] -> [7] -> [6] -> [32][8]
 dbytes3 x i0 t = [ (decBatch3 x i) @ (t >> 3) @ (drop`{3} t) | i <- take`{32} [i0 ...] ]
 
+// The output assembled from the runs: byte b = i + step t (i < step) is byte i % 32 of run (i - i % 32, t),
+// and the words are the little-endian view of the bytes. asm3/asm5 are what the partwise contract of
+// decode_64 states as a whole (r3_dec.saw, r5_dec.saw); fft_3/fft_5 prove decode3 == asm3 and
+// decode5 == asm5 (rme) and rewrite with them (A-HQC-FFT item 8).
+asm3 : [1024][64] -> [1024][64]
+asm3 x = reverse (split`{1024} (join (reverse ob)))
+  where ob = [ (dbytes3 x ((drop`{6} b) && 96) (take`{6} b)) @ ((drop`{6} b) && 31) | b <- [0 ..< 8192] : [8192][13] ]
+asm5 : [2048][64] -> [2048][64]
+asm5 x = reverse (split`{2048} (join (reverse ob)))
+  where ob = [ (dbytes5 x ((drop`{6} b) && 224) (take`{6} b)) @ ((drop`{6} b) && 31) | b <- [0 ..< 16384] : [16384][14] ]
+property decode3_is_asm3 (x : [1024][64]) = decode3 x == asm3 x
+property decode5_is_asm5 (x : [2048][64]) = decode5 x == asm5 x
+
 // The whole-array statements are these runs assembled: checked on probes against decode5 / decode3.
 property dbytes5_is_decode5 (x : [2048][64]) =
   and [ dbytes5 x i0 t == [ obytes @ ((zext i0 : [14]) + 256 * (zext t) + j) | j <- [0 ..< 32] : [32][14] ]

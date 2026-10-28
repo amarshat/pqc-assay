@@ -141,7 +141,7 @@ hqc-fft: build/hqc-fft/fft_ref.bc
 	@echo "VERIFIED: additive-FFT gf264_ref (hqc-1): every routine == its model (FFTRef, FFTEnc, FFTBC; ref_1 to ref_4b) and polymul_280U64_input/mul == inputT/mulT (FFTTop; fft_1, with the routines' proved specs assumed, A-HQC-FFT item 8) (saw exit 0 seven times: every llvm_verify passed, every mutant rejected)"
 ## The same at the hqc-3 and hqc-5 lengths (five processes each; the hqc-5 entry points are the artifact's
 ## generic polymul_input_transform / polymul_output at 1024 words). hqc-fft-5 peaks at 18 GB (r5_bc) and
-## about 25 GB (r5_dec, eight parts in one process).
+## 16 GB (r5_dec, one contract of 512 runs).
 hqc-fft-3: build/hqc-fft/fft_ref.bc
 	@python3 scripts/hqc_fft_links.py
 	@for s in ref_1 r3_net r3_enc r3_dec r3_bc fft_3; do echo ">> SAW: proof/hqc-fft/$$s.saw"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(SAW) -v 3 proof/hqc-fft/$$s.saw || exit 1; done
@@ -176,7 +176,7 @@ hqc-fft-asis: build/hqc-fft/fft_asis.bc
 	@echo "VERIFIED: decode_64 as shipped (hqc-1) == decode with 8 words of slack, and rejected without slack because it forms a pointer outside the output allocation (saw exit 0)"
 
 ## The model lemmas of the additive-FFT proofs (A-HQC-FFT item 2): the index-form encode/decode statements
-## equal the forms the SAW scripts prove against, and the batch runs of r3_dec/r5_dec assemble to the whole
+## equal the forms the SAW scripts prove against, and the batch runs dbytes3/dbytes5 assemble to the whole
 ## decoding. Cryptol :prove under abc, one process; the target fails unless every :prove line says Q.E.D.
 hqc-fft-lemmas:
 	@mkdir -p build/hqc-fft; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(CRYPTOL) -b proof/hqc-fft/lemmas.icry 2>&1 | tee build/hqc-fft/lemmas.log; n=$$(grep -c '^:prove' proof/hqc-fft/lemmas.icry); q=$$(grep -c '^Q.E.D.' build/hqc-fft/lemmas.log); [ "$$q" = "$$n" ] || { echo "FAILED: $$q of $$n lemmas proved (build/hqc-fft/lemmas.log)"; exit 1; }; echo "VERIFIED: $$n FFTEnc lemmas (encode/decode index form == proved form at hqc-1/3/5, batch runs cover decode3/decode5) by abc"

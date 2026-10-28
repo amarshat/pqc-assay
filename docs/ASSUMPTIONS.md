@@ -1386,14 +1386,14 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    hqc-3 (`make hqc-fft-3`, six processes). `r3_net.saw` (2026-10-26, 533 s, 1.6 GB; includes `ref_1`):
    `gf264v_mul(1024)`, the kernels at unit 1024, and `btfy_64`/`ibtfy_64` (10 stages, scalar 2^42) ==
    `btfy10`/`ibtfy10`. `r3_enc.saw` (10 s, M4 Pro): `encode_64(1024, 32) == encode3`. `r3_dec.saw`
-   (4576 s, M4 Pro): `decode_64(1024) == decode3` in 4 batch-range parts (rme). `r3_bc.saw` (335 s,
+   (4576 s, M4 Pro): `decode_64(1024) == decode3` in 4 batch-range parts (rme; replaced 2026-10-28 by one contract in runs, item 8). `r3_bc.saw` (335 s,
    10 GB): `bc_1(4096)` == `bc1_32768wc`, `ibc_1(8192)` == `ibc1_65536w`, with `irepr_s8_1_65536`,
    `bc_256(128)` / `ibc_256(256)`, `bc_1_256(128)` / `ibc_1_256(256)`. `fft_3.saw` (42 s):
    `polymul_576U64_input/_mul == inputT3/mulT3`.
    hqc-5 (`make hqc-fft-5`, six processes). `r5_net.saw` (2026-10-26, 1654 s, 1.6 GB; includes
    `ref_1`): `gf264v_mul(2048)`, the kernels at units 1024 and 2048, `btfy_64`/`ibtfy_64` (11 stages,
    scalar 2^43) == `btfy11`/`ibtfy11`. `r5_enc.saw` (15 s, M4 Pro): `encode_64(2048, 32) == encode5`.
-   `r5_dec.saw` (11368 s, 25.6 GB): `decode_64(2048) == decode5` in 8 batch-range parts (rme).
+   `r5_dec.saw` (11368 s, 25.6 GB): `decode_64(2048) == decode5` in 8 batch-range parts (rme; replaced 2026-10-28, item 8).
    `r5_bc.saw` (1052 s, 18 GB): `bc_1(8192)` == `bc1_65536wc`, `ibc_1(16384)` == `ibc1_131072w` (the
    generic `irepr_s8_1` / `ibc_256(512)` / `ibc_1_256(512)` path). `fft_5.saw` (135 s):
    `polymul_input_transform(1024) / polymul_output(1024) == inputT5/mulT5`.
@@ -1406,7 +1406,10 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    ref_4 50, ref_4b 57, fft_1 10), hqc-3 5544 s (M4 Pro; ref_1 211, r3_net 437, r3_enc 8, r3_dec 4601,
    r3_bc 255, fft_3 32), hqc-5 14847 s (M2 Max; ref_1 281, r5_net 1730, r5_enc 15, r5_dec 11632 at
    25.1 GB peak, r5_bc 1053 at 18.5 GB, fft_5 136), with 78, 80 and 86 anticipated failures, the same
-   counts as before. An earlier model with `pdiv`/`pmod` per layer made rme take 30 GB on
+   counts as before. 2026-10-28, with `decode_64` as one contract in runs (item 8), the changed scripts
+   only, every one exit 0: `r3_dec` 4515 s and `fft_3` 298 s (M4 Pro), `r5_dec` 10077 s at 15.8 GB and
+   `fft_5` 1002 s at 6.5 GB (M2 Max), each with its mutant rejected; with the unchanged scripts' times
+   above, hqc-3 5724 s and hqc-5 14158 s, 77 and 79 anticipated failures, peak 18.5 GB (r5_bc). An earlier model with `pdiv`/`pmod` per layer made rme take 30 GB on
    `repr_s8_1_16384` and was replaced by the closed form; rme on `encode_64` in the byte-gather form of
    the model reported every input as a counterexample at 1024 words, which is why the model is written
    in index form and `encode_64` is proved through the `linear_map_x8` override.
@@ -1447,8 +1450,7 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    `karat_mult_1024`, `karat_mult_1536` (ref_1), `gf264v_mul` (ref_1), `btfy_64`, `ibtfy_64` (ref_2),
    `encode_64` (ref_3), `decode_64` (ref_3d, its own process: after other goals in one process its
    rme goal did not finish within 24 GB, alone it takes 110 s), `bc_1` on 2048 bytes (ref_4), `ibc_1` on 4096 bytes (ref_4b). The
-   assumed spec texts are copies of the proved ones; a mismatch would make the entry-point proofs
-   about a different contract, so the texts are to be compared when either side changes. One SAW
+   assumed specs are linked to the proved ones as described below. One SAW
    process for all of it ran out of memory on the `decode_64` goal (SAW's term cache grows over a
    long script; 2026-10-26), which is why the target is split. The same structure at the other two
    lengths: `make hqc-fft-3` runs `ref_1`, `r3_net`, `r3_enc`, `r3_dec`, `r3_bc`, then `fft_3.saw`, which assumes
@@ -1462,22 +1464,23 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    `llvm_unsafe_assume_spec` in `fft_<p>.saw` has a `llvm_verify` of the same function with the same
    expression (whitespace aside) in a script of the same target, no script redefines a name of
    `specs.saw`, and only `fft_<p>` assumes (it found 10, 8 and 7 links; two planted mismatches, a
-   `bc_1` buffer one byte short and a `decode_64` output with slack, were rejected). The exception is
-   below. Each routine script also proves `linear_map_x8` and `transpose_8x8`, the helpers
-   its `encode_64`/`decode_64` proofs use as overrides. At hqc-3 and hqc-5 the `decode_64` contract
-   is proved in parts by batch range (`r3_dec.saw`: 4 parts of 32 batches; `r5_dec.saw`: 8 parts of
-   32 batches): output byte i + k (8 kb + jj) comes from batch i, so a part's expected output is 64
-   contiguous runs of 32 bytes (`dbytes<size> x i0 t`), each its own `llvm_points_to_untyped`, and a
-   part's goal depends on 256 input words only. Each part is its own `llvm_verify` with the same
-   precondition, the rest of the output unconstrained, and a mutant (one run flipped) that must fail;
-   one obligation for the whole output needed more than 45 GB under rme at hqc-5, a part about 13 GB
-   (714 s). The top script assumes the whole contract: the function is deterministic and the parts
-   cover every output byte, so the parts together are that contract. This step is not checked by a
-   tool. What is checked: `scripts/hqc_fft_dec.py` generates `r3_dec.saw` and `r5_dec.saw` (`--check`
-   compares them with the committed files, which `hqc_fft_links.py` runs), every part uses the same
-   `dec_pre` precondition as the assumed `dec_spec`, and the generator asserts that the runs cover each
-   output byte once; `make hqc-fft-lemmas` proves that the runs `dbytes3`/`dbytes5` assemble to
-   `decode3`/`decode5`. Item 3 lists what has passed.
+   `bc_1` buffer one byte short and a `decode_64` output with slack, were rejected), and no script of a
+   target uses `admit`, `assume_unsat` or `quickcheck` (a planted `admit` was rejected). Each routine
+   script also proves `linear_map_x8` and `transpose_8x8`, the helpers its `encode_64`/`decode_64`
+   proofs use as overrides. At hqc-3 and hqc-5 the `decode_64` contract (`dec3_runs`, `dec5_runs` in
+   `proof/hqc-fft/dec_runs.saw`, generated by `scripts/hqc_fft_dec.py`) states the output as 256 and
+   512 runs of 32 bytes: batch i writes bytes i + (n/8) t, so the run (i0, t) for i0 a multiple of 32
+   is `dbytes<p> x i0 t`, and each run is its own `llvm_points_to_untyped` on a byte view of the output,
+   so its own goal over 256 input words. One points-to for the whole output needed more than 45 GB
+   under rme at hqc-5. It is one contract with one precondition, proved by one `llvm_verify` in
+   `r3_dec.saw` / `r5_dec.saw` and assumed verbatim by `fft_3.saw` / `fft_5.saw`, so the link checker
+   covers it like the others. The models of the entry points use `decode3`/`decode5` on words;
+   `asm3`/`asm5` (FFTEnc.cry) assemble the runs into words, `fft_<p>` proves `decode<p> x == asm<p> x`
+   by rme (`prove_print`, 244 s and 2.3 GB at hqc-3 alone; abc passed 20 GB and sbv_abc 20 minutes
+   without an answer), and the entry-point proof unfolds `mulT<p>`, rewrites with that theorem and
+   keeps `dbytes<p>` uninterpreted. Until 2026-10-27 the contract was proved in 4 and 8 parts by batch
+   range, and the step from the parts to the whole was an argument outside the tools; the run form
+   removes it. The generator asserts that the runs cover each output byte once. Item 3 lists what has passed.
 9. **Source mutants** (`scripts/hqc_fft_c_mutants.sh`, 2026-10-27, M2 Max, 1800 s and 36 GB per run;
    a mutant counts as caught only if SAW fails on a goal after the last anticipated failure, a crash or
    limit is "no result"). Four one-line edits to copies of the C, each in code that runs at hqc-1,

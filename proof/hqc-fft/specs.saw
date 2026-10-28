@@ -119,8 +119,8 @@ let tr_spec post = do {
 // decode_64(rfx, fx, n_u64 = n): n words out, written byte by byte. dec_pre is the setup and the call;
 // the output allocation is n words plus s words of slack. The repaired source (build/hqc-fft/src) is
 // proved with s = 0; the source as shipped needs s = n/64 (A-HQC-FFT item 7, make hqc-fft-asis).
-// dec_spec states the whole output; the parts of r3_dec.saw / r5_dec.saw state 64 runs of 32 bytes
-// each, through the same dec_pre, on a byte view of the same allocation.
+// dec_spec states the whole output (hqc-1, and make hqc-fft-asis); at hqc-3/5 dec3_runs / dec5_runs
+// (dec_runs.saw, generated) state it run by run through the same dec_pre.
 let dec_pre n s nt = do {
   mats;
   rp <- llvm_alloc (w (eval_size {| n + s |}));
