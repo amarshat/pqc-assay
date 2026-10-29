@@ -4,3 +4,4 @@ session HQC_FFT = HOL +
   options [document = false]
   theories
     Cantor
+    LCH

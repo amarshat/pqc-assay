@@ -2,13 +2,13 @@ theory Cantor
   imports Main
 begin
 
-text \<open>The subspace polynomials of a Cantor basis, as functions on a field of characteristic 2.
+text \<open>The subspace polynomials of a Cantor basis, as functions on a commutative ring of characteristic 2.
   \<open>sv i\<close> is the polynomial \<open>s\<^sub>i\<close> with \<open>s\<^sub>0 = x\<close> and \<open>s\<^sub>i\<^sub>+\<^sub>1 = s\<^sub>i\<^sup>2 + s\<^sub>i\<close>; a Cantor basis
   is a sequence \<open>\<beta>\<close> with \<open>\<beta>\<^sub>0 = 1\<close> and \<open>\<beta>\<^sub>j\<^sub>+\<^sub>1\<^sup>2 + \<beta>\<^sub>j\<^sub>+\<^sub>1 = \<beta>\<^sub>j\<close>; \<open>cantor \<beta> v\<close> is the
   element whose coordinates in that basis are the bits of \<open>v\<close>. The result is
   \<open>s\<^sub>i(cantor v) = cantor (v div 2\<^sup>i)\<close>, which is how the additive FFT computes its twiddles.\<close>
 
-class char2 = field +
+class char2 = comm_ring_1 +
   assumes one_plus_one: "1 + 1 = (0 :: 'a)"
 begin
 
