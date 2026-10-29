@@ -9,3 +9,4 @@ session HQC_FFT = "HOL-Computational_Algebra" +
     Blocks
     BC
     IConv
+    Encode
