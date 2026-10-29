@@ -1,0 +1,6 @@
+session HQC_FFT = HOL +
+  description \<open>The additive-FFT HQC multiplier (Chen, Chiu, Peng, Yang): the mathematics that the
+    Cryptol stage models compute the product. Work in progress.\<close>
+  options [document = false]
+  theories
+    Cantor
