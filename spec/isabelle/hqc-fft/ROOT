@@ -6,3 +6,4 @@ session HQC_FFT = "HOL-Computational_Algebra" +
     Cantor
     LCH
     NovelBasis
+    Blocks
