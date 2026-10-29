@@ -1,12 +1,8 @@
-session HQC_FFT = "HOL-Computational_Algebra" +
-  description \<open>The additive-FFT HQC multiplier (Chen, Chiu, Peng, Yang): the mathematics that the
-    Cryptol stage models compute the product. Work in progress.\<close>
+session HQC_FFT = "HQC" +
+  description \<open>The additive-FFT HQC multiplier: the lifted Cryptol models of the gf264_ref stages
+    against the generic theory in HQC_FFT_Math. Work in progress.\<close>
   options [document = false]
+  sessions
+    HQC_FFT_Math
   theories
-    Cantor
-    LCH
-    NovelBasis
-    Blocks
-    BC
-    IConv
-    Encode
+    GF64

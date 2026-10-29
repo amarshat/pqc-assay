@@ -1,0 +1,14 @@
+session HQC_FFT_Math = "HOL-Computational_Algebra" +
+  description \<open>The additive FFT in the Cantor novel polynomial basis (Lin, Chung and Han; Gao and
+    Mateer), generic over commutative rings of characteristic 2: the butterfly network evaluates on
+    a coset of the Cantor subspace, the inverse basis conversion over any schedule tree maps
+    novel-basis coordinates to the polynomial, and encoding by partial evaluation.\<close>
+  options [document = false]
+  theories
+    Cantor
+    LCH
+    NovelBasis
+    Blocks
+    BC
+    IConv
+    Encode
