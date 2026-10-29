@@ -8,3 +8,4 @@ session HQC_FFT = "HOL-Computational_Algebra" +
     NovelBasis
     Blocks
     BC
+    IConv
