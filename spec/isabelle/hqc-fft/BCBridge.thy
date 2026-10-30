@@ -145,4 +145,175 @@ proof (rule poly_eqI)
     by (simp add: L_def T'_def f_def)
 qed
 
+text \<open>A layer: the bit vector cut (most significant first) into K blocks of W bits, a block map
+  applied to each. Block g of the list is block K - 1 - g of the polynomial.\<close>
+
+lemma coeff_layer_list:
+  fixes v :: "('n::len, bool) seq" and hb :: "('w::len, bool) seq \<Rightarrow> ('w, bool) seq"
+  assumes N: "LENGTH('n) = K * LENGTH('w)" and i: "i < LENGTH('n)"
+  defines "W \<equiv> LENGTH('w)"
+  shows "concat (map (seq_to_list \<circ> hb \<circ> list_to_seq) (group_list K W (seq_to_list v))) ! (LENGTH('n) - Suc i)
+       = bit (seq_to_word (hb (list_to_seq (group_list K W (seq_to_list v) ! (K - Suc (i div W)))))) (i mod W)"
+proof -
+  define l where "l = seq_to_list v"
+  have W0: "0 < W" by (simp add: W_def)
+  have ll: "length l = K * W" by (simp add: l_def N W_def)
+  have lg: "\<forall>x\<in>set (map (seq_to_list \<circ> hb \<circ> list_to_seq) (group_list K W l)). length x = W"
+    by (auto simp: W_def)
+  define m where "m = LENGTH('n) - Suc i"
+  have m: "m < length (map (seq_to_list \<circ> hb \<circ> list_to_seq) (group_list K W l)) * W"
+    using i N by (simp add: m_def W_def)
+  have id: "i div W < K" using i N by (simp add: W_def less_mult_imp_div_less)
+  have md: "m div W = K - Suc (i div W)" and mm: "m mod W = W - Suc (i mod W)"
+  proof -
+    define q where "q = i div W"
+    define r where "r = i mod W"
+    have iq: "i = q * W + r" by (simp add: q_def r_def)
+    have rW: "r < W" using W0 by (simp add: r_def)
+    have k1: "K * W = (K - Suc q) * W + q * W + W"
+    proof -
+      have "K = (K - Suc q) + Suc q" using id by (simp add: q_def)
+      then have "K * W = ((K - Suc q) + Suc q) * W" by simp
+      also have "\<dots> = (K - Suc q) * W + q * W + W" by (simp add: algebra_simps)
+      finally show ?thesis .
+    qed
+    have mN: "m = K * W - Suc i" by (simp add: m_def N W_def)
+    have e: "m = (K - Suc (i div W)) * W + (W - Suc (i mod W))"
+      unfolding q_def[symmetric] r_def[symmetric] using mN k1 iq rW by linarith
+    have b: "W - Suc (i mod W) < W" using W0 by simp
+    show "m div W = K - Suc (i div W)" "m mod W = W - Suc (i mod W)" by (simp_all only: e div_blk[OF b] mod_blk[OF b])
+  qed
+  have "concat (map (seq_to_list \<circ> hb \<circ> list_to_seq) (group_list K W l)) ! m
+      = (map (seq_to_list \<circ> hb \<circ> list_to_seq) (group_list K W l)) ! (m div W) ! (m mod W)"
+    by (rule nth_concat_eq_len[OF lg m])
+  also have "\<dots> = seq_to_list (hb (list_to_seq (group_list K W l ! (K - Suc (i div W))))) ! (W - Suc (i mod W))"
+    using id by (simp add: md mm)
+  also have "\<dots> = bit (seq_to_word (hb (list_to_seq (group_list K W l ! (K - Suc (i div W)))))) (i mod W)"
+    using W0 by (simp add: bit_s2w W_def)
+  finally show ?thesis by (simp add: l_def m_def)
+qed
+
+lemma pw_group_block:
+  fixes v :: "('n::len, bool) seq"
+  assumes N: "LENGTH('n) = K * LENGTH('w::len)" and j: "j < K"
+  shows "pw (seq_to_word (list_to_seq (group_list K LENGTH('w) (seq_to_list v) ! (K - Suc j)) :: ('w, bool) seq))
+       = blk LENGTH('w) j (pw (seq_to_word v))"
+proof (rule poly_eqI)
+  fix r
+  define W where "W = LENGTH('w)"
+  define l where "l = seq_to_list v"
+  have ll: "length l = K * W" by (simp add: l_def N W_def)
+  have W0: "0 < W" by (simp add: W_def)
+  have g: "group_list K W l ! (K - Suc j) = take W (drop ((K - Suc j) * W) l)"
+    using ll j by (simp add: group_list_part)
+  have lg: "length (group_list K W l ! (K - Suc j)) = W" using ll j by simp
+  show "coeff (pw (seq_to_word (list_to_seq (group_list K LENGTH('w) (seq_to_list v) ! (K - Suc j)) :: ('w, bool) seq))) r
+      = coeff (blk LENGTH('w) j (pw (seq_to_word v))) r"
+  proof (cases "r < W")
+    case False then show ?thesis by (simp add: coeff_pw bit_s2w blk_def coeff_poly_cutoff W_def)
+  next
+    case True
+    have idx: "(K - Suc j) * W + (W - Suc r) = K * W - Suc (W * j + r)"
+    proof -
+      have "K * W = (K - Suc j) * W + j * W + W"
+      proof -
+        have "K = (K - Suc j) + Suc j" using j by simp
+        then have "K * W = ((K - Suc j) + Suc j) * W" by simp
+        then show ?thesis by (simp add: algebra_simps)
+      qed
+      then show ?thesis using True by (simp add: algebra_simps)
+    qed
+    have bnd: "W * j + r < K * W"
+    proof -
+      have "W * j + r < W * j + W" using True by simp
+      also have "\<dots> = W * Suc j" by simp
+      also have "\<dots> \<le> W * K" using j by (intro mult_le_mono2) simp
+      finally show ?thesis by (simp add: mult.commute)
+    qed
+    have "coeff (pw (seq_to_word (list_to_seq (group_list K W l ! (K - Suc j)) :: ('w, bool) seq))) r
+        = of_bool ((group_list K W l ! (K - Suc j)) ! (W - Suc r))"
+      using True lg by (simp add: coeff_pw bit_s2w W_def)
+    also have "\<dots> = of_bool (l ! ((K - Suc j) * W + (W - Suc r)))"
+      using True ll j by (simp add: g)
+    also have "\<dots> = of_bool (bit (seq_to_word v) (W * j + r))"
+      using bnd by (simp only: idx) (simp add: bit_s2w l_def N W_def)
+    also have "\<dots> = coeff (blk W j (pw (seq_to_word v))) r"
+      using True by (simp add: blk_def coeff_poly_cutoff coeff_poly_shift coeff_pw add.commute)
+    finally show ?thesis by (simp add: W_def l_def)
+  qed
+qed
+
+lemma bnd_pw: "bnd LENGTH('a) (pw (w :: 'a :: len word))"
+  by (simp add: bnd_def coeff_pw_ge)
+
+theorem pw_layer:
+  fixes v :: "('n::len, bool) seq" and hb :: "('w::len, bool) seq \<Rightarrow> ('w, bool) seq"
+  assumes N: "LENGTH('n) = K * LENGTH('w)" and H: "\<And>u. pw (seq_to_word (hb u)) = H (pw (seq_to_word u))"
+  shows "pw (seq_to_word (list_to_seq (concat (map (seq_to_list \<circ> hb \<circ> list_to_seq)
+            (group_list K LENGTH('w) (seq_to_list v)))) :: ('n, bool) seq))
+       = bmap K LENGTH('w) H (pw (seq_to_word v))"
+proof (rule poly_eqI)
+  fix i
+  define W where "W = LENGTH('w)"
+  define f where "f = pw (seq_to_word v)"
+  define CL where "CL = concat (map (seq_to_list \<circ> hb \<circ> list_to_seq) (group_list K W (seq_to_list v)))"
+  define blkg where "blkg = (\<lambda>j. list_to_seq (group_list K W (seq_to_list v) ! (K - Suc j)) :: ('w, bool) seq)"
+  have W0: "0 < W" by (simp add: W_def)
+  have lCL: "length CL = LENGTH('n)"
+    by (simp add: CL_def length_concat comp_def map_replicate_const sum_list_replicate N W_def)
+  have Hb: "H (blk W j f) = pw (seq_to_word (hb (blkg j)))" if "j < K" for j
+    using pw_group_block[OF N that] H by (simp add: blkg_def W_def f_def)
+  have bH: "bnd W (H (blk W j f))" if "j < K" for j
+  proof -
+    have "bnd W (pw (seq_to_word (hb (blkg j))))" unfolding W_def by (rule bnd_pw)
+    then show ?thesis by (simp only: Hb[OF that])
+  qed
+  have rhs: "coeff (bmap K W H f) i = (if i div W < K then coeff (H (blk W (i div W) f)) (i mod W) else 0)"
+  proof -
+    have "coeff (bmap K W H f) i = coeff (\<Sum>j<K. H (blk W j f) * monom 1 (W * j)) (W * (i div W) + i mod W)"
+      by (simp add: bmap_def mult.commute[of W])
+    also have "\<dots> = (if i div W < K then coeff (H (blk W (i div W) f)) (i mod W) else 0)"
+      by (rule coeff_packed) (simp_all add: bH W0)
+    finally show ?thesis .
+  qed
+  show "coeff (pw (seq_to_word (list_to_seq CL :: ('n, bool) seq))) i = coeff (bmap K LENGTH('w) H (pw (seq_to_word v))) i"
+  proof (cases "i < LENGTH('n)")
+    case False
+    then have "K * W \<le> i" using N by (simp add: W_def)
+    then have "K * W div W \<le> i div W" by (rule div_le_mono)
+    then have "\<not> i div W < K" using W0 by simp
+    then show ?thesis using False by (simp add: coeff_pw bit_s2w rhs[unfolded W_def f_def] W_def CL_def)
+  next
+    case True
+    have id: "i div W < K" using True N by (simp add: W_def less_mult_imp_div_less)
+    have "coeff (pw (seq_to_word (list_to_seq CL :: ('n, bool) seq))) i = of_bool (CL ! (LENGTH('n) - Suc i))"
+      using True lCL by (simp add: coeff_pw bit_s2w)
+    also have "\<dots> = of_bool (bit (seq_to_word (hb (blkg (i div W)))) (i mod W))"
+      using coeff_layer_list[OF N True, of hb] by (simp add: CL_def blkg_def W_def)
+    also have "\<dots> = coeff (H (blk W (i div W) f)) (i mod W)"
+      by (simp add: Hb[OF id] coeff_pw)
+    finally show ?thesis using id by (simp add: rhs[unfolded W_def f_def] W_def f_def CL_def)
+  qed
+qed
+
+theorem pw_mulLayer:
+  fixes v :: "('k::len \<times> 2 \<times> 'L::len, bool) seq"
+  assumes T: "2 * LENGTH('T::len) \<le> LENGTH('L)"
+  shows "pw (seq_to_word (FFTBC.mulLayer TY('k) TY('L) TY('T) v))
+       = bmap LENGTH('k) (2 * LENGTH('L)) (BC.mulBlock LENGTH('L) LENGTH('T)) (pw (seq_to_word v))"
+proof -
+  have g: "PRED(1 \<le> 'L, (2 \<times> 'T) \<le> 'L)" using T by (simp add: Suc_le_eq)
+  have l: "seq_to_list (FFTBC.mulLayer TY('k) TY('L) TY('T) v)
+      = concat (map (seq_to_list \<circ> (FFTBC.mulBlock TY('L) TY('T) \<circ> list_to_seq))
+          (group_list LENGTH('k) (2 * LENGTH('L)) (seq_to_list v)))"
+    by (simp add: FFTBC.mulLayer_def unguard_unfold_context[OF g] seq_to_list)
+  have e: "FFTBC.mulLayer TY('k) TY('L) TY('T) v
+      = list_to_seq (concat (map (seq_to_list \<circ> FFTBC.mulBlock TY('L) TY('T) \<circ> list_to_seq)
+          (group_list LENGTH('k) (2 * LENGTH('L)) (seq_to_list v))))"
+    by (metis l seq_preserved comp_assoc)
+  show ?thesis
+    unfolding e
+    by (rule pw_layer[where 'w="2 \<times> 'L", simplified]) (simp_all add: pw_mulBlock[OF T])
+qed
+
 end
