@@ -86,4 +86,41 @@ next
   finally show ?case using Cons by (simp add: pw_PL)
 qed
 
+lemma as64_list: "seq_to_list (FFTTop.as64 TY('n::len) (y :: (2 \<times> 'n, (32, bool) seq) seq))
+    = map (\<lambda>g. append_seq (g ! Suc 0) (g ! 0) :: w64) (group_list LENGTH('n) 2 (seq_to_list y))"
+proof -
+  have g: "\<forall>x\<in>set (group_list LENGTH('n) 2 (seq_to_list y)). length x = 2"
+    using group_list_grouped[of "seq_to_list y" "LENGTH('n)" 2] by simp
+  show ?thesis
+    by (simp add: FFTTop.as64_def seq_to_list Let_def comp_def) (use g in auto)
+qed
+
+lemma flat_list: "seq_to_list (FFTEnc.flat (fx :: (256, w64) seq)) = concat (map seq_to_list (rev (seq_to_list fx)))"
+  by (simp add: FFTEnc.flat_def seq_to_list)
+
+lemma concat_rev_pairs:
+  assumes "\<forall>g\<in>set G. length g = 2"
+  shows "concat (rev (map (\<lambda>g. f (g ! Suc 0) @ f (g ! 0)) G)) = concat (map f (rev (concat G)))"
+  using assms
+proof (induction G)
+  case Nil then show ?case by simp
+next
+  case (Cons g G)
+  then obtain a b where g: "g = [a, b]" by (cases g; cases "tl g") auto
+  then show ?case using Cons by simp
+qed
+
+theorem flat_as64: "seq_to_list (FFTEnc.flat (FFTTop.as64 TY(256) y)) = seq_to_list (FFTBC.flat32 TY(2 \<times> 256) y)"
+proof -
+  define G where "G = group_list 256 2 (seq_to_list y)"
+  have g: "\<forall>x\<in>set G. length x = 2"
+    using group_list_grouped[of "seq_to_list y" 256 2] by (simp add: G_def)
+  have cG: "concat G = seq_to_list y" by (simp add: G_def concat_group_list_inv)
+  have "seq_to_list (FFTEnc.flat (FFTTop.as64 TY(256) y)) = concat (rev (map (\<lambda>g. seq_to_list (g ! Suc 0) @ seq_to_list (g ! 0)) G))"
+    by (simp add: flat_list as64_list G_def[symmetric] rev_map comp_def seq_to_list.append_seq)
+  also have "\<dots> = concat (map seq_to_list (rev (concat G)))" by (rule concat_rev_pairs[OF g])
+  also have "\<dots> = seq_to_list (FFTBC.flat32 TY(2 \<times> 256) y)" by (simp add: flat32_list cG)
+  finally show ?thesis .
+qed
+
 end
