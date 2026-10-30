@@ -31,4 +31,5 @@ session HQC = "Cryptol" +
     FFTTop
     FFTTop3
     FFTTop5
+    FFTWire
     HQC_Gate

@@ -39,7 +39,7 @@ session HQC_FFT = "HQC_FFT_Const" +
 
 session HQC_FFT35 in "n35" = "HQC_FFT" +
   description \<open>The same results at the hqc-3 and hqc-5 sizes: the butterfly networks, the conversions
-    (with the hi-first order of the generic path), the encode/decode index forms, mulT3_correct and mulT5_correct.\<close>
+    (with the hi-first order of the generic path), the encode/decode index forms, mulT3_correct and mulT5_correct, and vmulF1/3/5_correct (the HQC integration).\<close>
   options [document = false]
   sessions
     HQC_FFT_Math
@@ -50,4 +50,5 @@ session HQC_FFT35 in "n35" = "HQC_FFT" +
     Enc35
     Top5
     Top3
+    Wire
     Gate35

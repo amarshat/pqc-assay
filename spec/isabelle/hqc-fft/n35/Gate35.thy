@@ -1,9 +1,10 @@
 theory Gate35
-  imports Top3
+  imports Wire
 begin
 
-text \<open>Build-time gate for the additive-FFT result at the hqc-3 and hqc-5 sizes: mulT3_correct and
-  mulT5_correct (and the steps they rest on) depends on no oracle and no proof hole. The kernel checks of the model's
+text \<open>Build-time gate for the additive-FFT result at the hqc-3 and hqc-5 sizes (mulT3_correct and
+  mulT5_correct, and the steps they rest on) and of the HQC integration at all three sizes
+  (vmulF1/3/5_correct) depends on no oracle and no proof hole. The kernel checks of the model's
   constants use code_simp, which is a simplifier proof; an evaluation oracle (eval, normalization)
   would show up here.\<close>
 
@@ -16,6 +17,9 @@ ML \<open>
        | os => error ("ORACLE GATE: " ^ nm ^ " depends on [" ^
                       commas (map (fn ((n, _), _) => n) os) ^ "]"))
   in
+    check "Wire.vmulF1_correct" @{thm Wire.vmulF1_correct};
+    check "Wire.vmulF3_correct" @{thm Wire.vmulF3_correct};
+    check "Wire.vmulF5_correct" @{thm Wire.vmulF5_correct};
     check "Top3.mulT3_correct" @{thm Top3.mulT3_correct};
     check "Top3.forward_eval3" @{thm Top3.forward_eval3};
     check "Top5.mulT5_correct" @{thm Top5.mulT5_correct};

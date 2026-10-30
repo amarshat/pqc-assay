@@ -43,6 +43,7 @@ spec/isabelle/hqc/FFTBC.thy	model/cryptol/hqc-fft/FFTBC.cry
 spec/isabelle/hqc/FFTTop.thy	model/cryptol/hqc-fft/FFTTop.cry
 spec/isabelle/hqc/FFTTop3.thy	model/cryptol/hqc-fft/FFTTop3.cry
 spec/isabelle/hqc/FFTTop5.thy	model/cryptol/hqc-fft/FFTTop5.cry
+spec/isabelle/hqc/FFTWire.thy	model/cryptol/hqc-fft/FFTWire.cry
 "
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT

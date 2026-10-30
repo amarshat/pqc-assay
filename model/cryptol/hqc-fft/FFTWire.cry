@@ -1,0 +1,45 @@
+/* The artifact's HQC wiring of the multiplier (target/hqc-fft/hqc_wiring/gf2x.c, the cachekey build):
+   vect_mul(o, v1, v2) = ring_mul, which pads each operand (ring_to_fftform: zero words from
+   VEC_N_SIZE_BYTES/8 up, then memcpy of VEC_N_SIZE_BYTES bytes, so the last word keeps only its low
+   bytes), transforms both, multiplies (polymul_17920 / polymul_36864 wrappers around the 280U64 /
+   576U64 entry points at hqc-1 / hqc-3, polymul_input_transform / polymul_output at 1024 words at hqc-5),
+   and folds the product mod x^n - 1 (ring_reduce). The fold is Fold.cry's, the one the reference and
+   AVX2 proofs use. */
+module FFTWire where
+
+import Fold
+import FFTTop (inputT, mulT)
+import FFTTop3 (inputT3, mulT3)
+import FFTTop5 (inputT5, mulT5)
+
+// ring_to_fftform's padded copy: whole words below VEC_N_SIZE_BYTES/8, the low bytes of the next, zeros.
+pad1 : [277][64] -> [280][64]
+pad1 v = take`{276} v # [(v @ 276) && 0x00000000000000ff] # zero
+pad3 : [561][64] -> [576][64]
+pad3 v = take`{560} v # [(v @ 560) && 0x000000000000ffff] # zero
+pad5 : [901][64] -> [1024][64]
+pad5 v = take`{900} v # [(v @ 900) && 0x000000ffffffffff] # zero
+
+// polymul_17920_input / polymul_36864_input: the transform followed by a copy of the operand.
+input17920 : [280][64] -> [792][64]
+input17920 a = inputT a # a
+input36864 : [576][64] -> [1600][64]
+input36864 a = inputT3 a # a
+
+// polymul_17920_mul / polymul_36864_mul: the entry point on the two halves of each buffer.
+mul17920 : [792][64] -> [792][64] -> [560][64]
+mul17920 af bf = mulT (drop`{512} af) (drop`{512} bf) (take`{512} af) (take`{512} bf)
+mul36864 : [1600][64] -> [1600][64] -> [1152][64]
+mul36864 af bf = mulT3 (drop`{1024} af) (drop`{1024} bf) (take`{1024} af) (take`{1024} bf)
+
+// vect_mul at the three sizes.
+vmulF1 : [277][64] -> [277][64] -> [277][64]
+vmulF1 a b = fold`{17669} (take`{554} (mulT pa pb (inputT pa) (inputT pb)))
+  where pa = pad1 a
+        pb = pad1 b
+vmulF3 : [561][64] -> [561][64] -> [561][64]
+vmulF3 a b = fold`{35851} (take`{1122} (mulT3 pa pb (inputT3 pa) (inputT3 pb)))
+  where pa = pad3 a
+        pb = pad3 b
+vmulF5 : [901][64] -> [901][64] -> [901][64]
+vmulF5 a b = fold`{57637} (take`{1802} (mulT5 (inputT5 (pad5 a)) (inputT5 (pad5 b))))
