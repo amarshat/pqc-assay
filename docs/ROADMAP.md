@@ -57,10 +57,11 @@ HQC lengths are proved against the Cryptol model (`make hqc-fft`, `hqc-fft-3`, `
 results in A-HQC-FFT item 3; rerun 2026-10-27 on the repaired `decode_64` with linked specifications: 762 s and 5724 s on the M4 Pro, 14158 s on the M2 Max; since 2026-10-28 `decode_64` at hqc-3/5 is one contract in 32-byte runs, linked like the rest). The heavy goals were the
 F2-linear maps (`encode_64` via a `linear_map_x8` override under z3; `decode_64` under rme with a
 `transpose_8x8` override, as one contract of 32-byte runs at hqc-3/5: 4515 s and 10077 s) and the basis
-conversions (closed-form division layers; 18 GB at hqc-5). Next: part (1) in Isabelle, starting from
-the statement (the model lemmas `encode == encodeIdx`, `decode == decodeIdx` are proved by abc in `make
-hqc-fft-lemmas`) that
-`mulT (inputT a) (inputT b)` is the product modulo x^n - 1; then the AVX2 variant.
+conversions (closed-form division layers; 18 GB at hqc-5). Part (1) in Isabelle, done 2026-10-30 for
+the three entry points (`make hqc-fft-isabelle`; A-HQC-FFT item 10): `mulT`, `mulT3`, `mulT5` of the
+input transforms are the products of the operands, given the abc lemmas `encode == encodeIdx`,
+`decode == decodeIdx` (`make hqc-fft-lemmas`). Next: one statement about the C composing the SAW and
+Isabelle results, the reduction modulo x^n - 1, and the AVX2 variant.
 
 1. Done 2026-10-22: `gf.c` (SAW, z3) and Reed-Solomon encoding for all three parameter sets
    (SAW, rme, a property spec). Done 2026-10-24: Reed-Muller encoding for all three sets (SAW, z3,

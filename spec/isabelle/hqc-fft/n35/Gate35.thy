@@ -1,5 +1,5 @@
 theory Gate35
-  imports Top5
+  imports Top3
 begin
 
 text \<open>Build-time gate for the additive-FFT result at the hqc-3 and hqc-5 sizes: mulT3_correct and
@@ -16,6 +16,8 @@ ML \<open>
        | os => error ("ORACLE GATE: " ^ nm ^ " depends on [" ^
                       commas (map (fn ((n, _), _) => n) os) ^ "]"))
   in
+    check "Top3.mulT3_correct" @{thm Top3.mulT3_correct};
+    check "Top3.forward_eval3" @{thm Top3.forward_eval3};
     check "Top5.mulT5_correct" @{thm Top5.mulT5_correct};
     check "Top5.forward_eval5" @{thm Top5.forward_eval5};
     check "Ibc35.ibc1_131072_iconv" @{thm Ibc35.ibc1_131072_iconv};

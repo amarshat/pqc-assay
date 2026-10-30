@@ -145,9 +145,12 @@ the M2 Max. The specifications live in `proof/hqc-fft/specs.saw`, and `scripts/h
 that every assumed one is proved by a script of the same target (item 8). `decode_64` is proved on a
 copy with a two-line repair (item 7); `make hqc-fft-asis` proves the shipped file with slack after its
 output and shows that SAW rejects it without. A native differential test is in
-`scripts/hqc_fft_native/` (item 6), and the source mutants in `scripts/hqc_fft_c_mutants.sh` (item 9). Not
-done: the Isabelle proof that the composed model is polynomial multiplication (part (1) of the
-milestone in `docs/ROADMAP.md`), and the AVX2 variant.
+`scripts/hqc_fft_native/` (item 6), and the source mutants in `scripts/hqc_fft_c_mutants.sh` (item 9). Isabelle
+(`make hqc-fft-isabelle`, exit 0) proves the composed model is polynomial multiplication at all three
+sizes: `mulT`, `mulT3` and `mulT5` applied to the input transforms give the product of the operands in
+GF(2)[x] (A-HQC-FFT item 10), given the abc lemmas `encode == encodeIdx` and `decode == decodeIdx`. Not
+done: one statement about the C that composes the SAW and Isabelle results, the reduction modulo
+x^n - 1 (outside these entry points), and the AVX2 variant.
 
 ## Checked once, not gated
 

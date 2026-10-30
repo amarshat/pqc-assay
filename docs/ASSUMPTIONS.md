@@ -1432,7 +1432,8 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    of item 2 at all three sizes, and that the batch runs `dbytes3`/`dbytes5` of the partwise
    `decode_64` proofs cover `decode3`/`decode5` at every part and offset; rme had run out of memory on
    the first two.)
-   All of part (1), the Isabelle proof that `mulT (inputT a) (inputT b)` is the product modulo x^n - 1.
+   (Done 2026-10-30: part (1) for the three entry points, item 10. Still not done: the reduction
+   modulo x^n - 1, which HQC applies after these entry points and which is not in the model.)
 6. **Reference test.** `scripts/hqc_fft_native/run.sh` compiles the ten files natively (the repaired
    `dencoder.c` of item 7 and the file as shipped, each at `-O0`, `-O2`, and `-O1` with
    AddressSanitizer and UndefinedBehaviorSanitizer) and compares the entry points at all three lengths
@@ -1505,7 +1506,7 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
 
 
 
-10. **Part (1) at hqc-1, Isabelle (2026-10-30, `make hqc-fft-isabelle`, exit 0).** `Assemble.mulT_correct`:
+10. **Part (1), Isabelle (2026-10-30, `make hqc-fft-isabelle`, exit 0).** At hqc-1: `Assemble.mulT_correct`:
    for every pair of 280-word operands a, b, `Pl (L (mulT a b (inputT a) (inputT b))) = Pl (L a) * Pl (L b)`
    in GF(2)[x], about the lifted FFTTop.cry (the model SAW proves `polymul_280U64_input` and
    `polymul_280U64_mul` against). Two hypotheses, `encode = encodeIdx` and `decode = decodeIdx`, are the
@@ -1521,6 +1522,17 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    bc/ibc chains as the theory's objects). `FFT_Gate.thy` fails the build if `mulT_correct`,
    `forward_eval`, `fftpart_correct` or `beta_cantor` depends on an oracle or a skipped proof, or if the
    context has an axiom other than a definition or a generated type axiom; a lemma proved by `eval`
-   added to its list fails the build (checked 2026-10-30). Not yet done: hqc-3 and hqc-5 (btfy10/11,
-   the 65536/131072-bit schedule trees), and the composition with the SAW results into one statement
-   about the C.
+   added to its list fails the build (checked 2026-10-30).
+   At hqc-3 and hqc-5 (session `HQC_FFT35`, `spec/isabelle/hqc-fft/n35`): `Top3.mulT3_correct`, for every
+   pair of 576-word operands, `Pl (L (mulT3 a b (inputT3 a) (inputT3 b))) = Pl (L a) * Pl (L b)` (FFT on
+   the low 512 words, base 2^42, 1024 points; km64 cross terms), and `Top5.mulT5_correct`, for every pair
+   of 1024-word operands, `Pl (L (mulT5 (inputT5 a) (inputT5 b))) = Pl (L a) * Pl (L b)` (base 2^43, 2048
+   points, no cross terms). Hypotheses: `encode3/5 = encodeIdx3/5` and `decode3/5 = decodeIdx3/5`, the
+   same abc lemmas. The hqc-5 conversions take the C's generic path, whose recursive cvt runs each
+   node's hi subtree before its lo subtree; `Commute.layersR_layers` proves that order equal in effect
+   to the tree order (a layer with L and T multiples of W commutes with any additive per-W-block map).
+   `Gate35.thy` is the same oracle and axiom gate for these theorems; a lemma proved by `eval` added to
+   its list fails the build (checked 2026-10-30).
+   Scope: the theorems are about the lifted models, and each states the unreduced product of the
+   padded operands. Not yet done: the composition with the SAW results into one statement about the
+   C, and the reduction modulo x^n - 1 that HQC applies afterwards.
