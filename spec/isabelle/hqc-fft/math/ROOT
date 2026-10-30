@@ -13,3 +13,4 @@ session HQC_FFT_Math = "HOL-Computational_Algebra" +
     BC
     IConv
     Encode
+    Flatten
