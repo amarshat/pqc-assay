@@ -35,6 +35,9 @@ proof -
   then show ?thesis using r by (simp add: add.commute)
 qed
 
+lemma mod_blk: "r < (W::nat) \<Longrightarrow> (q * W + r) mod W = r"
+  by simp
+
 lemma stagef_shift:
   assumes "S mod 2 ^ Suc si = 0"
   shows "stagef (2 ^ si) (twf \<beta> base si) g (t + S) = stagef (2 ^ si) (twf \<beta> (base + S) si) (\<lambda>j. g (j + S)) t"
@@ -156,6 +159,83 @@ next
       by (rule chain_local) (use t' in \<open>auto simp: Ghi div_eq_0_iff\<close>)
     also have "\<dots> = fft \<beta> M (base + 2 ^ M) g1 t'" by (rule Suc.IH[OF alb t'(1)])
     finally show ?thesis using False by (simp add: Let_def c_def g0_def g1_def t'_def)
+  qed
+  finally show ?case .
+qed
+
+text \<open>The inverse network (i_butterfly: hi += lo; lo += hi c), stages si = 0 up to M - 1.\<close>
+
+definition istagef :: "nat \<Rightarrow> (nat \<Rightarrow> 'a :: char2) \<Rightarrow> (nat \<Rightarrow> 'a) \<Rightarrow> nat \<Rightarrow> 'a" where
+  "istagef h tw f t = (let r = t mod (2 * h); c = tw (t div (2 * h))
+     in if r < h then f t + (f (t + h) + f t) * c else f t + f (t - h))"
+
+fun ichain :: "(nat \<Rightarrow> 'a :: char2) \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> (nat \<Rightarrow> 'a) \<Rightarrow> nat \<Rightarrow> 'a" where
+  "ichain \<beta> base 0 f = f"
+| "ichain \<beta> base (Suc M) f = istagef (2 ^ M) (twf \<beta> base M) (ichain \<beta> base M f)"
+
+lemma istagef_stagef:
+  assumes h0: "0 < h"
+  shows "istagef h tw (stagef h tw g) = g"
+proof (rule ext)
+  fix t
+  define W where "W = 2 * h"
+  define r where "r = t mod W"
+  define q where "q = t div W"
+  define c where "c = tw q"
+  have t: "t = q * W + r" by (simp add: q_def r_def)
+  show "istagef h tw (stagef h tw g) t = g t"
+  proof (cases "r < h")
+    case True
+    have r1: "(t + h) mod W = r + h" and q1: "(t + h) div W = q"
+    proof -
+      have e: "t + h = q * W + (r + h)" using t by simp
+      have b: "r + h < W" using True by (simp add: W_def)
+      show "(t + h) mod W = r + h" "(t + h) div W = q" by (simp_all only: e div_blk[OF b] mod_blk[OF b])
+    qed
+    have A: "stagef h tw g t = g t + g (t + h) * c"
+      using True by (simp add: stagef_def Let_def W_def[symmetric] r_def[symmetric] q_def[symmetric] c_def)
+    have B: "stagef h tw g (t + h) = g (t + h) + (g t + g (t + h) * c)"
+      using True by (simp add: stagef_def Let_def W_def[symmetric] r1 q1 c_def)
+    have "istagef h tw (stagef h tw g) t = stagef h tw g t + (stagef h tw g (t + h) + stagef h tw g t) * c"
+      using True by (simp add: istagef_def Let_def W_def[symmetric] r_def[symmetric] q_def[symmetric] c_def)
+    also have "\<dots> = g t" by (simp only: A B) (simp add: algebra_simps)
+    finally show ?thesis .
+  next
+    case False
+    then have rh: "h \<le> r" by simp
+    have W0: "0 < W" using h0 by (simp add: W_def)
+    have rW: "r < W" using W0 by (simp add: r_def)
+    have r1: "(t - h) mod W = r - h" and q1: "(t - h) div W = q"
+    proof -
+      have e: "t - h = q * W + (r - h)" using t rh by simp
+      have b: "r - h < W" using rW by simp
+      show "(t - h) mod W = r - h" "(t - h) div W = q" by (simp_all only: e div_blk[OF b] mod_blk[OF b])
+    qed
+    have th: "t - h + h = t" using t rh by simp
+    have rh2: "r - h < h" using rW by (simp add: W_def)
+    have A: "stagef h tw g (t - h) = g (t - h) + g t * c"
+      using rh rh2 by (simp add: stagef_def Let_def W_def[symmetric] r1 q1 th c_def)
+    have B: "stagef h tw g t = g t + (g (t - h) + g t * c)"
+      using False by (simp add: stagef_def Let_def W_def[symmetric] r_def[symmetric] q_def[symmetric] c_def)
+    have "istagef h tw (stagef h tw g) t = stagef h tw g t + stagef h tw g (t - h)"
+      using False by (simp add: istagef_def Let_def W_def[symmetric] r_def[symmetric])
+    also have "\<dots> = g t" by (simp only: A B) (simp add: algebra_simps)
+    finally show ?thesis .
+  qed
+qed
+
+theorem ichain_chain: "ichain \<beta> base M (chain \<beta> base M g) = g"
+proof (induction M arbitrary: g)
+  case 0 then show ?case by simp
+next
+  case (Suc M)
+  have "ichain \<beta> base (Suc M) (chain \<beta> base (Suc M) g)
+      = istagef (2 ^ M) (twf \<beta> base M) (ichain \<beta> base M (chain \<beta> base M (stagef (2 ^ M) (twf \<beta> base M) g)))"
+    by simp
+  also have "\<dots> = g"
+  proof -
+    have "(0::nat) < 2 ^ M" by simp
+    then show ?thesis by (simp only: Suc.IH istagef_stagef)
   qed
   finally show ?case .
 qed
