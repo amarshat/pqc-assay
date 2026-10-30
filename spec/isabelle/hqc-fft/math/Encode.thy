@@ -49,6 +49,25 @@ corollary fft_encode:
        = (\<Sum>d<2 ^ m * N. c d * X d (cantor \<beta> (base + u)))"
   by (simp add: fft_eval[OF cb al u top] eval_partial[OF cb al u top])
 
+text \<open>X as a product over the bits of its index.\<close>
+
+lemma Xf_prod: "k < 2 ^ N \<Longrightarrow> Xf i k x = (\<Prod>t<N. if bit k t then sv (i + t) x else 1)"
+proof (induction N arbitrary: i k)
+  case 0 then show ?case by (simp add: Xf.simps)
+next
+  case (Suc N)
+  have h: "k div 2 < 2 ^ N" using Suc.prems by (simp add: less_mult_imp_div_less power_Suc2[symmetric])
+  have "Xf i k x = (if odd k then sv i x else 1) * Xf (Suc i) (k div 2) x" by (rule Xf_unfold)
+  also have "\<dots> = (if bit k 0 then sv (i + 0) x else 1) * (\<Prod>t<N. if bit k (Suc t) then sv (i + Suc t) x else 1)"
+    by (simp add: Suc.IH[OF h] bit_Suc bit_0 cong: if_cong)
+  also have "\<dots> = (\<Prod>t<Suc N. if bit k t then sv (i + t) x else 1)"
+    by (simp only: prod.lessThan_Suc_shift)
+  finally show ?case .
+qed
+
+lemma X_prod: "k < 2 ^ N \<Longrightarrow> X k x = (\<Prod>t<N. if bit k t then sv t x else 1)"
+  by (simp add: X_def Xf_prod cong: if_cong)
+
 text \<open>The value of a polynomial from its novel-basis coordinates.\<close>
 
 lemma poly_novel: "poly (\<Sum>d<n. smult (c d) (XP d)) x = (\<Sum>d<n. c d * X d x)"
