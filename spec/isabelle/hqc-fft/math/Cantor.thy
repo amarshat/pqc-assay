@@ -114,6 +114,25 @@ next
   finally show ?thesis .
 qed
 
+lemma cantor_from_sum:
+  "v < 2 ^ N \<Longrightarrow> cantor_from \<beta> k v = (\<Sum>i<N. if bit v i then \<beta> (i + k) else 0)"
+proof (induction N arbitrary: v k)
+  case 0 then show ?case by (simp add: cantor_from.simps)
+next
+  case (Suc N)
+  have h: "v div 2 < 2 ^ N" using Suc.prems by (simp add: less_mult_imp_div_less power_Suc2[symmetric])
+  have "cantor_from \<beta> k v = (if odd v then \<beta> k else 0) + cantor_from \<beta> (Suc k) (v div 2)"
+    by (cases "v = 0") (simp_all add: cantor_from.simps[of \<beta> k v] cantor_from.simps[of \<beta> "Suc k" 0] cantor_from.simps[of \<beta> k 0])
+  also have "\<dots> = (if bit v 0 then \<beta> (0 + k) else 0) + (\<Sum>i<N. if bit v (Suc i) then \<beta> (Suc i + k) else 0)"
+    by (simp add: Suc.IH[OF h] bit_Suc bit_0 cong: if_cong)
+  also have "\<dots> = (\<Sum>i<Suc N. if bit v i then \<beta> (i + k) else 0)"
+    by (simp only: sum.lessThan_Suc_shift)
+  finally show ?case .
+qed
+
+lemma cantor_sum: "v < 2 ^ N \<Longrightarrow> cantor \<beta> v = (\<Sum>i<N. if bit v i then \<beta> i else 0)"
+  unfolding cantor_def by (subst cantor_from_sum) (simp_all cong: if_cong)
+
 theorem sv_cantor:
   assumes "cantor_basis n \<beta>" "v < 2 ^ n"
   shows "sv i (cantor \<beta> v) = cantor \<beta> (v div 2 ^ i)"
