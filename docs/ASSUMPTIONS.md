@@ -1557,5 +1557,5 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    points and the wrappers; SAW thus also proves the code leaves them unchanged. Rerun with it on
    2026-10-30: `make hqc-fft` (exit 0, 766 s on the M4 Pro, 78 mutants rejected), `make hqc-fft-3` (exit 0, 5730 s on the
    M4 Pro, 77 mutants rejected) and `make hqc-fft-wire` (exit 0, 59 s on the M2 Max, 7 mutants
-   rejected). `make hqc-fft-5` and `make hqc-fft-asis` are being rerun; until they finish, the hqc-5
-   results above are from the specifications without `mats_post`.
+   rejected). `make hqc-fft-5` and `make hqc-fft-asis` (exit 0, 79 and 3
+   mutants rejected; run on the M2 Max after `make hqc-fft`, the three together 15463 s).
