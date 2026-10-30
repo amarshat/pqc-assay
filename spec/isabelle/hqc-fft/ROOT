@@ -30,3 +30,4 @@ session HQC_FFT = "HQC_FFT_Const" +
     DivBridge
     Hom
     DecBridge
+    ViewBridge
