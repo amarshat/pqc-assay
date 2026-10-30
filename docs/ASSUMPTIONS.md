@@ -1510,8 +1510,8 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    for every pair of 280-word operands a, b, `Pl (L (mulT a b (inputT a) (inputT b))) = Pl (L a) * Pl (L b)`
    in GF(2)[x], about the lifted FFTTop.cry (the model SAW proves `polymul_280U64_input` and
    `polymul_280U64_mul` against). Two hypotheses, `encode = encodeIdx` and `decode = decodeIdx`, are the
-   FFTEnc.cry lemmas `make hqc-fft-lemmas` proves with abc; they are a cross-tool link, not proved in
-   Isabelle. The rest is in Isabelle: the generic theory in `spec/isabelle/hqc-fft/math` (Cantor-basis
+   FFTEnc.cry lemmas `make hqc-fft-lemmas` proves with abc; since 2026-10-30 Isabelle proves them too
+   (item 12), and `Uncond.thy` states the theorems without them. The rest is in Isabelle: the generic theory in `spec/isabelle/hqc-fft/math` (Cantor-basis
    subspace polynomials, the Lin-Chung-Han butterfly network evaluates on the coset `cantor(base + u)`,
    the iterative stage chain equals the recursive transform and the inverse chain undoes it, the
    inverse basis conversion over any schedule tree gives the polynomial from its novel-basis
@@ -1528,7 +1528,7 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    the low 512 words, base 2^42, 1024 points; km64 cross terms), and `Top5.mulT5_correct`, for every pair
    of 1024-word operands, `Pl (L (mulT5 (inputT5 a) (inputT5 b))) = Pl (L a) * Pl (L b)` (base 2^43, 2048
    points, no cross terms). Hypotheses: `encode3/5 = encodeIdx3/5` and `decode3/5 = decodeIdx3/5`, the
-   same abc lemmas. The hqc-5 conversions take the C's generic path, whose recursive cvt runs each
+   same abc lemmas, discharged in Isabelle by item 12. The hqc-5 conversions take the C's generic path, whose recursive cvt runs each
    node's hi subtree before its lo subtree; `Commute.layersR_layers` proves that order equal in effect
    to the tree order (a layer with L and T multiples of W commutes with any additive per-W-block map).
    `Gate35.thy` is the same oracle and axiom gate for these theorems; a lemma proved by `eval` added to
@@ -1545,8 +1545,8 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    `polymul_36864_input/mul` (the wrappers) and `vect_mul` equal their FFTWire.cry models at the three
    sets, with the entry points' specifications assumed (`polymul_280U64_input`, `polymul_280U64_mul`,
    `polymul_576U64_input`, `polymul_576U64_mul`, `polymul_input_transform`, `polymul_output`) and tied
-   by `scripts/hqc_fft_links.py` to the scripts that prove them (`fft_1`, `fft_3`, `fft_5`); each spec has a bit-flip mutant that fails. Isabelle (`Wire.vmulF<p>_correct`,
-   item 10's hypotheses): for inputs of degree below n, `vmulF<p> a b = (a * b) mod (x^n - 1)`. Composed,
+   by `scripts/hqc_fft_links.py` to the scripts that prove them (`fft_1`, `fft_3`, `fft_5`); each spec has a bit-flip mutant that fails. Isabelle (`Wire.vmulF<p>_correct`
+   with item 10's hypotheses, `Uncond.vmulF<p>_correct_unc` without them, item 12): for inputs of degree below n, `vmulF<p> a b = (a * b) mod (x^n - 1)`. Composed,
    the C `vect_mul` computes the HQC product, with the same right-hand side as the reference and AVX2
    theorems. The padding copies `VEC_N_SIZE_BYTES` bytes, so the last word keeps only its low bytes;
    the degree hypothesis is what makes that the operand.
@@ -1559,3 +1559,17 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    M4 Pro, 77 mutants rejected) and `make hqc-fft-wire` (exit 0, 59 s on the M2 Max, 7 mutants
    rejected). `make hqc-fft-5` and `make hqc-fft-asis` (exit 0, 79 and 3
    mutants rejected; run on the M2 Max after `make hqc-fft`, the three together 15463 s).
+12. **The encode/decode lemmas in Isabelle (2026-10-30).** `spec/isabelle/hqc-fft/n35/EncDec.thy` proves
+   `encode<p> fx = encodeIdx<p> fx` and `decode<p> fx = decodeIdx<p> fx` for every input at hqc-1, hqc-3
+   and hqc-5 (`encode_eq_encodeIdx`, `decode_eq_decodeIdx` and the 3/5 forms). Both sides are
+   characterized bit by bit (`encode` word by word, as an XOR of `_enc_mat` rows), and the gather
+   indices of `collect64/128/256` and the transpose-and-scatter indices of `decode` are shown to land on
+   the bits the index forms name. The theory is generated from the hqc-1 proof by
+   `scripts/hqc_fft_gen/encdec_eq.py` (931 lines); `make hqc-fft-isabelle` checks that the committed
+   file equals the generator output. `Uncond.thy` instantiates item 10's and item 11's theorems with
+   these lemmas: `mulT_correct_unc`, `mulT3_correct_unc`, `mulT5_correct_unc` (the product, no
+   hypothesis) and `vmulF1/3/5_correct_unc` (only the degree bounds). `Gate35.thy` checks all twelve for
+   oracles and proof holes; a lemma proved by `eval` added to its list fails the build (checked
+   2026-10-30: "ORACLE GATE: Uncond.neg_eval depends on [Code_Generator.holds_by_evaluation]", exit 2).
+   `make hqc-fft-isabelle` exit 0; HQC_FFT35 rebuilt clean in 3 min 31 s on the M2 Max. The abc lemmas of
+   `make hqc-fft-lemmas` are no longer used by any theorem and stay as an independent check.

@@ -148,10 +148,12 @@ output and shows that SAW rejects it without. A native differential test is in
 `scripts/hqc_fft_native/` (item 6), and the source mutants in `scripts/hqc_fft_c_mutants.sh` (item 9). Isabelle
 (`make hqc-fft-isabelle`, exit 0) proves the composed model is polynomial multiplication at all three
 sizes: `mulT`, `mulT3` and `mulT5` applied to the input transforms give the product of the operands in
-GF(2)[x] (A-HQC-FFT item 10), given the abc lemmas `encode == encodeIdx` and `decode == decodeIdx`.
+GF(2)[x] (A-HQC-FFT item 10), with no hypothesis: the batch forms of the encoder and decoder that SAW
+proves the C against equal the index forms the theory uses, proved in Isabelle at all three sizes
+(item 12).
 The artifact's HQC integration (`target/hqc-fft/hqc_wiring/gf2x.c`, its `vect_mul`, linked here
 against `gf264_ref`) is proved end to end (item 11): `make hqc-fft-wire` (SAW, exit 0) proves
-`vect_mul` equal to the Cryptol `vmulF1/3/5`, and `Wire.vmulF1/3/5_correct` (Isabelle) proves that
+`vect_mul` equal to the Cryptol `vmulF1/3/5`, and `Uncond.vmulF1/3/5_correct_unc` (Isabelle) proves that
 for inputs of degree below n that is `(a * b) mod (x^n - 1)`, the same statement as the reference
 and AVX2 theorems. Not done: the AVX2/NEON FFT multipliers the artifact deploys.
 

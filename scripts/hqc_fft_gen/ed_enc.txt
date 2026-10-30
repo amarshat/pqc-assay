@@ -1,0 +1,136 @@
+lemma encode_list: "seq_to_list (FFTEnc.encode fx) = concat (map (\<lambda>i. seq_to_list (FFTEnc.lin8 (FFTEnc.collect64 fx (from_nat i)))) [0..<64])"
+  by (simp add: FFTEnc.encode_def seq_to_list comp_def)
+
+lemma encode_nth: "e < 512 \<Longrightarrow> seq_to_list (FFTEnc.encode fx) ! e = seq_to_list (FFTEnc.lin8 (FFTEnc.collect64 fx (from_nat (e div 8)))) ! (e mod 8)"
+  unfolding encode_list by (subst nth_concat_upt[where k=8]) simp_all
+
+lemma w12: "(word_of_nat j * 0x40 + word_of_nat i :: 12 word) = word_of_nat (64 * j + i)"
+  by simp
+
+lemma u12: "x < 4096 \<Longrightarrow> unat (word_of_nat x :: 12 word) = x"
+  by (rule unat_of_nat_eq) simp
+
+lemma cidx:
+  assumes "i < 64" "j < 32"
+  shows "to_nat ((from_nat j :: (12, bool) seq) * 0x40 + from_nat i >> 3) = 8 * j + i div 8"
+proof -
+  have "to_nat ((from_nat j :: (12, bool) seq) * 0x40 + from_nat i >> 3) = unat (drop_bit 3 (word_of_nat (64 * j + i) :: 12 word))"
+    by (simp add: word_seq_convs seq_to_word.from_nat from_nat_word mult.commute seq_to_word.right_shift right_shift_def shiftr_def)
+  also have "\<dots> = unat (word_of_nat (64 * j + i) :: 12 word) div 2 ^ 3" by (simp only: unat_drop_bit_eq) (simp only: drop_bit_eq_div)
+  also have "\<dots> = (64 * j + i) div 2 ^ 3" using assms by (simp only: u12)
+  finally show ?thesis using assms by simp
+qed
+
+lemma cidx2:
+  assumes "i < 64" "j < 32"
+  shows "to_nat (drop'`{9,3,bool} (coerce_seq_len ((from_nat j :: (12, bool) seq) * 0x40 + from_nat i))) = i mod 8"
+proof -
+  define W where "W = (from_nat j :: (12, bool) seq) * 0x40 + from_nat i"
+  have "to_nat (drop'`{9,3,bool} (coerce_seq_len W)) = unat (seq_to_word W) mod 8"
+    by (simp add: to_nat_seq_to_word seq_to_word.drop' seq_to_word.coerce_seq_len unsigned_take_bit_eq take_bit_eq_mod unsigned_ucast_eq unat_mod mod_mod_cancel)
+  moreover have "seq_to_word W = (word_of_nat (64 * j + i) :: 12 word)"
+    by (simp add: W_def word_seq_convs seq_to_word.from_nat from_nat_word mult.commute)
+  moreover have "unat (word_of_nat (64 * j + i) :: 12 word) = 64 * j + i" using assms by (simp only: u12)
+  moreover have "(64 * j + i) mod 8 = i mod 8"
+  proof -
+    have "64 * j + i = i + 8 * (8 * j)" by simp
+    then show ?thesis by (simp only: mod_mult_self2)
+  qed
+  ultimately show ?thesis by (simp add: W_def)
+qed
+
+lemma collect64_nth:
+  assumes i: "i < 64" and j: "j < 32"
+  shows "nth_seq (FFTEnc.collect64 fx (from_nat i)) j
+       = FFTEnc.byteOf (nth_seq fx (8 * j + i div 8)) (drop'`{9,3,bool} (coerce_seq_len ((from_nat j :: (12, bool) seq) * 0x40 + from_nat i)))"
+  using i j
+  apply (simp add: FFTEnc.collect64_def seq_to_list nth_seq.rep_eq)
+  apply (subst nth_list_concat_upt[where k=1])
+    apply simp_all
+  apply (simp add: cidx)
+  done
+
+lemma flat_bit:
+  fixes fx :: "(256, w64) seq"
+  assumes p: "p < 16384"
+  shows "bit (seq_to_word (FFTEnc.flat fx)) p = bit (seq_to_word (nth_seq fx (p div 64))) (p mod 64)"
+proof -
+  define xs where "xs = map seq_to_list (seq_to_list fx)"
+  have lx: "\<forall>x\<in>set xs. length x = 64" by (auto simp: xs_def)
+  have lxs: "length xs = 256" by (simp add: xs_def)
+  have "bit (seq_to_word (FFTEnc.flat fx)) p = concat (rev xs) ! (64 * length xs - Suc p)"
+    using p by (simp add: bit_s2w flat_list xs_def rev_map lxs)
+  also have "\<dots> = (xs ! (p div 64)) ! (64 - Suc (p mod 64))"
+    using p lx lxs by (intro concat_rev_nth) simp_all
+  also have "\<dots> = bit (seq_to_word (nth_seq fx (p div 64))) (p mod 64)"
+    using p by (simp add: xs_def bit_s2w nth_seq.rep_eq)
+  finally show ?thesis .
+qed
+
+lemma encode_word:
+  fixes fx :: "(256, w64) seq"
+  assumes e: "e < 512"
+  shows "seq_to_word (nth_seq (FFTEnc.encode fx) e)
+       = foldl (XOR) 0 (map (\<lambda>j. if bit (seq_to_word (nth_seq fx (8 * j + e div 64))) (e mod 64) then encw ! j else 0) [0..<32])"
+proof -
+  have "seq_to_word (nth_seq (FFTEnc.encode fx) e) = seq_to_word (seq_to_list (FFTEnc.lin8 (FFTEnc.collect64 fx (from_nat (e div 8)))) ! (e mod 8))"
+    using e by (simp add: nth_seq.rep_eq encode_nth)
+  also have "\<dots> = foldl (XOR) 0 (map (\<lambda>j. if bit (seq_to_word (nth_seq (FFTEnc.collect64 fx (from_nat (e div 8))) j)) (e mod 8) then encw ! j else 0) [0..<32])"
+    by (simp add: lin8_word)
+  also have "\<dots> = foldl (XOR) 0 (map (\<lambda>j. if bit (seq_to_word (nth_seq fx (8 * j + e div 64))) (e mod 64) then encw ! j else 0) [0..<32])"
+  proof (intro arg_cong[where f="foldl (XOR) 0"] map_cong refl)
+    fix j assume "j \<in> set [0..<32]"
+    then have j: "j < 32" by simp
+    have i: "e div 8 < 64" using e by simp
+    have a: "(e div 8) div 8 = e div 64" using div_mult2_eq[of e 8 8] by simp
+    have b: "8 * ((e div 8) mod 8) + e mod 8 = e mod 64" using mod_mult2_eq[of e 8 8] by simp
+    show "(if bit (seq_to_word (nth_seq (FFTEnc.collect64 fx (from_nat (e div 8))) j)) (e mod 8) then encw ! j else 0)
+        = (if bit (seq_to_word (nth_seq fx (8 * j + e div 64))) (e mod 64) then encw ! j else 0)"
+      using i j by (simp add: collect64_nth byteOf_bit cidx2 a b)
+  qed
+  finally show ?thesis .
+qed
+
+lemma encodeIdx_word:
+  fixes fx :: "(256, w64) seq"
+  assumes e: "e < 512"
+  shows "seq_to_word (nth_seq (FFTEnc.encodeIdx fx) e)
+       = foldl (XOR) 0 (map (\<lambda>j. if bit (seq_to_word (nth_seq fx (8 * j + e div 64))) (e mod 64) then encw ! j else 0) [0..<32])"
+proof -
+  define V where "V = (rev_seq (coerce_seq_len (map_seq (\<lambda>j. nth_end_list (seq_to_list (FFTEnc.flat fx)) (to_nat (0x200 * j + from_nat e)))
+            (fromToLessThan TY(0) TY(32) TY((14, bool) seq)))) :: (32, bool) seq)"
+  have nt: "nth_seq (FFTEnc.encodeIdx fx) e = FFTEnc.linmap TY(32) FFTEnc.encMat V"
+    using e by (simp add: FFTEnc.encodeIdx_def Let_def seq_to_list nth_seq.rep_eq V_def)
+  show ?thesis
+    unfolding nt linmap_word
+  proof (intro arg_cong[where f="foldl (XOR) 0"] map_cong refl)
+    fix j assume "j \<in> set [0..<32]"
+    then have j: "j < 32" by simp
+    have p: "512 * j + e < 16384" using e j by simp
+    have a: "(512 * j + e) div 64 = 8 * j + e div 64" by simp
+    have b: "(512 * j + e) mod 64 = e mod 64"
+    proof -
+      have "512 * j + e = e + 64 * (8 * j)" by simp
+      then show ?thesis by (simp only: mod_mult_self2)
+    qed
+    show "(if bit (seq_to_word V) j then seq_to_word (nth_seq FFTEnc.encMat j) else 0)
+        = (if bit (seq_to_word (nth_seq fx (8 * j + e div 64))) (e mod 64) then encw ! j else 0)"
+    proof -
+      have v: "bit (seq_to_word V) j = bit (seq_to_word (FFTEnc.flat fx)) (512 * j + e)"
+        unfolding V_def using e j by (rule encode_bit)
+      have w: "seq_to_word (nth_seq FFTEnc.encMat j) = encw ! j" using j by (simp add: encw_nth)
+      show ?thesis by (simp only: v flat_bit[OF p] a b w)
+    qed
+  qed
+qed
+
+theorem encode_is_encodeIdx: "FFTEnc.encode fx = FFTEnc.encodeIdx fx"
+proof (rule L_inj, rule nth_equalityI)
+  show "length (L (FFTEnc.encode fx)) = length (L (FFTEnc.encodeIdx fx))" by simp
+next
+  fix e assume "e < length (L (FFTEnc.encode fx))"
+  then have e: "e < 512" by simp
+  show "L (FFTEnc.encode fx) ! e = L (FFTEnc.encodeIdx fx) ! e"
+    using e by (simp add: L_nth' encode_word encodeIdx_word)
+qed
+

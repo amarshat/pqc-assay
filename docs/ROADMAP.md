@@ -59,8 +59,9 @@ F2-linear maps (`encode_64` via a `linear_map_x8` override under z3; `decode_64`
 `transpose_8x8` override, as one contract of 32-byte runs at hqc-3/5: 4515 s and 10077 s) and the basis
 conversions (closed-form division layers; 18 GB at hqc-5). Part (1) in Isabelle, done 2026-10-30 for
 the three entry points (`make hqc-fft-isabelle`; A-HQC-FFT item 10): `mulT`, `mulT3`, `mulT5` of the
-input transforms are the products of the operands, given the abc lemmas `encode == encodeIdx`,
-`decode == decodeIdx` (`make hqc-fft-lemmas`). Done 2026-10-30 (A-HQC-FFT item 11): the artifact's
+input transforms are the products of the operands; the abc lemmas `encode == encodeIdx`,
+`decode == decodeIdx` it first used are proved in Isabelle as well (A-HQC-FFT item 12), so the
+theorems have no hypothesis beyond the degree bound. Done 2026-10-30 (A-HQC-FFT item 11): the artifact's
 `vect_mul`, linked against `gf264_ref`, equals `vmulF1/3/5` (SAW, `make hqc-fft-wire`), and
 `vmulF1/3/5_correct` (Isabelle) states that is `(a * b) mod (x^n - 1)` for inputs of degree below n.
 Next: the AVX2 variant of the FFT multiplier.

@@ -202,11 +202,12 @@ hqc-fft-lemmas:
 ## model's GF(2^64) product and Cantor/encode/decode constants checked in the kernel; HQC_FFT: stage,
 ## btfy9 and encodeIdx as the theory's network and partial evaluation).
 hqc-fft-isabelle:
+	@python3 scripts/hqc_fft_gen/encdec_eq.py --check
 	$(ISABELLE) build -b -d spec/isabelle/hqc -d spec/isabelle/hqc-fft -d spec/isabelle/hqc-fft/math -v HQC_FFT_Math HQC_FFT HQC_FFT35
 
 ## Every proof behind the HQC paper's three-multiplier claim, in one command: the reference and AVX2
 ## chains, the additive-FFT chain at the three lengths with its integration and model lemmas, and the
-## three Isabelle sessions. About seven hours on one machine; hqc-fft-5 needs about 19 GB.
+## three Isabelle sessions. About 7.5 hours on one machine; hqc-fft-5 needs about 19 GB.
 hqc-all: hqc hqc-avx hqc-isabelle hqc-fft hqc-fft-3 hqc-fft-5 hqc-fft-wire hqc-fft-lemmas hqc-fft-isabelle
 	@echo "VERIFIED: every HQC proof target (reference, AVX2 and additive-FFT multipliers at hqc-1/3/5)"
 

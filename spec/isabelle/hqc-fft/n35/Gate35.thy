@@ -1,12 +1,12 @@
 theory Gate35
-  imports Wire
+  imports Wire Uncond
 begin
 
-text \<open>Build-time gate for the additive-FFT result at the hqc-3 and hqc-5 sizes (mulT3_correct and
-  mulT5_correct, and the steps they rest on) and of the HQC integration at all three sizes
-  (vmulF1/3/5_correct) depends on no oracle and no proof hole. The kernel checks of the model's
-  constants use code_simp, which is a simplifier proof; an evaluation oracle (eval, normalization)
-  would show up here.\<close>
+text \<open>Build-time gate: the additive-FFT result at the hqc-3 and hqc-5 sizes (mulT3_correct and
+  mulT5_correct, and the steps they rest on), the HQC integration at all three sizes
+  (vmulF1/3/5_correct), the encode/decode lemmas of EncDec and the unconditional theorems of Uncond
+  depend on no oracle and no proof hole. The kernel checks of the model's constants use code_simp,
+  which is a simplifier proof; an evaluation oracle (eval, normalization) would show up here.\<close>
 
 ML \<open>
   let
@@ -17,6 +17,18 @@ ML \<open>
        | os => error ("ORACLE GATE: " ^ nm ^ " depends on [" ^
                       commas (map (fn ((n, _), _) => n) os) ^ "]"))
   in
+    check "Uncond.vmulF1_correct_unc" @{thm Uncond.vmulF1_correct_unc};
+    check "Uncond.vmulF3_correct_unc" @{thm Uncond.vmulF3_correct_unc};
+    check "Uncond.vmulF5_correct_unc" @{thm Uncond.vmulF5_correct_unc};
+    check "Uncond.mulT_correct_unc" @{thm Uncond.mulT_correct_unc};
+    check "Uncond.mulT3_correct_unc" @{thm Uncond.mulT3_correct_unc};
+    check "Uncond.mulT5_correct_unc" @{thm Uncond.mulT5_correct_unc};
+    check "EncDec.encode_eq_encodeIdx" @{thm EncDec.encode_eq_encodeIdx};
+    check "EncDec.decode_eq_decodeIdx" @{thm EncDec.decode_eq_decodeIdx};
+    check "EncDec.encode3_eq_encodeIdx3" @{thm EncDec.encode3_eq_encodeIdx3};
+    check "EncDec.decode3_eq_decodeIdx3" @{thm EncDec.decode3_eq_decodeIdx3};
+    check "EncDec.encode5_eq_encodeIdx5" @{thm EncDec.encode5_eq_encodeIdx5};
+    check "EncDec.decode5_eq_decodeIdx5" @{thm EncDec.decode5_eq_decodeIdx5};
     check "Wire.vmulF1_correct" @{thm Wire.vmulF1_correct};
     check "Wire.vmulF3_correct" @{thm Wire.vmulF3_correct};
     check "Wire.vmulF5_correct" @{thm Wire.vmulF5_correct};

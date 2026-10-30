@@ -1,0 +1,138 @@
+lemma len_concat_upt:
+  "(\<And>i. i < n \<Longrightarrow> length (f i) = k) \<Longrightarrow> length (concat (map f [0..<n])) = n * k"
+  by (induction n) auto
+
+lemma nth_concat_upt:
+  assumes "\<And>i. i < n \<Longrightarrow> length (f i) = k" "e < n * k"
+  shows "concat (map f [0..<n]) ! e = f (e div k) ! (e mod k)"
+  using assms
+proof (induction n arbitrary: e)
+  case 0 then show ?case by simp
+next
+  case (Suc n)
+  have lc: "length (concat (map f [0..<n])) = n * k"
+    using Suc.prems(1) by (intro len_concat_upt) auto
+  show ?case
+  proof (cases "e < n * k")
+    case True
+    then show ?thesis using Suc.IH[of e] Suc.prems(1) lc by (simp add: nth_append)
+  next
+    case False
+    have k: "0 < k" using Suc.prems(2) by (cases k) auto
+    have ek: "e - n * k < k" using False Suc.prems(2) by simp
+    define r where "r = e - n * k"
+    have er: "e = r + n * k" using False by (simp add: r_def)
+    have d: "e div k = n" using ek k unfolding er r_def[symmetric] by (simp add: div_mult_self1)
+    have m: "e mod k = e - n * k" using ek unfolding er r_def[symmetric] by (simp add: mod_mult_self1)
+    show ?thesis using False lc d m by (simp add: nth_append)
+  qed
+qed
+
+lemma nth_list_concat_upt:
+  assumes "\<And>i. i < n \<Longrightarrow> length (f i) = k" "e < n * k"
+  shows "nth_list (concat (map f [0..<n])) e = f (e div k) ! (e mod k)"
+  using assms len_concat_upt[of n f k] nth_concat_upt[of n f k e] by simp
+
+lemma encw_nth': "j < 64 \<Longrightarrow> seq_to_word (seq_to_list FFTEnc.encMat ! j) = encw ! j"
+  using encw_nth[of j] by (simp add: nth_seq.rep_eq)
+
+lemma nth_end_to_bl: "n < LENGTH('a) \<Longrightarrow> nth_end_list (to_bl (w :: 'a::len word)) n = bit w n"
+  by (simp add: nth_end_list_def to_bl_nth word_size)
+
+lemma lin8_word:
+  assumes kk: "kk < 8"
+  shows "seq_to_word (seq_to_list (FFTEnc.lin8 bits) ! kk)
+       = foldl (XOR) 0 (map (\<lambda>j. if bit (seq_to_word (nth_seq bits j)) kk then encw ! j else 0) [0..<32])"
+  using kk
+  apply (simp add: FFTEnc.lin8_def seq_to_list word_seq_convs foldl_seq.rep_eq s2w_foldl_xor)
+  apply (intro arg_cong[where f="foldl (XOR) 0"] map_cong refl)
+  apply (auto simp: encw_nth' seq_to_word.zero bit_s2w nth_seq.rep_eq seq_to_word.from_nat from_nat_word unat_of_nat nth_end_to_bl)
+  apply (metis seq_to_list_conv)+
+  done
+
+lemma to_nat3: "to_nat (kb :: (3, bool) seq) < 8"
+  using unat_lt2p[of "seq_to_word kb"] by (simp add: to_nat_seq_to_word)
+
+lemma byteOf_bit:
+  assumes kk: "kk < 8"
+  shows "bit (seq_to_word (FFTEnc.byteOf w kb)) kk = bit (seq_to_word w) (8 * to_nat kb + kk)"
+proof -
+  define k where "k = to_nat kb"
+  have k: "k < 8" using to_nat3 by (simp add: k_def)
+  have "bit (seq_to_word (FFTEnc.byteOf w kb)) kk = group_list 8 8 (seq_to_list w) ! (7 - k) ! (7 - kk)"
+    using kk k by (simp add: FFTEnc.byteOf_def seq_to_list nth_seq.rep_eq bit_s2w k_def rev_nth)
+  also have "\<dots> = seq_to_list w ! ((7 - k) * 8 + (7 - kk))"
+    using k kk by (simp add: group_list_elem)
+  also have "\<dots> = bit (seq_to_word w) (8 * k + kk)"
+  proof -
+    have "(7 - k) * 8 + (7 - kk) = 64 - Suc (8 * k + kk)" using k kk by simp
+    then show ?thesis using k kk by (simp add: bit_s2w)
+  qed
+  finally show ?thesis by (simp add: k_def)
+qed
+
+lemma s2w_inj: "seq_to_word (x :: ('n::len, bool) seq) = seq_to_word y \<Longrightarrow> x = y"
+  by (metis seq_to_list_conv seq_to_list_inject)
+
+lemma L_inj: "L (x :: ('n, w64) seq) = L y \<Longrightarrow> x = y"
+proof -
+  assume "L x = L y"
+  then have "map seq_to_word (seq_to_list x) = map seq_to_word (seq_to_list y)" by (simp add: L_def)
+  moreover have "inj (seq_to_word :: w64 \<Rightarrow> 64 word)" by (auto intro: injI s2w_inj)
+  ultimately have "seq_to_list x = seq_to_list y" by (simp add: inj_map_eq_map)
+  then show "x = y" by (simp add: seq_to_list_inject)
+qed
+
+lemma L_nth': "e < LEN('n) \<Longrightarrow> L (x :: ('n, w64) seq) ! e = seq_to_word (nth_seq x e)"
+  by (simp add: L_def nth_seq.rep_eq)
+
+lemma ois3: "c < 8 \<Longrightarrow> to_nat (of_int_seq (int c) :: (3, bool) seq) = c"
+  apply (simp add: word_seq_convs)
+  apply (rule unat_of_nat_eq)
+  apply simp
+  done
+
+lemma transpose8_bit:
+  assumes j: "j < 8" and c: "c < 8"
+  shows "bit (seq_to_word (nth_seq (FFTEnc.transpose8 m) j)) c = bit (seq_to_word (nth_seq m c)) j"
+  using j c
+  apply (simp add: FFTEnc.transpose8_def seq_to_list comp_def nth_seq.rep_eq bit_s2w)
+  apply (subgoal_tac "[0..<8] ! (7 - c) = 7 - c")
+   apply (simp add: of_nat_diff ois3)
+  apply (simp del: upt_Suc)
+  done
+
+lemma t3d: "to_nat (take'`{3,3,bool} (coerce_seq_len (t :: (6, bool) seq))) = to_nat t div 8"
+proof -
+  have "unat (seq_to_word t) < 64" using unat_lt2p[of "seq_to_word t"] by simp
+  then show ?thesis
+    by (simp add: word_seq_convs seq_to_word.take' seq_to_word.coerce_seq_len unsigned_ucast_eq unat_drop_bit_eq
+        drop_bit_eq_div unat_div take_bit_eq_mod)
+qed
+
+lemma t3m: "to_nat (drop'`{3,3,bool} (coerce_seq_len (t :: (6, bool) seq))) = to_nat t mod 8"
+proof -
+  have "unat (seq_to_word t) < 64" using unat_lt2p[of "seq_to_word t"] by simp
+  then show ?thesis
+    by (simp add: word_seq_convs seq_to_word.drop' seq_to_word.coerce_seq_len unsigned_take_bit_eq take_bit_eq_mod
+        unsigned_ucast_eq unat_mod)
+qed
+
+lemma bitsof_eqI:
+  assumes l: "length a = length b" and e: "\<And>p. p < 64 * length a \<Longrightarrow> bitsof a p = bitsof b p"
+  shows "a = (b :: 64 word list)"
+proof (rule nth_equalityI)
+  show "length a = length b" by (rule l)
+next
+  fix i assume i: "i < length a"
+  show "a ! i = b ! i"
+  proof (rule word_eqI)
+    fix r assume "r < size (a ! i)"
+    then have r: "r < 64" by (simp add: word_size)
+    have p: "64 * i + r < 64 * length a" using i r by simp
+    have d: "(64 * i + r) div 64 = i" and m: "(64 * i + r) mod 64 = r" using r by simp_all
+    show "bit (a ! i) r = bit (b ! i) r"
+      using e[OF p] i l r by (simp add: bitsof_def d m)
+  qed
+qed
+
