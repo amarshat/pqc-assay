@@ -32,3 +32,5 @@ session HQC_FFT = "HQC_FFT_Const" +
     DecBridge
     ViewBridge
     Forward
+    Backward
+    Cross
