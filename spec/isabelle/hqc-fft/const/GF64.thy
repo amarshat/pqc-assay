@@ -88,6 +88,12 @@ lemma gfw_xor: "gfw (x XOR y) = gfw x + gfw y"
 lemma gfw_zero [simp]: "gfw 0 = 0"
   by transfer simp
 
+lemma Rep_gfw: "Rep_gf64 (gfw w) = pw w"
+  by transfer simp
+
+lemma gfw_eqI: "pw w = (Rep_gf64 x * Rep_gf64 y) mod PG \<Longrightarrow> gfw w = x * y"
+  by (metis Rep_gf64_inverse Rep_gfw times_gf64.rep_eq)
+
 lemma gfw_inj: "gfw x = gfw y \<Longrightarrow> x = y"
   by transfer (rule pw_inj)
 

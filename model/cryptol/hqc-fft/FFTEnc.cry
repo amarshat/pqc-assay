@@ -211,13 +211,13 @@ decBatch5 : [2048][64] -> [8] -> [8][8][8]
 decBatch5 x i = [ transpose8 [ byteOf r kb | r <- rr ] | kb <- [0 .. 7] : [8][3] ]
   where rr = [ linmap`{64} decMat e | e <- (split`{256} x) @ i ]
 dbytes5 : [2048][64] -> [8] -> [6] -> [32][8]
-dbytes5 x i0 t = [ (decBatch5 x i) @ (t >> 3) @ (drop`{3} t) | i <- take`{32} [i0 ...] ]
+dbytes5 x i0 t = [ (decBatch5 x i) @ (t >> 3) @ (drop`{3} t) | i <- [ i0 + k | k <- [0 .. 31] ] ]
 
 decBatch3 : [1024][64] -> [7] -> [8][8][8]
 decBatch3 x i = [ transpose8 [ byteOf r kb | r <- rr ] | kb <- [0 .. 7] : [8][3] ]
   where rr = [ linmap`{64} decMat e | e <- (split`{128} x) @ i ]
 dbytes3 : [1024][64] -> [7] -> [6] -> [32][8]
-dbytes3 x i0 t = [ (decBatch3 x i) @ (t >> 3) @ (drop`{3} t) | i <- take`{32} [i0 ...] ]
+dbytes3 x i0 t = [ (decBatch3 x i) @ (t >> 3) @ (drop`{3} t) | i <- [ i0 + k | k <- [0 .. 31] ] ]
 
 // The output assembled from the runs: byte b = i + step t (i < step) is byte i % 32 of run (i - i % 32, t),
 // and the words are the little-endian view of the bytes. asm3/asm5 are what the partwise contract of

@@ -1,0 +1,20 @@
+/* Checks on the FFT models that use Cryptol primitives cryptol-to-isabelle cannot lift (pmult, pmod,
+   pdiv, infinite sequences), kept out of the lifted modules. Proved by `make hqc-fft-lemmas`. */
+module FFTCheck where
+
+import FFTRef
+import FFTEnc
+import FFTBC
+
+// gf264 (shift/XOR reduction) is the product mod x^64 + x^4 + x^3 + x + 1.
+property gf264_is_pmod (a : [64]) (b : [64]) = gf264 a b == pmod (pmult a b) <| x^^64 + x^^4 + x^^3 + x + 1 |>
+
+// divBlock is quotient and remainder by x^L + x^T (two sizes).
+property divBlock_is_pdiv_pmod (f : [32]) =
+  divBlock`{16,4} f == drop`{16} (pdiv f g) # pmod f g where g = (1 : [17]) << 16 ^ (1 : [17]) << 4
+property divBlock_is_pdiv_pmod_half (f : [16]) =
+  divBlock`{8,4} f == drop`{8} (pdiv f g) # pmod f g where g = (1 : [9]) << 8 ^ (1 : [9]) << 4
+
+// The finite run form of dbytes is the earlier take`{32} [i0 ...]: the batch indices are the same list.
+property runIdx3 (i0 : [7]) = [ i0 + k | k <- [0 .. 31] ] == take`{32} [i0 ...]
+property runIdx5 (i0 : [8]) = [ i0 + k | k <- [0 .. 31] ] == take`{32} [i0 ...]

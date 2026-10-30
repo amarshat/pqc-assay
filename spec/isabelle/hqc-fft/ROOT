@@ -1,8 +1,26 @@
-session HQC_FFT = "HQC" +
+session HQC_FFT_Const in "const" = "HQC" +
+  description \<open>GF(2^64) as a ring, the lifted gf264 as its product, and the model's Cantor
+    basis constants checked in the kernel.\<close>
+  options [document = false]
+  sessions
+    HQC_FFT_Math
+  theories
+    GF64
+    WordPoly
+    GFBridge
+    GFMul
+    CantorConst
+    EncConst
+    DecConst
+
+session HQC_FFT = "HQC_FFT_Const" +
   description \<open>The additive-FFT HQC multiplier: the lifted Cryptol models of the gf264_ref stages
     against the generic theory in HQC_FFT_Math. Work in progress.\<close>
   options [document = false]
   sessions
     HQC_FFT_Math
   theories
-    GF64
+    CantorBridge
+    StageBridge
+    BtfyBridge
+    EncBridge

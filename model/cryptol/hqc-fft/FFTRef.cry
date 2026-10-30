@@ -16,9 +16,19 @@ import AVXK (k3step)
 mull64 : [64] -> [64] -> [2][64]
 mull64 = clmul1
 
-// GF(2^64) with the modulus x^64 + x^4 + x^3 + x + 1 (gf264.h: "0x1b").
+// GF(2^64) with the modulus x^64 + x^4 + x^3 + x + 1 (gf264.h: "0x1b"): the 128-bit carry-less product,
+// then x^64 = x^4 + x^3 + x + 1 applied twice (the first fold spills at most 4 bits past bit 63). Written
+// with shifts and XORs rather than pmod/pmult so that cryptol-to-isabelle can lift it; FFTCheck.cry
+// proves it equal to pmod (pmult a b) <| x^^64 + x^^4 + x^^3 + x + 1 |> (make hqc-fft-lemmas).
+fold64 : [64] -> [128]
+fold64 h = z ^ (z << 1) ^ (z << 3) ^ (z << 4) where z = (zero : [64]) # h
+
+red128 : [128] -> [64]
+red128 v = drop`{64} (w ^ fold64 (take`{64} w))
+  where w = ((zero : [64]) # drop`{64} v) ^ fold64 (take`{64} v)
+
 gf264 : [64] -> [64] -> [64]
-gf264 a b = pmod (pmult a b) <| x^^64 + x^^4 + x^^3 + x + 1 |>
+gf264 a b = red128 (hi # lo) where [lo, hi] = mull64 a b
 
 // ---- the Karatsuba ladder for the words above the FFT size (polymul_hqclen_ref.c) ------------
 

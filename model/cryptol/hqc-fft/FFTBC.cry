@@ -20,7 +20,7 @@ module FFTBC where
 // One layer: every 2L-bit block f becomes (f div g) # (f mod g) with g = x^L + x^T. With f = hi x^L + lo
 // and 2T <= L (true of every layer), the quotient is q = hi + hi div x^(L-T) and the remainder
 // r = lo + (q x^T mod x^L): two shifts and two XORs. (pdiv / pmod would say the same, but SAW unrolls
-// them into a quadratic long-division circuit; divBlock_is_pdiv_pmod below checks the closed form.)
+// them into a quadratic long-division circuit; FFTCheck.cry checks the closed form.)
 divLayer : {k, L, T} (fin k, fin L, fin T, L >= 1, 2 * T <= L) => [k * (2*L)] -> [k * (2*L)]
 divLayer v = join [ divBlock`{L,T} b | b <- split`{k} v ]
 
@@ -31,10 +31,6 @@ divBlock f = q # r
         q = hi ^ (hi >> `(L - T))
         r = lo ^ (q << `T)
 
-property divBlock_is_pdiv_pmod (f : [32]) =
-  divBlock`{16,4} f == drop`{16} (pdiv f g) # pmod f g where g = (1 : [17]) << 16 ^ (1 : [17]) << 4
-property divBlock_is_pdiv_pmod_half (f : [16]) =
-  divBlock`{8,4} f == drop`{8} (pdiv f g) # pmod f g where g = (1 : [9]) << 8 ^ (1 : [9]) << 4
 
 // Its inverse: (q # r) becomes q (x^L + x^T) + r.
 mulLayer : {k, L, T} (fin k, fin L, fin T, L >= 1, 2 * T <= L) => [k * (2*L)] -> [k * (2*L)]

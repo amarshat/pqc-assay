@@ -25,4 +25,10 @@ session HQC = "Cryptol" +
     AVX_P1
     AVX_P3
     AVX_P5
+    FFTRef
+    FFTEnc
+    FFTBC
+    FFTTop
+    FFTTop3
+    FFTTop5
     HQC_Gate

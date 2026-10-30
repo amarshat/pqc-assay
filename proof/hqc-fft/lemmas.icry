@@ -8,3 +8,10 @@
 :prove encode5_is_encodeIdx5
 :prove decode5_is_decodeIdx5
 :prove dbytes5_cover
+:m FFTCheck
+:set prover=abc
+:prove gf264_is_pmod
+:prove divBlock_is_pdiv_pmod
+:prove divBlock_is_pdiv_pmod_half
+:prove runIdx3
+:prove runIdx5

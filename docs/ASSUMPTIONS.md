@@ -1345,8 +1345,9 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    Homebrew clang 22 (`AVX_CLANG`; `llvm-link` lives beside it), linked into one module, no `-g`
    (SAW's bitcode reader warns on clang 22's debug metadata). The C is not edited.
 2. **Model** (`model/cryptol/hqc-fft/FFTRef.cry`, `FFTEnc.cry`). Mirrors the C function by function:
-   `mull64` (= `clmul1`), `gf264` (`pmod (pmult a b)` modulo x^64 + x^4 + x^3 + x + 1, the "0x1b"
-   of `gf264.h`), the Karatsuba ladder `km2 .. km64` as `kstep` and `km24 = k3step km8`, the Cantor
+   `mull64` (= `clmul1`), `gf264` (the 128-bit `mull64` product reduced by applying x^64 = x^4 +
+   x^3 + x + 1 twice with shifts and XORs, the "0x1b" of `gf264.h`; until 2026-10-29 it was written
+   `pmod (pmult a b)`, which cryptol-to-isabelle cannot lift, and `FFTCheck.cry` proves the two equal), the Karatsuba ladder `km2 .. km64` as `kstep` and `km24 = k3step km8`, the Cantor
    basis table and `cantor` (the F2-linear index-to-element map), `butterfly`/`ibutterfly`,
    `stage`/`istage` with twiddle `cantor ((2 m) ^ (scalar >> si))` for unit m of stage si, `btfy9` /
    `ibtfy9` (the 9-stage networks on 512 elements with scalar 2^41), `gf264v`, and `encode`/`decode`
@@ -1409,7 +1410,15 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    counts as before. 2026-10-28, with `decode_64` as one contract in runs (item 8), the changed scripts
    only, every one exit 0: `r3_dec` 4515 s and `fft_3` 298 s (M4 Pro), `r5_dec` 10077 s at 15.8 GB and
    `fft_5` 1002 s at 6.5 GB (M2 Max), each with its mutant rejected; with the unchanged scripts' times
-   above, hqc-3 5724 s and hqc-5 14158 s, 77 and 79 anticipated failures, peak 18.5 GB (r5_bc). An earlier model with `pdiv`/`pmod` per layer made rme take 30 GB on
+   above, hqc-3 5724 s and hqc-5 14158 s, 77 and 79 anticipated failures, peak 18.5 GB (r5_bc).
+   2026-10-29, after the model edits that make it liftable to Isabelle (`gf264` in shift/XOR form,
+   `dbytes3`/`dbytes5` with the finite index list `[i0 + k | k <- [0 .. 31]]` in place of
+   `take`{32} [i0 ...]`, the two `pdiv`/`pmod` checks moved out of `FFTBC.cry`), every target rerun
+   in full, every script exit 0: `make hqc-fft` 934 s at 22.1 GB peak, 78 anticipated failures (M2
+   Max); `make hqc-fft-3` 6034 s at 11.6 GB, 77 (M4 Pro); `make hqc-fft-5` 16624 s at 19.7 GB, 79 (M2
+   Max); `make hqc-fft-asis` 244 s at 16.0 GB, 3 (M2 Max). `make hqc-fft-lemmas` proves the edits
+   equal to the old forms (`FFTCheck.cry`: `gf264_is_pmod`, `divBlock_is_pdiv_pmod` at two sizes,
+   `runIdx3`/`runIdx5` for the run indices), 13 Q.E.D. by abc. An earlier model with `pdiv`/`pmod` per layer made rme take 30 GB on
    `repr_s8_1_16384` and was replaced by the closed form; rme on `encode_64` in the byte-gather form of
    the model reported every input as a counterexample at 1024 words, which is why the model is written
    in index form and `encode_64` is proved through the `linear_map_x8` override.

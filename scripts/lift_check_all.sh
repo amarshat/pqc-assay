@@ -14,6 +14,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 export PATH="$ROOT/.tools/bin:$PATH"
+# The additive-FFT models import GF2X and AVXK from the HQC model directory.
+export CRYPTOLPATH="$ROOT/model/cryptol/hqc"
 
 # committed_theory <TAB> cryptol_source <TAB> generated_name (optional, when the commit renames it)
 # Barrett_Lift is the one rename: cryptol-to-isabelle emits barrett_bridge.thy, and the committed
@@ -35,6 +37,12 @@ spec/isabelle/hqc/AVX1.thy	model/cryptol/hqc/AVX1.cry
 spec/isabelle/hqc/AVX3.thy	model/cryptol/hqc/AVX3.cry
 spec/isabelle/hqc/AVX5.thy	model/cryptol/hqc/AVX5.cry
 spec/isabelle/hqc/Toom5.thy	model/cryptol/hqc/Toom5.cry
+spec/isabelle/hqc/FFTRef.thy	model/cryptol/hqc-fft/FFTRef.cry
+spec/isabelle/hqc/FFTEnc.thy	model/cryptol/hqc-fft/FFTEnc.cry
+spec/isabelle/hqc/FFTBC.thy	model/cryptol/hqc-fft/FFTBC.cry
+spec/isabelle/hqc/FFTTop.thy	model/cryptol/hqc-fft/FFTTop.cry
+spec/isabelle/hqc/FFTTop3.thy	model/cryptol/hqc-fft/FFTTop3.cry
+spec/isabelle/hqc/FFTTop5.thy	model/cryptol/hqc-fft/FFTTop5.cry
 "
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT

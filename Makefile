@@ -18,7 +18,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: hqc-fft-bitcode hqc-fft hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -179,7 +179,15 @@ hqc-fft-asis: build/hqc-fft/fft_asis.bc
 ## equal the forms the SAW scripts prove against, and the batch runs dbytes3/dbytes5 assemble to the whole
 ## decoding. Cryptol :prove under abc, one process; the target fails unless every :prove line says Q.E.D.
 hqc-fft-lemmas:
-	@mkdir -p build/hqc-fft; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(CRYPTOL) -b proof/hqc-fft/lemmas.icry 2>&1 | tee build/hqc-fft/lemmas.log; n=$$(grep -c '^:prove' proof/hqc-fft/lemmas.icry); q=$$(grep -c '^Q.E.D.' build/hqc-fft/lemmas.log); [ "$$q" = "$$n" ] || { echo "FAILED: $$q of $$n lemmas proved (build/hqc-fft/lemmas.log)"; exit 1; }; echo "VERIFIED: $$n FFTEnc lemmas (encode/decode index form == proved form at hqc-1/3/5, batch runs cover decode3/decode5) by abc"
+	@mkdir -p build/hqc-fft; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(CRYPTOL) -b proof/hqc-fft/lemmas.icry 2>&1 | tee build/hqc-fft/lemmas.log; n=$$(grep -c '^:prove' proof/hqc-fft/lemmas.icry); q=$$(grep -c '^Q.E.D.' build/hqc-fft/lemmas.log); [ "$$q" = "$$n" ] || { echo "FAILED: $$q of $$n lemmas proved (build/hqc-fft/lemmas.log)"; exit 1; }; echo "VERIFIED: $$n FFTEnc and FFTCheck lemmas (encode/decode index form == proved form at hqc-1/3/5, batch runs cover decode3/decode5; the liftable gf264, divBlock and run-index forms == pmod/pdiv and the infinite-list forms) by abc"
+
+## Additive-FFT multiplier, part (1) of the milestone, in progress: the generic additive-FFT theory
+## (HQC_FFT_Math: Cantor basis, LCH butterflies, iterative network, inverse basis conversion over any
+## schedule, encode as partial evaluation) and its bridge to the lifted FFT models (HQC_FFT_Const: the
+## model's GF(2^64) product and Cantor/encode/decode constants checked in the kernel; HQC_FFT: stage,
+## btfy9 and encodeIdx as the theory's network and partial evaluation).
+hqc-fft-isabelle:
+	$(ISABELLE) build -b -d spec/isabelle/hqc -d spec/isabelle/hqc-fft -d spec/isabelle/hqc-fft/math -v HQC_FFT_Math HQC_FFT
 
 ## Out of band, a measurement: how rme scales with the leaf size (scripts/hqc_rme_scaling.sh).
 hqc-rme-scaling: hqc
