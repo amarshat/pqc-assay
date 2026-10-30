@@ -34,3 +34,5 @@ session HQC_FFT = "HQC_FFT_Const" +
     Forward
     Cross
     Backward
+    Assemble
+    FFT_Gate

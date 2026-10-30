@@ -1504,3 +1504,23 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    accepted them; they were replaced.
 
 
+
+10. **Part (1) at hqc-1, Isabelle (2026-10-30, `make hqc-fft-isabelle`, exit 0).** `Assemble.mulT_correct`:
+   for every pair of 280-word operands a, b, `Pl (L (mulT a b (inputT a) (inputT b))) = Pl (L a) * Pl (L b)`
+   in GF(2)[x], about the lifted FFTTop.cry (the model SAW proves `polymul_280U64_input` and
+   `polymul_280U64_mul` against). Two hypotheses, `encode = encodeIdx` and `decode = decodeIdx`, are the
+   FFTEnc.cry lemmas `make hqc-fft-lemmas` proves with abc; they are a cross-tool link, not proved in
+   Isabelle. The rest is in Isabelle: the generic theory in `spec/isabelle/hqc-fft/math` (Cantor-basis
+   subspace polynomials, the Lin-Chung-Han butterfly network evaluates on the coset `cantor(base + u)`,
+   the iterative stage chain equals the recursive transform and the inverse chain undoes it, the
+   inverse basis conversion over any schedule tree gives the polynomial from its novel-basis
+   coordinates, encode as partial evaluation) and the bridge to the lifted model (GF(2^64) as F2[x] mod
+   the gf264.h modulus, the lifted gf264 as its product; the 64 Cantor constants, the 64 encMat rows and
+   the 64 decMat checks as kernel computations by code_simp on an executable product proved correct;
+   the lifted stage, btfy9, ibtfy9, encodeIdx, decodeIdx, mulBlock/divBlock layers and the 25/28-layer
+   bc/ibc chains as the theory's objects). `FFT_Gate.thy` fails the build if `mulT_correct`,
+   `forward_eval`, `fftpart_correct` or `beta_cantor` depends on an oracle or a skipped proof, or if the
+   context has an axiom other than a definition or a generated type axiom; a lemma proved by `eval`
+   added to its list fails the build (checked 2026-10-30). Not yet done: hqc-3 and hqc-5 (btfy10/11,
+   the 65536/131072-bit schedule trees), and the composition with the SAW results into one statement
+   about the C.
