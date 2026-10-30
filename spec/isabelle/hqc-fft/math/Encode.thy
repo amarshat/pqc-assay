@@ -14,12 +14,12 @@ lemma X_split: "a < 2 ^ m \<Longrightarrow> X (a + 2 ^ m * b) x = X a x * X b (s
   by (simp add: poly_XP[symmetric] XP_factor poly_pcompose poly_sp)
 
 lemma sv_coset:
-  assumes cb: "cantor_basis \<beta>" and al: "base mod 2 ^ m = 0" and u: "u < 2 ^ m"
+  assumes cb: "cantor_basis n \<beta>" and al: "base mod 2 ^ m = 0" and u: "u < 2 ^ m" and top: "base + 2 ^ m \<le> 2 ^ n"
   shows "sv m (cantor \<beta> (base + u)) = cantor \<beta> (base div 2 ^ m)"
-  using al u by (simp add: sv_cantor[OF cb] div_add1_eq)
+  using al u top by (simp add: sv_cantor[OF cb] div_add1_eq)
 
 theorem eval_partial:
-  assumes cb: "cantor_basis \<beta>" and al: "base mod 2 ^ m = 0" and u: "u < 2 ^ m"
+  assumes cb: "cantor_basis n \<beta>" and al: "base mod 2 ^ m = 0" and u: "u < 2 ^ m" and top: "base + 2 ^ m \<le> 2 ^ n"
   shows "(\<Sum>d<2 ^ m * N. c d * X d (cantor \<beta> (base + u)))
        = evalN m (\<lambda>a. \<Sum>b<N. c (a + 2 ^ m * b) * X b (cantor \<beta> (base div 2 ^ m))) (cantor \<beta> (base + u))"
 proof -
@@ -32,7 +32,7 @@ proof -
     fix b a :: nat assume "a \<in> {..<2 ^ m}"
     then have "a < 2 ^ m" by simp
     then have "X (a + 2 ^ m * b) x = X a x * X b \<gamma>"
-      using X_split[of a m b x] sv_coset[OF cb al u] by (simp add: x_def \<gamma>_def)
+      using X_split[of a m b x] sv_coset[OF cb al u top] by (simp add: x_def \<gamma>_def)
     then show "c (a + 2 ^ m * b) * X (a + 2 ^ m * b) x = c (a + 2 ^ m * b) * X b \<gamma> * X a x"
       by (simp add: ac_simps)
   qed
@@ -44,10 +44,10 @@ proof -
 qed
 
 corollary fft_encode:
-  assumes cb: "cantor_basis \<beta>" and al: "base mod 2 ^ m = 0" and u: "u < 2 ^ m"
+  assumes cb: "cantor_basis n \<beta>" and al: "base mod 2 ^ m = 0" and u: "u < 2 ^ m" and top: "base + 2 ^ m \<le> 2 ^ n"
   shows "fft \<beta> m base (\<lambda>a. \<Sum>b<N. c (a + 2 ^ m * b) * X b (cantor \<beta> (base div 2 ^ m))) u
        = (\<Sum>d<2 ^ m * N. c d * X d (cantor \<beta> (base + u)))"
-  by (simp add: fft_eval[OF cb al u] eval_partial[OF cb al u])
+  by (simp add: fft_eval[OF cb al u top] eval_partial[OF cb al u top])
 
 text \<open>The value of a polynomial from its novel-basis coordinates.\<close>
 

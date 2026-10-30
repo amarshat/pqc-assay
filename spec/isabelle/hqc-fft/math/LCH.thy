@@ -95,9 +95,10 @@ proof -
 qed
 
 theorem fft_eval:
-  assumes cb: "cantor_basis \<beta>" and al: "base mod 2 ^ m = 0" and u: "u < 2 ^ m"
+  assumes cb: "cantor_basis n \<beta>" and al: "base mod 2 ^ m = 0" and u: "u < 2 ^ m"
+    and top: "base + 2 ^ m \<le> 2 ^ n"
   shows "fft \<beta> m base f u = evalN m f (cantor \<beta> (base + u))"
-  using al u
+  using al u top
 proof (induction m arbitrary: base f u)
   case 0 then show ?case by (simp add: evalN_def X_def Xf.simps)
 next
@@ -113,10 +114,10 @@ next
   proof (cases "u < 2 ^ m")
     case True
     have s: "sv m (cantor \<beta> (base + u)) = c"
-      using True al0 by (simp add: sv_cantor[OF cb] c_def div_add1_eq)
+      using True al0 Suc.prems(3) by (simp add: sv_cantor[OF cb] c_def div_add1_eq)
     have "fft \<beta> (Suc m) base f u = fft \<beta> m base g0 u"
       using True by (simp add: Let_def c_def g0_def hi_def)
-    also have "\<dots> = evalN m g0 (cantor \<beta> (base + u))" by (rule Suc.IH[OF al0 True])
+    also have "\<dots> = evalN m g0 (cantor \<beta> (base + u))" by (rule Suc.IH[OF al0 True]) (use Suc.prems(3) in simp)
     also have "\<dots> = evalN (Suc m) f (cantor \<beta> (base + u))"
       by (simp add: evalN_split s g0_def evalN_lin hi_def)
     finally show ?thesis .
@@ -129,10 +130,11 @@ next
     have q: "(base + u) div 2 ^ m = 2 * (base div 2 ^ Suc m) + 1"
       using al0 u' ev by (simp add: bu div_add1_eq)
     have s: "sv m (cantor \<beta> (base + u)) = 1 + c"
-      using cb by (simp add: sv_cantor[OF cb] q cantor_odd c_def ev cantor_basis_def)
+      using cb Suc.prems(2,3) by (simp add: sv_cantor[OF cb] q cantor_odd c_def ev cantor_basis_def)
     have "fft \<beta> (Suc m) base f u = fft \<beta> m (base + 2 ^ m) g1 u'"
       using False by (simp add: Let_def c_def g0_def g1_def hi_def u'_def)
-    also have "\<dots> = evalN m g1 (cantor \<beta> (base + u))" by (simp only: Suc.IH[OF alb u'] bu)
+    also have "\<dots> = evalN m g1 (cantor \<beta> (base + u))"
+      using Suc.IH[OF alb u'] Suc.prems(3) by (simp add: bu)
     also have "\<dots> = evalN (Suc m) f (cantor \<beta> (base + u))"
     proof -
       have "g1 = (\<lambda>k. f k + (1 + c) * hi k)" by (simp add: g1_def g0_def fun_eq_iff algebra_simps)
