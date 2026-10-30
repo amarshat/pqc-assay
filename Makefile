@@ -187,7 +187,7 @@ hqc-fft-lemmas:
 ## model's GF(2^64) product and Cantor/encode/decode constants checked in the kernel; HQC_FFT: stage,
 ## btfy9 and encodeIdx as the theory's network and partial evaluation).
 hqc-fft-isabelle:
-	$(ISABELLE) build -b -d spec/isabelle/hqc -d spec/isabelle/hqc-fft -d spec/isabelle/hqc-fft/math -v HQC_FFT_Math HQC_FFT
+	$(ISABELLE) build -b -d spec/isabelle/hqc -d spec/isabelle/hqc-fft -d spec/isabelle/hqc-fft/math -v HQC_FFT_Math HQC_FFT HQC_FFT35
 
 ## Out of band, a measurement: how rme scales with the leaf size (scripts/hqc_rme_scaling.sh).
 hqc-rme-scaling: hqc
