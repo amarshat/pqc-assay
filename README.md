@@ -128,7 +128,7 @@ compute the same polynomial, so they agree on the `VEC_N_SIZE_BYTES` bytes the A
 (unaligned load, per-lane shifts) have assumed specs; A-HQC item 12 lists them with the IR
 normalizations.
 
-### The additive-FFT multiplier (SAW layer done, Isabelle layer not started)
+### The additive-FFT multiplier
 
 `target/hqc-fft/gf264_ref/` vendors the GF(2^64) reference of the additive-FFT HQC multiplier (Chen,
 Chiu, Peng, Yang, TCHES 2026; public domain, commit c94c84d). `make hqc-fft`, `make hqc-fft-3` and
@@ -148,9 +148,12 @@ output and shows that SAW rejects it without. A native differential test is in
 `scripts/hqc_fft_native/` (item 6), and the source mutants in `scripts/hqc_fft_c_mutants.sh` (item 9). Isabelle
 (`make hqc-fft-isabelle`, exit 0) proves the composed model is polynomial multiplication at all three
 sizes: `mulT`, `mulT3` and `mulT5` applied to the input transforms give the product of the operands in
-GF(2)[x] (A-HQC-FFT item 10), given the abc lemmas `encode == encodeIdx` and `decode == decodeIdx`. Not
-done: one statement about the C that composes the SAW and Isabelle results, the reduction modulo
-x^n - 1 (outside these entry points), and the AVX2 variant.
+GF(2)[x] (A-HQC-FFT item 10), given the abc lemmas `encode == encodeIdx` and `decode == decodeIdx`.
+The artifact's HQC integration (`target/hqc-fft/hqc_wiring/gf2x.c`, its `vect_mul`, linked here
+against `gf264_ref`) is proved end to end (item 11): `make hqc-fft-wire` (SAW, exit 0) proves
+`vect_mul` equal to the Cryptol `vmulF1/3/5`, and `Wire.vmulF1/3/5_correct` (Isabelle) proves that
+for inputs of degree below n that is `(a * b) mod (x^n - 1)`, the same statement as the reference
+and AVX2 theorems. Not done: the AVX2/NEON FFT multipliers the artifact deploys.
 
 ## Checked once, not gated
 

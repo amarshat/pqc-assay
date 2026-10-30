@@ -15,6 +15,12 @@ let mats = do {
   llvm_alloc_global "_dec_mat";
   llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
 };
+// The matrices again, after the call: the code only reads them. Without this a spec used as an override
+// leaves them clobbered, and a caller that transforms two operands could not make the second call.
+let mats_post = do {
+  llvm_points_to (llvm_global "_enc_mat") (llvm_global_initializer "_enc_mat");
+  llvm_points_to (llvm_global "_dec_mat") (llvm_global_initializer "_dec_mat");
+};
 
 // _mull_64(c0*, c1*, a, b): the 64 x 64 carry-less product as two output words.
 let mull_spec post = do {
@@ -90,6 +96,7 @@ let enc_spec n h nt post = do {
   llvm_points_to fp (llvm_term x);
   llvm_execute_func [rp, llvm_term nt, fp, llvm_term {{ 32 : [32] }}];
   llvm_points_to rp (llvm_term (post x));
+  mats_post;
 };
 
 // linear_map_x8(rrx8, inbits, 32, _enc_mat): 32 bytes to 8 words.
@@ -133,6 +140,7 @@ let dec_pre n s nt = do {
 let dec_spec n s nt post = do {
   (rp, x) <- dec_pre n s nt;
   llvm_points_to_untyped rp (llvm_term (post x));
+  mats_post;
 };
 
 // The basis conversions, in place on n uint32 words; args are the arguments after the pointer.
@@ -151,3 +159,98 @@ let n2048 = llvm_term {{ 2048 : [32] }};
 let n4096 = llvm_term {{ 4096 : [32] }};
 let n8192 = llvm_term {{ 8192 : [32] }};
 let n16384 = llvm_term {{ 16384 : [32] }};
+
+// ---- the entry points (proved by fft_1/fft_3/fft_5, assumed by wire_1/wire_3/wire_5) ----------------
+
+// hqc-1
+let in_spec post = do {
+  mats;   // the encode/decode overrides read the matrices, so the caller allocates them
+  op <- llvm_alloc (w 512);
+  ap <- llvm_alloc_readonly (w 280);
+  a <- llvm_fresh_var "a" (w 280);
+  llvm_points_to ap (llvm_term a);
+  llvm_execute_func [op, ap];
+  llvm_points_to op (llvm_term (post a));
+  mats_post;
+};
+
+// hqc-1
+let mul_spec post = do {
+  mats;   // the encode/decode overrides read the matrices, so the caller allocates them
+  cp <- llvm_alloc (w 560);
+  ap <- llvm_alloc_readonly (w 280);
+  bp <- llvm_alloc_readonly (w 280);
+  afp <- llvm_alloc_readonly (w 512);
+  bfp <- llvm_alloc_readonly (w 512);
+  a <- llvm_fresh_var "a" (w 280);
+  b <- llvm_fresh_var "b" (w 280);
+  af <- llvm_fresh_var "a_fft" (w 512);
+  bf <- llvm_fresh_var "b_fft" (w 512);
+  llvm_points_to ap (llvm_term a);
+  llvm_points_to bp (llvm_term b);
+  llvm_points_to afp (llvm_term af);
+  llvm_points_to bfp (llvm_term bf);
+  llvm_execute_func [cp, ap, bp, afp, bfp];
+  llvm_points_to cp (llvm_term (post a b af bf));
+  mats_post;
+};
+
+// hqc-3
+let in3_spec post = do {
+  mats;   // the encode/decode overrides read the matrices, so the caller allocates them
+  op <- llvm_alloc (w 1024);
+  ap <- llvm_alloc_readonly (w 576);
+  a <- llvm_fresh_var "a" (w 576);
+  llvm_points_to ap (llvm_term a);
+  llvm_execute_func [op, ap];
+  llvm_points_to op (llvm_term (post a));
+  mats_post;
+};
+
+// hqc-3
+let mul3_spec post = do {
+  mats;   // the encode/decode overrides read the matrices, so the caller allocates them
+  cp <- llvm_alloc (w 1152);
+  ap <- llvm_alloc_readonly (w 576);
+  bp <- llvm_alloc_readonly (w 576);
+  afp <- llvm_alloc_readonly (w 1024);
+  bfp <- llvm_alloc_readonly (w 1024);
+  a <- llvm_fresh_var "a" (w 576);
+  b <- llvm_fresh_var "b" (w 576);
+  af <- llvm_fresh_var "a_fft" (w 1024);
+  bf <- llvm_fresh_var "b_fft" (w 1024);
+  llvm_points_to ap (llvm_term a);
+  llvm_points_to bp (llvm_term b);
+  llvm_points_to afp (llvm_term af);
+  llvm_points_to bfp (llvm_term bf);
+  llvm_execute_func [cp, ap, bp, afp, bfp];
+  llvm_points_to cp (llvm_term (post a b af bf));
+  mats_post;
+};
+
+// hqc-5
+let in5_spec post = do {
+  mats;   // the encode/decode overrides read the matrices, so the caller allocates them
+  op <- llvm_alloc (w 2048);
+  ap <- llvm_alloc_readonly (w 1024);
+  a <- llvm_fresh_var "a" (w 1024);
+  llvm_points_to ap (llvm_term a);
+  llvm_execute_func [op, ap, llvm_term {{ 1024 : [32] }}];
+  llvm_points_to op (llvm_term (post a));
+  mats_post;
+};
+
+// hqc-5
+let out5_spec post = do {
+  mats;   // the encode/decode overrides read the matrices, so the caller allocates them
+  cp <- llvm_alloc (w 2048);
+  afp <- llvm_alloc_readonly (w 2048);
+  bfp <- llvm_alloc_readonly (w 2048);
+  af <- llvm_fresh_var "a_fft" (w 2048);
+  bf <- llvm_fresh_var "b_fft" (w 2048);
+  llvm_points_to afp (llvm_term af);
+  llvm_points_to bfp (llvm_term bf);
+  llvm_execute_func [cp, afp, bfp, llvm_term {{ 1024 : [32] }}];
+  llvm_points_to_untyped cp (llvm_term (post af bf));
+  mats_post;
+};

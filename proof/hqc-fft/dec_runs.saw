@@ -263,6 +263,7 @@ let dec3_runs f = do {
   llvm_points_to_untyped (llvm_elem rb 7904) (llvm_term {{ dbytes3 x 96 61 }});
   llvm_points_to_untyped (llvm_elem rb 8032) (llvm_term {{ dbytes3 x 96 62 }});
   llvm_points_to_untyped (llvm_elem rb 8160) (llvm_term {{ dbytes3 x 96 63 }});
+  mats_post;
 };
 let dec5_runs f = do {
   (rp, x) <- dec_pre 2048 0 {{ 2048 : [32] }};
@@ -779,4 +780,5 @@ let dec5_runs f = do {
   llvm_points_to_untyped (llvm_elem rb 15840) (llvm_term {{ dbytes5 x 224 61 }});
   llvm_points_to_untyped (llvm_elem rb 16096) (llvm_term {{ dbytes5 x 224 62 }});
   llvm_points_to_untyped (llvm_elem rb 16352) (llvm_term {{ dbytes5 x 224 63 }});
+  mats_post;
 };

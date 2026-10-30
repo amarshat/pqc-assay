@@ -85,6 +85,14 @@ f15893b07a032abb0a3701b02cca9c188634443b7d7f73f8684b52c79ff57d65  target/hqc-fft
 1dae4fc41908985af8c545b32a3bd7fef0bc3da6ff89770f14724f716d45835e  target/hqc-fft/gf264_ref/polymul.h
 a67dae6c95813bd0888fd4a939b6b115c628d9c16461a58cd8e55a897437c2d7  target/hqc-fft/gf264_ref/polymul_hqclen.h
 45ceff27d3d7553ac7ede76e4797f68de5b1eb5710b92516b9b47fe93454202c  target/hqc-fft/gf264_ref/polymul_hqclen_ref.c
+c34190067969bc3cb6e50525853bc8c6e1918290bee424dac3845dbc0d75ef5e  target/hqc-fft/hqc_wiring/gf2x.c
+2043521f11b2b52c39608d95dc06a05b9650ce7e87ce784699f4c58ffdf210cd  target/hqc-fft/hqc_wiring/gf2x.h
+a1bc67f2fe4bb7a24acd974dbff42d10d96f1f00a3ee37b4504dd6210f5f245e  target/hqc-fft/hqc_wiring/hqc-1/api.h
+d3120e315e7aeb9258b95da8526d9a536b324edd4c358156bc3b99ac2580c3af  target/hqc-fft/hqc_wiring/hqc-1/parameters.h
+024ef0fddbd6b26aa9973d5e96da034e40bdeaf81b11e554d4df883a8adb9928  target/hqc-fft/hqc_wiring/hqc-3/api.h
+9791b1e7aab57065d7734b0dc55f96c14dc0ae3e56082118794c20b79dfc3aa0  target/hqc-fft/hqc_wiring/hqc-3/parameters.h
+27c0bebf61d47627c214d5957198f6845afcfe54e688221c89625d76a94b076b  target/hqc-fft/hqc_wiring/hqc-5/api.h
+7276cda5b2cacfc162408f3354aba7b20088cf9e3c613c2863434ae9a18d1e45  target/hqc-fft/hqc_wiring/hqc-5/parameters.h
 "
 
 SHA="shasum -a 256"; command -v sha256sum >/dev/null 2>&1 && SHA="sha256sum"

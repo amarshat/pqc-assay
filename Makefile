@@ -18,7 +18,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-wire hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
 
 all: verify
 
@@ -168,6 +168,21 @@ build/hqc-fft/fft_asis.bc: $(addprefix $(FFT_SRC)/,$(addsuffix .c,$(FFT_C)))
 	mkdir -p build/hqc-fft/asis
 	for f in $(FFT_C); do $(AVX_CLANG) -O0 -std=c11 -I $(FFT_SRC) -c -emit-llvm -o build/hqc-fft/asis/$$f.bc $(FFT_SRC)/$$f.c || exit 1; done
 	$(dir $(AVX_CLANG))llvm-link -o $@ $(addprefix build/hqc-fft/asis/,$(addsuffix .bc,$(FFT_C)))
+## The artifact's HQC wiring (target/hqc-fft/hqc_wiring/gf2x.c, its cachekey build of vect_mul) linked with
+## the reference above, one bitcode per parameter set (the file selects the size with PARAM_N). The artifact
+## compiles it with -Wno-error=incompatible-pointer-types (hqc-5 passes uint8_t * where uint64_t * is declared).
+WIRE_DIR = target/hqc-fft/hqc_wiring
+build/hqc-fft/wire_%.bc: build/hqc-fft/fft_ref.bc $(WIRE_DIR)/gf2x.c $(WIRE_DIR)/gf2x.h $(WIRE_DIR)/hqc-%/parameters.h
+	mkdir -p build/hqc-fft/wire
+	$(AVX_CLANG) -O0 -std=c11 -Wno-error=incompatible-pointer-types -I $(WIRE_DIR)/hqc-$* -I $(WIRE_DIR) -I $(FFT_SRC) -c -emit-llvm -o build/hqc-fft/wire/gf2x_$*.bc $(WIRE_DIR)/gf2x.c
+	$(dir $(AVX_CLANG))llvm-link -o $@ build/hqc-fft/fft_ref.bc build/hqc-fft/wire/gf2x_$*.bc
+## vect_mul of the wiring == the fold mod x^n - 1 of the entry-point models on the padded operands, at the
+## three sets, with the entry points assumed (proved by hqc-fft, hqc-fft-3, hqc-fft-5; the links check ties
+## each assumption to its proof). Run after those targets.
+hqc-fft-wire: build/hqc-fft/wire_1.bc build/hqc-fft/wire_3.bc build/hqc-fft/wire_5.bc
+	@python3 scripts/hqc_fft_links.py
+	@for s in wire_1 wire_3 wire_5; do echo ">> SAW: proof/hqc-fft/$$s.saw"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(SAW) -v 3 proof/hqc-fft/$$s.saw || exit 1; done
+	@echo "VERIFIED: HQC wiring vect_mul (hqc-1/3/5) == vmulF1/3/5 (FFTWire; entry points assumed, linked to their proofs) (saw exit 0 three times)"
 ## decode_64 as shipped, hqc-1 length: proved with 8 words of slack after the output, and rejected
 ## (fails) with none, which is the finding of A-HQC-FFT item 7 checked by the tool.
 hqc-fft-asis: build/hqc-fft/fft_asis.bc

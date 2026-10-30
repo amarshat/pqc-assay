@@ -24,29 +24,8 @@ bc5 <- llvm_unsafe_assume_spec m "bc_1" (bc_spec 2048 [n8192] (\x -> {{ bc1_6553
 ibc5 <- llvm_unsafe_assume_spec m "ibc_1" (bc_spec 4096 [n16384] (\x -> {{ ibc1_131072w x }}));
 
 // The entry points. polymul_output writes 2048 words; the buffer is exactly that size.
-let in5_spec post = do {
-  mats;   // the encode/decode overrides read the matrices, so the caller allocates them
-  op <- llvm_alloc (w 2048);
-  ap <- llvm_alloc_readonly (w 1024);
-  a <- llvm_fresh_var "a" (w 1024);
-  llvm_points_to ap (llvm_term a);
-  llvm_execute_func [op, ap, llvm_term {{ 1024 : [32] }}];
-  llvm_points_to op (llvm_term (post a));
-};
 pin5 <- llvm_verify m "polymul_input_transform" [bc5, enc5, bt5] false (in5_spec (\a -> {{ inputT5 a }})) (w4_unint_z3 ["bc1_65536wc", "encode5", "btfy11"]);
 fails (llvm_verify m "polymul_input_transform" [bc5, enc5, bt5] false (in5_spec (\a -> {{ inputT5 a ^ flip }})) (w4_unint_z3 ["bc1_65536wc", "encode5", "btfy11"]));
-let out5_spec post = do {
-  mats;   // the encode/decode overrides read the matrices, so the caller allocates them
-  cp <- llvm_alloc (w 2048);
-  afp <- llvm_alloc_readonly (w 2048);
-  bfp <- llvm_alloc_readonly (w 2048);
-  af <- llvm_fresh_var "a_fft" (w 2048);
-  bf <- llvm_fresh_var "b_fft" (w 2048);
-  llvm_points_to afp (llvm_term af);
-  llvm_points_to bfp (llvm_term bf);
-  llvm_execute_func [cp, afp, bfp, llvm_term {{ 1024 : [32] }}];
-  llvm_points_to_untyped cp (llvm_term (post af bf));
-};
 let stages5 = ["gf264v", "ibtfy11", "dbytes5", "ibc1_131072w"];
 let tac5 = do { unfolding ["mulT5"]; simplify (addsimp asm5t empty_ss); w4_unint_z3 stages5; };
 pm5 <- llvm_verify m "polymul_output" [gfv5, ibt5, dec5, ibc5] false (out5_spec (\af bf -> {{ mulT5 af bf }})) tac5;

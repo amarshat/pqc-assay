@@ -156,3 +156,12 @@ reusable pipeline beat one deep). Same repo, same pinned commit as the ML-DSA ta
   basis), `gf264v_mul` and the `karat_mult_*` ladder for the words above the FFT size.
 - Build: `make hqc-fft-bitcode` compiles the ten `.c` files with the Homebrew `llvm@22` clang at
   `-O0 -g` for the host and links them with `llvm-link`. Nothing is edited or wrapped.
+- HQC integration, `target/hqc-fft/hqc_wiring/` (vendored 2026-10-30, same commit): byte for byte,
+  `hqc-fft/src/cachekey/gf2x.c` and `gf2x.h` (the artifact's `vect_mul`: pad, transform, multiply,
+  `ring_reduce`), and for each set `hqc-fft/src/ref/hqc-<p>/parameters.h` and
+  `hqc-fft/src/common/hqc-<p>/api.h` as `hqc_wiring/hqc-<p>/` (the include path of the artifact's
+  `fft_ref` build). Git blob hashes checked against the upstream tree at vendoring; SHA-256 pinned in
+  `scripts/check_target_identity.sh`. The artifact links this file against its AVX2/NEON GF(2^64)
+  multipliers, and its portable build against a different multiplier (`lib/bitpolymul_ref`); we link it
+  against `gf264_ref`, which has the same interface (`build/hqc-fft/wire_<p>.bc`, compiled with the
+  artifact's `-Wno-error=incompatible-pointer-types`, needed at hqc-5). Nothing is edited.

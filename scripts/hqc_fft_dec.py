@@ -56,7 +56,7 @@ def runs(p, n):
                 term = f'(f {term})'
             out.append(f'  llvm_points_to_untyped (llvm_elem rb {off}) (llvm_term {term});\n')
     assert seen == set(range(8 * n)), f'hqc-{p}: the runs do not cover the {8 * n} output bytes'
-    out.append('};\n')
+    out.append('  mats_post;\n};\n')
     return ''.join(out)
 
 def files():

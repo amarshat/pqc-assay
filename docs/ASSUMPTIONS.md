@@ -1535,4 +1535,26 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    its list fails the build (checked 2026-10-30).
    Scope: the theorems are about the lifted models, and each states the unreduced product of the
    padded operands. Not yet done: the composition with the SAW results into one statement about the
-   C, and the reduction modulo x^n - 1 that HQC applies afterwards.
+   C, and the reduction modulo x^n - 1 that HQC applies afterwards. (Both done 2026-10-30, item 11.)
+11. **The HQC integration, end to end (2026-10-30).** `target/hqc-fft/hqc_wiring/gf2x.c` is the artifact's
+   `vect_mul` (its `cachekey` build), vendored byte for byte with the three parameter headers
+   (`target/README.md`). The artifact links it against its AVX2/NEON GF(2^64) multipliers, and its
+   portable build against a different multiplier (`lib/bitpolymul_ref`); we link it against `gf264_ref`,
+   which has the same interface. That combination is what is verified; the artifact does not build it.
+   SAW (`make hqc-fft-wire`, `proof/hqc-fft/wire_<p>.saw`): `polymul_17920_input/mul` and
+   `polymul_36864_input/mul` (the wrappers) and `vect_mul` equal their FFTWire.cry models at the three
+   sets, with the entry points' specifications assumed and tied by `scripts/hqc_fft_links.py` to the
+   scripts that prove them; each spec has a bit-flip mutant that fails. Isabelle (`Wire.vmulF<p>_correct`,
+   item 10's hypotheses): for inputs of degree below n, `vmulF<p> a b = (a * b) mod (x^n - 1)`. Composed,
+   the C `vect_mul` computes the HQC product, with the same right-hand side as the reference and AVX2
+   theorems. The padding copies `VEC_N_SIZE_BYTES` bytes, so the last word keeps only its low bytes;
+   the degree hypothesis is what makes that the operand.
+   Spec change for this: `encode_64` and `decode_64` read `_enc_mat` / `_dec_mat` from mutable globals,
+   and a spec that sets up a global in its precondition but does not restate it afterwards leaves it
+   unknown to the caller, so `vect_mul`'s second transform could not match its override. `mats_post`
+   (`specs.saw`) restates both matrices after `encode_64`, `decode_64` (whole and in runs), the entry
+   points and the wrappers; SAW thus also proves the code leaves them unchanged. Rerun with it on
+   2026-10-30: `make hqc-fft` (exit 0, 78 mutants rejected), `make hqc-fft-3` (exit 0, 5730 s on the
+   M4 Pro, 77 mutants rejected) and `make hqc-fft-wire` (exit 0, 59 s on the M2 Max, 7 mutants
+   rejected). `make hqc-fft-5` and `make hqc-fft-asis` are being rerun; until they finish, the hqc-5
+   results above are from the specifications without `mats_post`.
