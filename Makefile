@@ -18,7 +18,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-wire hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean
+.PHONY: hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-wire hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean hqc-all
 
 all: verify
 
@@ -203,6 +203,12 @@ hqc-fft-lemmas:
 ## btfy9 and encodeIdx as the theory's network and partial evaluation).
 hqc-fft-isabelle:
 	$(ISABELLE) build -b -d spec/isabelle/hqc -d spec/isabelle/hqc-fft -d spec/isabelle/hqc-fft/math -v HQC_FFT_Math HQC_FFT HQC_FFT35
+
+## Every proof behind the HQC paper's three-multiplier claim, in one command: the reference and AVX2
+## chains, the additive-FFT chain at the three lengths with its integration and model lemmas, and the
+## three Isabelle sessions. About seven hours on one machine; hqc-fft-5 needs about 19 GB.
+hqc-all: hqc hqc-avx hqc-isabelle hqc-fft hqc-fft-3 hqc-fft-5 hqc-fft-wire hqc-fft-lemmas hqc-fft-isabelle
+	@echo "VERIFIED: every HQC proof target (reference, AVX2 and additive-FFT multipliers at hqc-1/3/5)"
 
 ## Out of band, a measurement: how rme scales with the leaf size (scripts/hqc_rme_scaling.sh).
 hqc-rme-scaling: hqc

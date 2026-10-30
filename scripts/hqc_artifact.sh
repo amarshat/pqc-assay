@@ -2,7 +2,8 @@
 # Build dist/hqc-artifact.zip: the HQC part of this repository, for double-blind review.
 #
 # Contents: the vendored HQC C (target/hqc), the Cryptol models (model/cryptol/hqc), the SAW scripts
-# and their generator (proof/hqc), the Isabelle session (spec/isabelle/hqc), the Makefile, the setup
+# and their generator (proof/hqc), the Isabelle session (spec/isabelle/hqc), the additive-FFT
+# counterparts (target/hqc-fft, model/cryptol/hqc-fft, proof/hqc-fft, spec/isabelle/hqc-fft), the Makefile, the setup
 # and measurement scripts, HQC-only versions of the target-identity and lift checks (the full
 # versions name other targets in this repository), the A-HQC section of docs/ASSUMPTIONS.md with the
 # HQC open finding, and an anonymous README. Nothing else from the tree. The last step greps the
@@ -12,7 +13,7 @@ cd "$(dirname "$0")/.."
 OUT=dist/hqc-artifact
 rm -rf "$OUT" dist/hqc-artifact.zip; mkdir -p "$OUT"
 
-git archive HEAD Makefile LICENSE model/cryptol/hqc proof/hqc spec/isabelle/hqc target/hqc target/README.md \
+git archive HEAD Makefile LICENSE model/cryptol/hqc proof/hqc spec/isabelle/hqc spec/isabelle/hqc-fft target/hqc target/README.md \
   target/hqc-fft model/cryptol/hqc-fft proof/hqc-fft scripts/hqc_native scripts/hqc_fft_native \
   scripts/hqc_fft_links.py scripts/hqc_fft_dec.py scripts/hqc_fft_c_mutants.sh \
   scripts/setup.sh scripts/setup_isabelle_cryptol.sh scripts/hqc_avx_ir.py scripts/hqc_solver_study.sh \
@@ -48,7 +49,8 @@ cat > "$OUT/README.md" <<'MD'
 The HQC part of a larger verification repository. It contains the vendored HQC v5.0.0 C under proof
 (`target/hqc`, pinned by SHA-256 in `scripts/check_target_identity.sh`), the Cryptol models
 (`model/cryptol/hqc`), the SAW scripts and the generator that writes the per-parameter-set files
-(`proof/hqc`), the Isabelle session (`spec/isabelle/hqc`, session `HQC`), and `ASSUMPTIONS-HQC.md`,
+(`proof/hqc`), the Isabelle session (`spec/isabelle/hqc`, session `HQC`), the same for the additive-FFT
+multiplier (`target/hqc-fft`, `model/cryptol/hqc-fft`, `proof/hqc-fft`, `spec/isabelle/hqc-fft`), and `ASSUMPTIONS-HQC.md`,
 which lists every assumption and the normalizations applied to the AVX2 bitcode.
 
 ## Requirements
@@ -72,14 +74,17 @@ beside it). For the bitwuzla row of the solver study, Homebrew `gmp` and `mpfr`.
 | `scripts/check_target_identity.sh` | the vendored bytes match the pinned hashes | seconds |
 | `make hqc-avx-asis` | the AVX2 proofs on the source as shipped (hqc-1/3 with one vector of symbolic slack on `W0`/`W2`); the gated `make hqc-avx` proves the repaired hqc-1/3 source | same as `make hqc-avx` |
 | `make hqc-solvers`, `make hqc-rme-scaling` | the solver tables of the paper (both depend on `make hqc`, which runs first if its outputs are absent) | up to 50 min, 11 min |
-| `make hqc-fft`, `make hqc-fft-3`, `make hqc-fft-5` | additive-FFT reference C (`target/hqc-fft`) = Cryptol model (`model/cryptol/hqc-fft`), every routine and the entry points, at the three lengths; mutants rejected | 762 s and 5724 s (Apple M4 Pro, 24 GB); 14158 s with 18.5 GB peak (M2 Max) |
+| `make hqc-fft`, `make hqc-fft-3`, `make hqc-fft-5` | additive-FFT reference C (`target/hqc-fft`) = Cryptol model (`model/cryptol/hqc-fft`), every routine and the entry points, at the three lengths; mutants rejected | 766 s and 5730 s (Apple M4 Pro, 24 GB); 14158 s with 18.5 GB peak (M2 Max) |
 | `make hqc-fft-asis` | `decode_64` as shipped (hqc-1): proved with 8 words of slack after the output, rejected without | 230 s, 22 GB |
 | `scripts/hqc_fft_native/run.sh` | evidence, not a proof: the FFT entry points against a schoolbook product at the three lengths, at `-O0`, `-O2` and with ASan/UBSan | a few minutes |
 | `scripts/hqc_native/run.sh` | evidence, not a proof: repaired AVX2 `vect_mul` against the reference natively at `-O0`, `-O3 -flto` and with ASan (x86-64, or Rosetta 2 on macOS 15) | a few minutes |
 | `make hqc-fft-lemmas` | the model lemmas those proofs use (Cryptol, abc) | 1152 s (M4 Pro) |
+| `make hqc-fft-wire` | the HQC integration's `vect_mul` (`target/hqc-fft/hqc_wiring`, linked against `gf264_ref`) = `vmulF1/3/5` at the three sets, with the entry points' proved specifications assumed; mutants rejected | 59 s |
+| `make hqc-fft-isabelle` | the additive-FFT models multiply: the generic theory (`spec/isabelle/hqc-fft/math`), the GF(2^64) constants checked in the kernel, `mulT/mulT3/mulT5_correct` and `vmulF1/3/5_correct` ((a*b) mod (x^n - 1)); `FFT_Gate` and `Gate35` fail the build on an oracle, a skipped proof or an axiom | 7 min |
+| `make hqc-all` | every target above that the three-multiplier claim rests on: `hqc`, `hqc-avx`, `hqc-isabelle`, `hqc-fft`, `hqc-fft-3`, `hqc-fft-5`, `hqc-fft-wire`, `hqc-fft-lemmas`, `hqc-fft-isabelle` | about 7 h, 19 GB peak |
 | `make hqc-c-mutants` | seven one-line source mutants of copies of the C against the unchanged hqc-1 scripts, nine rows with the two concrete-input rows (the Mutants paragraphs); depends on `make hqc` | about 90 min after `make hqc` |
 
-`make` with no target runs `hqc`, `hqc-avx` and `hqc-isabelle`.
+`make` with no target runs `hqc`, `hqc-avx` and `hqc-isabelle` (the reference and AVX2 chains, about 90 min). `make hqc-all` reproduces all three multipliers.
 
 ## Logs behind the tables
 
@@ -98,8 +103,12 @@ Section 3 (model): `model/cryptol/hqc/{GF2X,KM<p>,Fold}.cry`. Section 4 (C equal
 `proof/hqc/karatsuba_<p>.saw`. Section 5 (the model multiplies): `spec/isabelle/hqc/{HQC_Poly,HQC_Seq,HQC_P<p>}.thy`.
 Section 6 (AVX2): `target/hqc/avx2`, `scripts/hqc_avx_ir.py`, `model/cryptol/hqc/{AVXK,Toom,Toom5,AVX<p>}.cry`,
 `proof/hqc/avx_<p>.saw`, `spec/isabelle/hqc/{AVX_Seq,AVX_Toom,AVX_Toom5,AVX_P<p>}.thy`. Section 7
+(additive FFT): `target/hqc-fft` (`gf264_ref`, the integration in `hqc_wiring`), `model/cryptol/hqc-fft`,
+`proof/hqc-fft` (`specs.saw` holds every specification; `ref_*`, `r3_*`, `r5_*`, `fft_<p>`, `wire_<p>`),
+`scripts/hqc_fft_links.py`, `spec/isabelle/hqc-fft` (`math`: the generic theory; `const`: the constants;
+the bridge and hqc-1 instance at the top level; `n35`: hqc-3, hqc-5 and `Wire.thy`). Section 8
 (field and encoders): `proof/hqc/gf.saw`, `proof/hqc/code_<p>.saw`, `model/cryptol/hqc/{GF256,RS,RM}.cry`.
-Section 8 (solvers): `scripts/hqc_solver_study.sh`, `scripts/hqc_rme_scaling.sh`; source-level mutants: `scripts/hqc_c_mutants.sh`. Findings:
+Section 9 (solvers): `scripts/hqc_solver_study.sh`, `scripts/hqc_rme_scaling.sh`; source-level mutants: `scripts/hqc_c_mutants.sh`. Findings:
 `ASSUMPTIONS-HQC.md`, OF-5. Appendix: the theorem statements in the theories named above.
 MD
 
@@ -116,7 +125,7 @@ for b in keep:
     assert not re.search(r'\$\((TARGET_C|BITCODE|SAW_SCRIPT|ISA_SESSION)\)', b), b[:80]
 tail = ('## Every committed lifted theory equals cryptol-to-isabelle of its Cryptol source.\nlift-check:\n'
         '\t./scripts/lift_check_all.sh\n\nclean:\n\trm -rf build\n')
-phony = '.PHONY: hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants hqc-fft hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc-fft-lemmas hqc-fft-bitcode lift-check clean'
+phony = '.PHONY: hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants hqc-fft hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc-fft-lemmas hqc-fft-bitcode hqc-fft-wire hqc-fft-isabelle hqc-all lift-check clean'
 header = re.sub(r'^\.PHONY:.*$', phony, header, flags=re.M)
 header = header.replace('# Assay — one-command reproduction.\n# Each target fails loudly; `make verify` is the whole pipeline.', '# One-command reproduction of the HQC proofs. Each target fails loudly.')
 header = re.sub(r'^(TARGET_C|BITCODE|SAW_SCRIPT|ISA_SESSION)\s*:=.*\n', '', header, flags=re.M)
@@ -183,7 +192,7 @@ if grep -rIn -i -E '\bamar\b' "$OUT" | grep -v -i hadamard | grep -q .; then
 fi
 # Every documented target must expand with no undefined variable (a dropped variable block once left
 # AVX_CLANG empty, which only showed when hqc-avx ran).
-for t in all hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants hqc-fft hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc-fft-lemmas lift-check; do
+for t in all hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants hqc-fft hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc-fft-lemmas hqc-fft-wire hqc-fft-isabelle hqc-all lift-check; do
   u=$( (cd "$OUT" && make -n --warn-undefined-variables "$t" 2>&1 >/dev/null) | grep 'undefined variable' || true)
   [ -z "$u" ] || { echo "!! make $t in the artifact uses an undefined variable: $u" >&2; exit 1; }
 done
