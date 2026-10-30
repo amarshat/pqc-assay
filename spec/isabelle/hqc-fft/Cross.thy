@@ -1,5 +1,5 @@
 theory Cross
-  imports Backward HQC.AVX_Seq
+  imports Forward HQC.AVX_Seq
 begin
 
 text \<open>The Karatsuba multipliers of FFTRef.cry (km1 = mull64 = clmul1, km2 .. km16 by kstep, km24 by
