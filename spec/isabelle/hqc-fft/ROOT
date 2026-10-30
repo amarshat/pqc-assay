@@ -27,3 +27,4 @@ session HQC_FFT = "HQC_FFT_Const" +
     IStageBridge
     BCBridge
     IbcBridge
+    DivBridge
