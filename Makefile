@@ -18,7 +18,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: hqc-decaps hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-wire hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean hqc-all
+.PHONY: hqc-decaps hqc-decaps51 hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-wire hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean hqc-all
 
 all: verify
 
@@ -199,6 +199,25 @@ hqc-decaps:
 	cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) -v 3 decaps_1.saw
 	@echo "VERIFIED: hqc-1 crypto_kem_dec == decaps (implicit rejection; PKE and hashes uninterpreted); CVE-2024-54137 mutants refuted (saw exit 0)"
 	@for p in 3 5; do echo ">> SAW: proof/hqc-decaps/decaps_$$p.saw"; (cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) -v 3 decaps_$$p.saw) || exit 1; echo "VERIFIED: hqc-$$p crypto_kem_dec == decaps (saw exit 0)"; done
+
+## HQC v5.1.0 decapsulation, hqc-1/3/5: hqc_kem_decaps == DecapsV51_<p>::decaps (implicit rejection, keys
+## regenerated from the 32-byte decapsulation key); XOF, PKE and hashes uninterpreted. Three mutants
+## refuted after a positive control. docs/ASSUMPTIONS.md, A-HQC-DEC51.
+DEC51_MASK = s/    result -= 1;/    result = (uint8_t)(-((int16_t)result) >> 15);/
+DEC51_NOV = /result |= vect_compare((uint8_t \*)c_pke_v/d
+hqc-decaps51:
+	@mkdir -p build/hqc-decaps51/mut
+	@printf '#include "crypto_memset.c"\n#include "vector.c"\n#include "parsing.c"\n#include "hqc-kem.c"\n' > build/hqc-decaps51/_dec.c
+	@python3 scripts/hqc_decaps_gen.py --check
+	@for p in 1 3 5; do $(DEC_CC) -c -emit-llvm -I target/hqc-5.1/kem -I target/hqc-5.1/hqc-$$p -o build/hqc-decaps51/dec_$$p.bc build/hqc-decaps51/_dec.c || exit 1; done
+	@sed '$(DEC51_MASK)' target/hqc-5.1/kem/hqc-kem.c > build/hqc-decaps51/mut/kem_mask.c
+	@sed '$(DEC51_NOV)' target/hqc-5.1/kem/hqc-kem.c > build/hqc-decaps51/mut/kem_nov.c
+	@sed -e '$(DEC51_MASK)' -e '$(DEC51_NOV)' target/hqc-5.1/kem/hqc-kem.c > build/hqc-decaps51/mut/kem_both.c
+	@for k in mask nov both; do cmp -s target/hqc-5.1/kem/hqc-kem.c build/hqc-decaps51/mut/kem_$$k.c && { echo "!! mutant $$k did not apply"; exit 1; }; printf '#include "crypto_memset.c"\n#include "vector.c"\n#include "parsing.c"\n#include "kem_%s.c"\n' $$k > build/hqc-decaps51/mut/_dec_$$k.c; $(DEC_CC) -c -emit-llvm -I build/hqc-decaps51/mut -I target/hqc-5.1/kem -I target/hqc-5.1/hqc-1 -o build/hqc-decaps51/mut/dec_1_$$k.bc build/hqc-decaps51/mut/_dec_$$k.c || exit 1; done
+	@echo ">> SAW: proof/hqc-decaps/decaps51_1.saw"
+	cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) -v 3 decaps51_1.saw
+	@echo "VERIFIED: v5.1.0 hqc-1 hqc_kem_decaps == decaps (implicit rejection; XOF, PKE and hashes uninterpreted); mutants refuted (saw exit 0)"
+	@for p in 3 5; do echo ">> SAW: proof/hqc-decaps/decaps51_$$p.saw"; (cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) -v 3 decaps51_$$p.saw) || exit 1; echo "VERIFIED: v5.1.0 hqc-$$p hqc_kem_decaps == decaps (saw exit 0)"; done
 
 hqc-fft-wire: build/hqc-fft/wire_1.bc build/hqc-fft/wire_3.bc build/hqc-fft/wire_5.bc
 	@python3 scripts/hqc_fft_links.py

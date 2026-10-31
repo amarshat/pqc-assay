@@ -1,0 +1,85 @@
+// HQC v5.1.0 decapsulation (hqc_kem_decaps), hqc-1: FO with implicit rejection, from a 32-byte
+// decapsulation key (v5.1.0's compressed format). The XOF, the PKE and the hash functions are
+// uninterpreted symbols; the SAW proof never unfolds them, so it holds for any decoder and any
+// SHA-3. The XOF state is an opaque [26][64] value threaded through xofInit/xofOut*/xofNext*.
+module DecapsV51_1 where
+
+type NB   = 2209   // VEC_N_SIZE_BYTES
+type VB   = 2208   // VEC_N1N2_SIZE_BYTES
+type WU   = 277    // VEC_N_PKE_WORDS
+type WV   = 276    // VEC_N1N2_PKE_WORDS
+type EK   = 2241   // PUBLIC_KEY_BYTES_PKE
+type DK   = 32     // SECRET_KEY_BYTES_KEM (compressed: the KEM seed)
+type CT   = 4433   // CIPHERTEXT_BYTES_KEM = NB + VB + SALT
+type K    = 16     // PARAM_K
+type SEED = 32
+type SALT = 16
+type SS   = 32     // SHARED_SECRET_BYTES_KEM
+type XS   = 26     // shake256incctx words
+
+xofInit  : [DK][8] -> [XS][64]
+xofInit _ = zero
+xofOut32 : [XS][64] -> [SEED][8]
+xofOut32 _ = zero
+xofNext32 : [XS][64] -> [XS][64]
+xofNext32 _ = zero
+xofOutK  : [XS][64] -> [K][8]
+xofOutK _ = zero
+xofNextK : [XS][64] -> [XS][64]
+xofNextK _ = zero
+pkeKeyE  : [SEED][8] -> [EK][8]
+pkeKeyE _ = zero
+pkeKeyD  : [SEED][8] -> [SEED][8]
+pkeKeyD _ = zero
+pkeDec   : [SEED][8] -> [WU][64] -> [WV][64] -> [K][8]
+pkeDec _ _ _ = zero
+pkeEncU  : [EK][8] -> [K][8] -> [SEED][8] -> [WU][64]
+pkeEncU _ _ _ = zero
+pkeEncV  : [EK][8] -> [K][8] -> [SEED][8] -> [WV][64]
+pkeEncV _ _ _ = zero
+hashH    : [EK][8] -> [SEED][8]
+hashH _ = zero
+hashG    : [SEED][8] -> [K][8] -> [SALT][8] -> [SS + SEED][8]
+hashG _ _ _ = zero
+hashJ    : [SEED][8] -> [K][8] -> [WU][64] -> [WV][64] -> [SALT][8] -> [SS][8]
+hashJ _ _ _ _ _ = zero
+
+toWords : {k} (fin k) => [8 * k][8] -> [k][64]
+toWords bs = [ join (reverse b) | b <- groupBy`{8} bs ]
+toBytes : {k} (fin k) => [k][64] -> [8 * k][8]
+toBytes ws = join [ reverse (split`{8} w) | w <- ws ]
+
+ctU : [CT][8] -> [WU][64]
+ctU c = toWords (take`{NB} c # zero)
+ctV : [CT][8] -> [WV][64]
+ctV c = toWords (take`{VB} (drop`{NB} c))
+ctSalt : [CT][8] -> [SALT][8]
+ctSalt c = drop`{NB + VB} c
+
+// Key regeneration from the 32-byte decapsulation key.
+seedPke : [DK][8] -> [SEED][8]
+seedPke dk = xofOut32 (xofInit dk)
+sigmaOf : [DK][8] -> [K][8]
+sigmaOf dk = xofOutK (xofNext32 (xofInit dk))
+
+accepts : [CT][8] -> [DK][8] -> Bit
+accepts c dk = take`{NB} (toBytes u') == take`{NB} c /\ toBytes v' == take`{VB} (drop`{NB} c)
+  where
+    ek = pkeKeyE (seedPke dk)
+    m  = pkeDec (pkeKeyD (seedPke dk)) (ctU c) (ctV c)
+    kt = hashG (hashH ek) m (ctSalt c)
+    u' = pkeEncU ek m (drop`{SS} kt)
+    v' = pkeEncV ek m (drop`{SS} kt)
+
+decaps : [CT][8] -> [DK][8] -> [SS][8]
+decaps c dk = if accepts c dk then take`{SS} kt else kbar
+  where
+    ek   = pkeKeyE (seedPke dk)
+    hek  = hashH ek
+    m    = pkeDec (pkeKeyD (seedPke dk)) (ctU c) (ctV c)
+    kt   = hashG hek m (ctSalt c)
+    kbar = hashJ hek (sigmaOf dk) (ctU c) (ctV c) (ctSalt c)
+
+// A decapsulation key of distinct-looking bytes, for refutations in a pinned sub-domain.
+dkRamp : [DK][8]
+dkRamp = [ drop`{8} (i % 251) | (i : [16]) <- [7 .. 38] ]

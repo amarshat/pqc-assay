@@ -171,3 +171,16 @@ reusable pipeline beat one deep). Same repo, same pinned commit as the ML-DSA ta
   `scripts/check_target_identity.sh`. `make hqc-decaps` compiles `kem.c`, `vector.c`, `parsing.c`
   and `crypto_memset.c` as one unit for x86_64 at `-O0` (the reference headers include
   `immintrin.h`). Nothing is edited; the CVE-shaped mutants are sed copies in `build/`.
+
+## HQC v5.1.0 decapsulation (vendored 2026-10-31 into `target/hqc-5.1/`)
+- Source: <https://gitlab.com/pqc-hqc/hqc>, tag `v5.1.0` (released 2026-10-26), commit
+  `06567ccbad10580d78dd7863b15d23f41076d57f`.
+- Files, byte for byte: `src/common/hqc-kem.c`, `src/ref/vector.c`, `vector.h`, `parsing.c`,
+  `parsing.h`, `hqc.h`, `data_structures.h`, `src/common/symmetric.h`, `crypto_memset.c`,
+  `crypto_memset.h`, `randombytes.h` and `lib/fips202/fips202.h` as `target/hqc-5.1/kem/`;
+  `src/ref/hqc-<p>/parameters.h` and `src/common/hqc-<p>/hqc-kem.h` as `target/hqc-5.1/hqc-<p>/`;
+  `LICENSE`. SHA-256 pinned in `scripts/check_target_identity.sh`.
+- Build: `make hqc-decaps51` compiles `hqc-kem.c`, `vector.c`, `parsing.c` and `crypto_memset.c` as
+  one unit for x86_64 at `-O0`. Nothing is edited; the mutants are sed copies in `build/`.
+- The v5.1.0 multiplier sources (`src/ref/gf2x.c`, `gf2x.h`, and `src/x86_64/common/hqc-<p>/gf2x.c`
+  with `gf2x.h`) are byte-identical to the v5.0.0 files in `target/hqc/` and `target/hqc/avx2/`.

@@ -16,6 +16,7 @@ cd "$(dirname "$0")/.."
 PQCLEAN_COMMIT="202a8f96315f9ed219387a50f7e40d04af037ea8"   # PQClean, crypto_sign/ml-dsa-44/clean/
 PQCRYSTALS_COMMIT="cbcd8753a43402885c90343cd6335fb54712cda1" # pq-crystals/dilithium the clean impl tracks
 HQC_COMMIT="f46e54222ffb76706678a9ec8a43cd2188a12ab1"        # gitlab.com/pqc-hqc/hqc, tag v5.0.0 (target/hqc/)
+HQC51_COMMIT="06567ccbad10580d78dd7863b15d23f41076d57f"      # gitlab.com/pqc-hqc/hqc, tag v5.1.0 (target/hqc-5.1/)
 FFT_COMMIT="c94c84dbaaa5b2d92ce15ce1ac8966e1fa9e1d43"        # github.com/ChunTaoPengim/HQC_with_addFFT_tches2026 (target/hqc-fft/)
 
 # expected_sha256  path  (pinned at vendoring; see target/README.md)
@@ -101,6 +102,25 @@ e09efbf801874eb87e1371a6461094c00b0979745f4562279a2ae822032f25df  target/hqc/kem
 d30de831fa2618d2e48623a79e97d155e5252172bc256d032b635079bc18966f  target/hqc/kem/symmetric.h
 bd107c2aa77b708d2bf434c8f325f1ec58aeaec7f57139b52693577cf67e88fd  target/hqc/kem/vector.c
 d0207694e3ec1d3355937001b994158518799a543ee71ebd725923e3761d9092  target/hqc/kem/vector.h
+b13ac4224f66fac9f0bd9f1bbee6e102c1d28e86d3ba27ac2e5c5de7036658e0  target/hqc-5.1/LICENSE
+3cc0127e99dbc043bb7ca1c5ed79a17d336ac79327bf61cb87236abbf4a1fa3f  target/hqc-5.1/hqc-1/hqc-kem.h
+0b3f455661d4adfc165554f96c0524a6bff8a21251db91a0f0d0c7954a2e4d0e  target/hqc-5.1/hqc-1/parameters.h
+d8e525a28b1bfd3a6249f8f2d07ff00483945721ae27792f1ef543f0787f37f0  target/hqc-5.1/hqc-3/hqc-kem.h
+a565f3749adf4df359252fa4081308cfdb98e8745096bae6367676c9475ee2af  target/hqc-5.1/hqc-3/parameters.h
+03b60c3e8516010e6571ca4cf0fa7ae8168aaa4b8eb0ff1c6077aeccc10b2939  target/hqc-5.1/hqc-5/hqc-kem.h
+de04f2f4c69e38b1618697da0a01ec9825d4d949c425f5e17064e0395f46b6ca  target/hqc-5.1/hqc-5/parameters.h
+906d712f2e4b67f172c7cc5596c23d618c3004eb9173e1f4f94cc8bbf2b89c24  target/hqc-5.1/kem/crypto_memset.c
+95094245695db2847fc591523467f7005c0c32f1d663d52737a48a29b39bda6d  target/hqc-5.1/kem/crypto_memset.h
+6e1deef25f3954ff74ffe25551fa3d353e8a5dfd707e9dc3941a520fd461360b  target/hqc-5.1/kem/data_structures.h
+96c70d0ca19e4f8ab2e37093d0f5d5905163c2b609db5b50bc3c5e8fc8aaf46e  target/hqc-5.1/kem/fips202.h
+61e78f6c9e4a338cb2c5c84946a9d3a96b796da4175ecbebda0aaee42a181dc4  target/hqc-5.1/kem/hqc-kem.c
+480f6fa27eecb7aff0e75b1f24712de14bf55fb438e2cbb01bdda785b8cacf8d  target/hqc-5.1/kem/hqc.h
+1ae00e2b70072b52f4df9c6215e96d5ca1d3f073ee46a6039c0fc3a545f069c2  target/hqc-5.1/kem/parsing.c
+db334468858f68d4a3522de30ae6f0761edbc6dee04dcc7ce25afd647b610a79  target/hqc-5.1/kem/parsing.h
+5343d0c3f000013e9017545de16c9ff7a27765f2140ad6b1756dcda41aa8a9bf  target/hqc-5.1/kem/randombytes.h
+b7f5f616beeb5d964ce6e153a124c263b546b3ed651f9cd6ff3f485463ab723e  target/hqc-5.1/kem/symmetric.h
+aab045a587466215407a29b01ddbeac6a7665d01dd70376c1094d6e3881a109c  target/hqc-5.1/kem/vector.c
+d0207694e3ec1d3355937001b994158518799a543ee71ebd725923e3761d9092  target/hqc-5.1/kem/vector.h
 "
 
 SHA="shasum -a 256"; command -v sha256sum >/dev/null 2>&1 && SHA="sha256sum"
