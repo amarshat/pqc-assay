@@ -1602,10 +1602,10 @@ CVE-2024-54137 (liboqs advisory GHSA-gpf4-vrrw-r8v7, public since December 2024)
 re-encryption reads its public key from the wrong offset of the secret key, the selection mask
 inverted as in the vulnerable code, and both together (which accepts every honestly generated
 ciphertext, so known-answer tests pass). SAW refutes each at the `crypto_kem_dec` proof, with the
-ciphertext fixed to zero and the secret key to a byte ramp of period 251: a counterexample in that
+ciphertext fixed to zero and the secret key to `skRamp` (bytes of period 251): a counterexample in that
 sub-domain refutes the specification, and pinning the inputs leaves the solver only the hash and PKE
 interpretations to choose (over the full domain the same refutations took 88 minutes with z3). The
-whole target runs in 70 s on the M2 Max (2026-10-31, exit 0).
+whole target runs in 171 s on the M2 Max (2026-10-31, exit 0). A positive control runs the same restricted check on the shipped code and must pass, so a precondition that fails to type-check (as the first version did, making the three `fails` vacuous in b33b65a) stops the target instead of passing it.
 
 Not covered: hqc-3 and hqc-5 (same code, other sizes; not yet run), the x86_64 build's decapsulation,
 optimized builds, and anything about timing or faults.

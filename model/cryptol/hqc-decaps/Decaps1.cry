@@ -102,3 +102,8 @@ acceptsE e c sk = take`{NB} (toBytes u') == take`{NB} c
 // Rejected in both runs implies equal outputs: the output on rejection does not depend on G.
 noLeak : [CT][8] -> [SK][8] -> [SS][8] -> [SS][8] -> Bit
 noLeak c sk k1 k2 = (~ acceptsE 0 c sk /\ ~ acceptsE 1 c sk) ==> k1 == k2
+
+// A secret key of distinct-looking bytes (period 251), for refutations in a pinned sub-domain:
+// slices of it at different offsets differ.
+skRamp : [SK][8]
+skRamp = [ drop`{8} (i % 251) | (i : [16]) <- [0 .. 2320] ]

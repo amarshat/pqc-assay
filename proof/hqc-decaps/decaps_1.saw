@@ -104,7 +104,7 @@ let check restrict path = do {
         // For the mutants only: a counterexample in a smaller domain refutes too, and pinning
         // c and sk leaves the solver only the hash and PKE interpretations to choose. sk is a
         // byte ramp of period 251, so slices of it at different offsets differ.
-        if restrict then llvm_precond {{ c == zero /\ sk == take (join (repeat ([0 .. 250] : [251][8]))) }} else return ();
+        if restrict then llvm_precond {{ c == zero /\ sk == skRamp }} else return ();
         llvm_execute_func [kp, cp, skp];
         llvm_points_to kp (llvm_term (model c sk));
         llvm_return (llvm_term {{ 0 : [32] }});
@@ -133,6 +133,9 @@ print "VERIFIED: hqc-1 crypto_kem_dec == decaps (implicit rejection); vect_compa
 // bug1, re-encryption reads its public key from the wrong offset of the secret key; bug2, the
 // selection mask inverted as in the vulnerable code; both, the combination, which accepts every
 // honest ciphertext and so passes functional tests. Each must be refuted.
+// Positive control: the restricted check passes on the shipped code, so the precondition the
+// mutant runs use type-checks and is satisfiable, and their failures are refutations.
+check true "../../build/hqc-decaps/dec_1.bc";
 fails (check true "../../build/hqc-decaps/mut/dec_1_bug1.bc");
 fails (check true "../../build/hqc-decaps/mut/dec_1_bug2.bc");
 fails (check true "../../build/hqc-decaps/mut/dec_1_both.bc");
