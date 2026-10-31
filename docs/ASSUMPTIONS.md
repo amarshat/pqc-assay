@@ -1573,3 +1573,39 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
    2026-10-30: "ORACLE GATE: Uncond.neg_eval depends on [Code_Generator.holds_by_evaluation]", exit 2).
    `make hqc-fft-isabelle` exit 0; HQC_FFT35 rebuilt clean in 3 min 31 s on the M2 Max. The abc lemmas of
    `make hqc-fft-lemmas` are no longer used by any theorem and stay as an independent check.
+
+## A-HQC-DEC: HQC decapsulation, implicit rejection (recorded 2026-10-31)
+
+`make hqc-decaps` proves, for hqc-1, that `crypto_kem_dec` of HQC v5.0.0 (`target/hqc/kem/kem.c`,
+compiled with `vector.c`, `parsing.c` and `crypto_memset.c` as one unit, x86_64, `-O0`) writes
+`Decaps1::decaps c sk` to its output for every ciphertext `c` and secret key `sk`: the first 32
+bytes of G(H(ek), m', salt) if the re-encryption of m' equals the ciphertext's u (first
+VEC_N_SIZE_BYTES bytes) and v (first VEC_N1N2_SIZE_BYTES bytes), else J(H(ek), sigma, c). The
+re-encryption check, `vect_compare` (proved at 2209, 2208 and 16 bytes, not assumed),
+`hqc_c_kem_from_string` and the masked selection are the shipped code.
+
+What it rests on:
+1. The hash functions are assumed, as uninterpreted functions of exactly the bytes the C passes:
+   `hash_h` (the 2241-byte ek), `hash_g` (H(ek), m', salt), `hash_j` (H(ek), sigma, and the
+   `ciphertext_kem_t` struct, read as its u and v word arrays and salt). Nothing about SHA-3 is used.
+2. `hqc_pke_decrypt` is assumed to write a function of the 32-byte PKE seed and the
+   `ciphertext_pke_t` struct to its 16-byte output and to return 0 (`hqc.c` ends it with
+   `return 0;`). The decoder is not verified; because its output is uninterpreted, the result holds
+   whatever it computes.
+3. `hqc_pke_encrypt` is assumed to write both word arrays of its `ciphertext_pke_t` output as
+   functions of ek, m and theta.
+4. Calling environment: distinct buffers of the stated sizes, and the global `memset_volatile` holds
+   its initializer (`memset`), as in every build of the library.
+
+Regression check: three copies of `kem.c` in `build/hqc-decaps/mut/` carry the shape of
+CVE-2024-54137 (liboqs advisory GHSA-gpf4-vrrw-r8v7, public since December 2024): the
+re-encryption reads its public key from the wrong offset of the secret key, the selection mask
+inverted as in the vulnerable code, and both together (which accepts every honestly generated
+ciphertext, so known-answer tests pass). SAW refutes each at the `crypto_kem_dec` proof, with the
+ciphertext fixed to zero and the secret key to a byte ramp of period 251: a counterexample in that
+sub-domain refutes the specification, and pinning the inputs leaves the solver only the hash and PKE
+interpretations to choose (over the full domain the same refutations took 88 minutes with z3). The
+whole target runs in 70 s on the M2 Max (2026-10-31, exit 0).
+
+Not covered: hqc-3 and hqc-5 (same code, other sizes; not yet run), the x86_64 build's decapsulation,
+optimized builds, and anything about timing or faults.

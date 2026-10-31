@@ -18,7 +18,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-wire hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean hqc-all
+.PHONY: hqc-decaps hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-wire hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean hqc-all
 
 all: verify
 
@@ -179,6 +179,24 @@ build/hqc-fft/wire_%.bc: build/hqc-fft/fft_ref.bc $(WIRE_DIR)/gf2x.c $(WIRE_DIR)
 ## vect_mul of the wiring == the fold mod x^n - 1 of the entry-point models on the padded operands, at the
 ## three sets, with the entry points assumed (proved by hqc-fft, hqc-fft-3, hqc-fft-5; the links check ties
 ## each assumption to its proof). Run after those targets.
+## HQC v5.0.0 decapsulation, hqc-1: crypto_kem_dec == Decaps1::decaps (implicit rejection), with the PKE
+## and hashes assumed as uninterpreted functions; three CVE-2024-54137-shaped mutants refuted.
+## docs/ASSUMPTIONS.md, A-HQC-DEC.
+DEC_CC = $(AVX_CLANG) --target=x86_64-apple-darwin -isysroot $$(xcrun --show-sdk-path) -D_FORTIFY_SOURCE=0 -O0 -g
+DEC_CVE1 = s/hqc_pke_encrypt(&c_kem_prime_t.c_pke, ek_pke,/hqc_pke_encrypt(\&c_kem_prime_t.c_pke, dk_kem + SEED_BYTES,/
+DEC_CVE2 = s/    result -= 1;/    result = (uint8_t)(-((int16_t)result) >> 15);/
+hqc-decaps:
+	@mkdir -p build/hqc-decaps/mut
+	@printf '#include "crypto_memset.c"\n#include "vector.c"\n#include "parsing.c"\n#include "kem.c"\n' > build/hqc-decaps/_dec.c
+	@$(DEC_CC) -c -emit-llvm -I target/hqc/kem -I target/hqc/hqc-1 -I target/hqc -o build/hqc-decaps/dec_1.bc build/hqc-decaps/_dec.c
+	@sed '$(DEC_CVE1)' target/hqc/kem/kem.c > build/hqc-decaps/mut/kem_bug1.c
+	@sed '$(DEC_CVE2)' target/hqc/kem/kem.c > build/hqc-decaps/mut/kem_bug2.c
+	@sed -e '$(DEC_CVE1)' -e '$(DEC_CVE2)' target/hqc/kem/kem.c > build/hqc-decaps/mut/kem_both.c
+	@for k in bug1 bug2 both; do cmp -s target/hqc/kem/kem.c build/hqc-decaps/mut/kem_$$k.c && { echo "!! mutant $$k did not apply"; exit 1; }; printf '#include "crypto_memset.c"\n#include "vector.c"\n#include "parsing.c"\n#include "kem_%s.c"\n' $$k > build/hqc-decaps/mut/_dec_$$k.c; $(DEC_CC) -c -emit-llvm -I build/hqc-decaps/mut -I target/hqc/kem -I target/hqc/hqc-1 -I target/hqc -o build/hqc-decaps/mut/dec_1_$$k.bc build/hqc-decaps/mut/_dec_$$k.c || exit 1; done
+	@echo ">> SAW: proof/hqc-decaps/decaps_1.saw"
+	cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) -v 3 decaps_1.saw
+	@echo "VERIFIED: hqc-1 crypto_kem_dec == decaps (implicit rejection; PKE and hashes uninterpreted); CVE-2024-54137 mutants refuted (saw exit 0)"
+
 hqc-fft-wire: build/hqc-fft/wire_1.bc build/hqc-fft/wire_3.bc build/hqc-fft/wire_5.bc
 	@python3 scripts/hqc_fft_links.py
 	@for s in wire_1 wire_3 wire_5; do echo ">> SAW: proof/hqc-fft/$$s.saw"; CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc:$(CURDIR)/model/cryptol/hqc-fft $(SAW) -v 3 proof/hqc-fft/$$s.saw || exit 1; done

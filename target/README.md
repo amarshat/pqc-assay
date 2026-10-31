@@ -165,3 +165,9 @@ reusable pipeline beat one deep). Same repo, same pinned commit as the ML-DSA ta
   multipliers, and its portable build against a different multiplier (`lib/bitpolymul_ref`); we link it
   against `gf264_ref`, which has the same interface (`build/hqc-fft/wire_<p>.bc`, compiled with the
   artifact's `-Wno-error=incompatible-pointer-types`, needed at hqc-5). Nothing is edited.
+- Decapsulation (vendored 2026-10-31 into `target/hqc/kem/`): `src/common/kem.c`,
+  `src/ref/vector.c`, `vector.h`, `parsing.c`, `parsing.h`, `hqc.h`, `src/common/symmetric.h` and
+  `lib/fips202/fips202.h`, byte for byte from the same commit; SHA-256 pinned in
+  `scripts/check_target_identity.sh`. `make hqc-decaps` compiles `kem.c`, `vector.c`, `parsing.c`
+  and `crypto_memset.c` as one unit for x86_64 at `-O0` (the reference headers include
+  `immintrin.h`). Nothing is edited; the CVE-shaped mutants are sed copies in `build/`.

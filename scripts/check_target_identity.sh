@@ -93,6 +93,14 @@ d3120e315e7aeb9258b95da8526d9a536b324edd4c358156bc3b99ac2580c3af  target/hqc-fft
 9791b1e7aab57065d7734b0dc55f96c14dc0ae3e56082118794c20b79dfc3aa0  target/hqc-fft/hqc_wiring/hqc-3/parameters.h
 27c0bebf61d47627c214d5957198f6845afcfe54e688221c89625d76a94b076b  target/hqc-fft/hqc_wiring/hqc-5/api.h
 7276cda5b2cacfc162408f3354aba7b20088cf9e3c613c2863434ae9a18d1e45  target/hqc-fft/hqc_wiring/hqc-5/parameters.h
+96c70d0ca19e4f8ab2e37093d0f5d5905163c2b609db5b50bc3c5e8fc8aaf46e  target/hqc/kem/fips202.h
+604112feef4805683236f5b8f735e3bd08bac373a2f680d753c0b24270b74068  target/hqc/kem/hqc.h
+726b3a297fdf2e750378614b7632f1c1988c15709791eae2663413a85e4f8b1b  target/hqc/kem/kem.c
+e09efbf801874eb87e1371a6461094c00b0979745f4562279a2ae822032f25df  target/hqc/kem/parsing.c
+1b4f971d516c798a2df215b043a2332bf5ccd6544cfcc6e495f875402ed67c04  target/hqc/kem/parsing.h
+d30de831fa2618d2e48623a79e97d155e5252172bc256d032b635079bc18966f  target/hqc/kem/symmetric.h
+bd107c2aa77b708d2bf434c8f325f1ec58aeaec7f57139b52693577cf67e88fd  target/hqc/kem/vector.c
+d0207694e3ec1d3355937001b994158518799a543ee71ebd725923e3761d9092  target/hqc/kem/vector.h
 "
 
 SHA="shasum -a 256"; command -v sha256sum >/dev/null 2>&1 && SHA="sha256sum"
