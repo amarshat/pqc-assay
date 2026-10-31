@@ -1576,9 +1576,9 @@ the model (SAW). Nothing below is a result about the multiplier yet; it is the f
 
 ## A-HQC-DEC: HQC decapsulation, implicit rejection (recorded 2026-10-31)
 
-`make hqc-decaps` proves, for hqc-1, that `crypto_kem_dec` of HQC v5.0.0 (`target/hqc/kem/kem.c`,
+`make hqc-decaps` proves, for hqc-1, hqc-3 and hqc-5, that `crypto_kem_dec` of HQC v5.0.0 (`target/hqc/kem/kem.c`,
 compiled with `vector.c`, `parsing.c` and `crypto_memset.c` as one unit, x86_64, `-O0`) writes
-`Decaps1::decaps c sk` to its output for every ciphertext `c` and secret key `sk`: the first 32
+`Decaps<p>::decaps c sk` to its output for every ciphertext `c` and secret key `sk`: the first 32
 bytes of G(H(ek), m', salt) if the re-encryption of m' equals the ciphertext's u (first
 VEC_N_SIZE_BYTES bytes) and v (first VEC_N1N2_SIZE_BYTES bytes), else J(H(ek), sigma, c). The
 re-encryption check, `vect_compare` (proved at 2209, 2208 and 16 bytes, not assumed),
@@ -1607,5 +1607,10 @@ sub-domain refutes the specification, and pinning the inputs leaves the solver o
 interpretations to choose (over the full domain the same refutations took 88 minutes with z3). The
 whole target runs in 171 s on the M2 Max (2026-10-31, exit 0). A positive control runs the same restricted check on the shipped code and must pass, so a precondition that fails to type-check (as the first version did, making the three `fails` vacuous in b33b65a) stops the target instead of passing it.
 
-Not covered: hqc-3 and hqc-5 (same code, other sizes; not yet run), the x86_64 build's decapsulation,
+The hqc-3 and hqc-5 model and script are generated from the hqc-1 ones by
+`scripts/hqc_decaps_gen.py` (sizes from `parameters.h` and `api.h`; `--check` in the make target).
+The three proofs ran together in 550 s on the M2 Max (2026-10-31, exit 0, with other SAW jobs
+running). The CVE-shaped mutants run at hqc-1 only.
+
+Not covered: the x86_64 build's decapsulation,
 optimized builds, and anything about timing or faults.
