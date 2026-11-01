@@ -84,3 +84,42 @@ decaps c dk = if accepts c dk then take`{SS} kt else kbar
 // A decapsulation key of distinct-looking bytes, for refutations in a pinned sub-domain.
 dkRamp : [DK][8]
 dkRamp = [ drop`{8} (i % 251) | (i : [16]) <- [7 .. 38] ]
+
+// Fault analysis. Strict property: a ciphertext that does not re-encrypt yields the rejection key.
+rejKey : [CT][8] -> [DK][8] -> [SS][8]
+rejKey c dk = hashJ (hashH (pkeKeyE (seedPke dk))) (sigmaOf dk) (ctU c) (ctV c) (ctSalt c)
+
+rejects : [CT][8] -> [DK][8] -> [SS][8] -> Bit
+rejects c dk k = ~ accepts c dk ==> k == rejKey c dk
+
+// Leak check (self-composition): hash_g is hashGe e, e = 0 in the first run and 1 in the second.
+hashGe : [8] -> [SEED][8] -> [K][8] -> [SALT][8] -> [SS + SEED][8]
+hashGe _ _ _ _ = zero
+
+acceptsE : [8] -> [CT][8] -> [DK][8] -> Bit
+acceptsE e c dk = take`{NB} (toBytes u') == take`{NB} c /\ toBytes v' == take`{VB} (drop`{NB} c)
+  where
+    ek = pkeKeyE (seedPke dk)
+    m  = pkeDec (pkeKeyD (seedPke dk)) (ctU c) (ctV c)
+    kt = hashGe e (hashH ek) m (ctSalt c)
+    u' = pkeEncU ek m (drop`{SS} kt)
+    v' = pkeEncV ek m (drop`{SS} kt)
+
+noLeak : [CT][8] -> [DK][8] -> [SS][8] -> [SS][8] -> Bit
+noLeak c dk k1 k2 = (~ acceptsE 0 c dk /\ ~ acceptsE 1 c dk) ==> k1 == k2
+
+// Unpredictability check (self-composition over J): hash_j is hashJe e, e = 0 then 1. If both runs
+// reject and the two rejection keys differ in every byte, the outputs must differ in at least SS - 1
+// bytes: a skipped or constant rejection key fails; one fault-chosen output byte is tolerated.
+hashJe : [8] -> [SEED][8] -> [K][8] -> [WU][64] -> [WV][64] -> [SALT][8] -> [SS][8]
+hashJe _ _ _ _ _ _ = zero
+
+rejKeyE : [8] -> [CT][8] -> [DK][8] -> [SS][8]
+rejKeyE e c dk = hashJe e (hashH (pkeKeyE (seedPke dk))) (sigmaOf dk) (ctU c) (ctV c) (ctSalt c)
+
+diffBytes : [SS][8] -> [SS][8] -> [8]
+diffBytes x y = foldl (+) 0 [ if a != b then 1 else 0 | a <- x | b <- y ]
+
+unpred : [CT][8] -> [DK][8] -> [SS][8] -> [SS][8] -> Bit
+unpred c dk k1 k2 = (~ accepts c dk /\ diffBytes (rejKeyE 0 c dk) (rejKeyE 1 c dk) == `SS)
+                    ==> diffBytes k1 k2 >= `SS - 1

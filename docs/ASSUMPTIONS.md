@@ -1649,5 +1649,43 @@ control of the same restricted check on the shipped code. hqc-3/5 model and scri
    decryption stays an external call: this is not the single-translation-unit build in which clang
    turns the selection into a branch.
 
-Not covered: the x86_64 build's decapsulation, optimized builds other than the one in item 7, timing,
-faults.
+Not covered: the x86_64 build's decapsulation, optimized builds other than the one in item 7, timing.
+Faults: A-HQC-DEC51-F.
+
+## A-HQC-DEC51-F: single-fault analysis of v5.1.0 decapsulation (recorded 2026-11-01)
+
+`scripts/hqc_decaps51_faultmap.sh <variant>` (all three: `make hqc-decaps51-faults`) writes one
+variant of the `-O0` IR per fault site (`scripts/hqc_decaps_faults.py`) and runs SAW on each. hqc-1
+only. Region: `hqc_kem_decaps_internal` from the `hqc_pke_decrypt` call to the first call through
+`memset_volatile`. Fault kinds: an integer SSA value replaced by a symbolic value; a store skipped
+(old contents, or a symbolic value for the first store to a location); a `memcpy`, `hash_j` or
+`hqc_pke_encrypt` call redirected to scratch; the selection loop exit test forced either way. One
+dynamic instance per variant, chosen by the symbolic global `fault_J`. Properties, with the same
+uninterpreted functions as A-HQC-DEC51:
+- P1 (`faults51_1.saw.in`, `rejects`): a ciphertext that does not re-encrypt yields `rejKey`.
+- P2 (`ni51_1.saw.in`, `noLeak`, harness `scripts/hqc_decaps51_dec2.c`): two runs, same fault,
+  `hash_g` switched between independent functions by `hqc_epoch`; both reject implies equal outputs.
+- P3 (`un51_1.saw.in`, `unpred`): two runs with `hash_j` switched; both reject and the rejection
+  keys differ in all 32 bytes implies the outputs differ in at least 31.
+P2 and P3 run on P1-broken sites only, first with `c = 0` and `dk = dkRamp` and then, if that
+proves, on the full domain. A site is BROKEN, LEAK or PREDICTABLE only if the log shows the
+postcondition subgoal failed; anything else is ERROR.
+
+Results (verdicts in `build/hqc-decaps51/faults_1<tag>/{RESULTS,NI,UN}.tsv`):
+- v5.1.0 as shipped, 47 sites: P1 holds at 4; of the 42 broken, 28 leak and are predictable, 2 leak
+  only, 2 are predictable only (`hash_j` skipped, early loop exit), 10 neither; 1 ERROR.
+- v4 (`proof/hqc-decaps/hardened/v4.patch`), 82 sites: P1 holds at 67; of 14 broken, 0 leak,
+  1 predictable (early loop exit); 1 ERROR.
+- v4.1 (`v41.patch`: v4 plus the rejection key written to the output before the selection),
+  91 sites: P1 holds at 76; of 13 broken, 0 leak, 0 predictable; 2 ERROR. Rerun with the driver
+  2026-11-01: verdicts identical to the first run, 12 min with 8 jobs on the M2 Max.
+Every ERROR is the loop exit forced past the end: SAW reports an invalid memory load one byte past a
+32-byte array. That fault is outside what this analysis covers.
+
+`make hqc-decaps51-hardened` proves v4 and v4.1 (hqc-1) equal to `DecapsV51_1::decaps`, the same
+specification as the shipped code: exit 0 (2026-11-01).
+
+Limits: `-O0` IR, not machine code; one fault per execution; the loop index and code outside the
+region (key regeneration, the squeeze of sigma, the hash and PKE internals) are not faulted;
+uninterpreted functions cannot express that a value is secret, so P2 and P3 are the stand-ins; the
+31-byte threshold of P3 is a choice.
