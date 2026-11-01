@@ -1657,8 +1657,21 @@ control of the same restricted check on the shipped code. hqc-3/5 model and scri
    library as `-O1 -flto` objects linked by ld64 with clang 22's libLTO, where decryption is not
    inlined and its return value is propagated across modules. No jump: the unit without `hqc.c`,
    the unit with `__asm__("" : "+r"(result))` after `result -= 1`, the hardened v4.1, LTO with
-   `-O2`/`-O3`/`-Os` objects, and Apple clang 14.0.3 in every configuration. AArch64 not tested
-   (the reference headers include `immintrin.h`). The item 7 proof is of a unit without `hqc.c`.
+   `-O2`/`-O3`/`-Os` objects, and Apple clang 14.0.3 in every configuration. AArch64 (empty
+   stand-in `scripts/hqc-bench/immintrin.h`; `vector.h` includes the header and uses nothing from
+   it): clang 22 branches (`cbz`) in the single unit at `-O3` only; `-O1` `csel`, `-O2`/`-Os` vector
+   mask; Apple clang never; LTO not repeated. The item 7 proof is of a unit without `hqc.c`.
+   Cost (`make hqc-decaps51-bench`, AArch64 native, separate objects at -O3, M2 Max, 2026-11-01):
+   median of 2000 hqc-1 decapsulations 2.97 ms shipped vs 2.99 ms v4.1 (clang 22), 3.02 vs 3.05 ms
+   (Apple clang); 0.2-0.9% over five rounds, within round-to-round variation. Same output keys.
+   Shipped builds (build files read 2026-11-01): upstream v5.0.0/v5.1.0 compile separate objects
+   at -O3 (v5.0.0 adds -flto only for non-clang compilers; v5.1.0 none); liboqs 0.16.0 (HQC from
+   upstream 161cd4f, kem.c and hqc.c identical to v5.0.0) compiles separate objects at -O3, no LTO,
+   no unity build. A CMake unity build of liboqs puts hqc.c and kem.c in one batch but vector.c in
+   another; that batch, compiled by hand from the v5.0.0 files with clang 22 at -O1 to -Os, has no
+   branch. v5.0.0 full LTO behaves like v5.1.0 (branch with -O1 objects only). leancrypto 1.9.2
+   enables -flto=auto at -O3 by default with a pre-v5 HQC using the same mask pattern: not tested
+   (not built outside meson).
 
 Not covered: the x86_64 build's decapsulation, optimized builds other than the one in item 7, timing.
 Faults: A-HQC-DEC51-F.

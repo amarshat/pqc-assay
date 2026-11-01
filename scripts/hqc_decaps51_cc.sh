@@ -13,7 +13,8 @@
 #           is the level the objects were compiled at.
 # Observed 2026-11-01 (clang 22.1.8, Apple clang 14.0.3): clang 22 branches for tu at -O2/-O3/-Os and
 # for lto at -O1 (hqc_pke_decrypt not inlined; its constant return value is propagated across
-# modules and the call's result is dropped). No other row has a test-and-jump.
+# modules and the call's result is dropped). No other row has a test-and-jump. AArch64: clang 22
+# branches (cbz) for tu at -O3 only; -O1 uses csel, -O2/-Os a vector cmeq mask; Apple clang never.
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd); cd "$root"
 B=build/hqc-decaps51/cc; U=build/hqc-upstream-5.1; REV=06567ccbad10580d78dd7863b15d23f41076d57f
@@ -49,5 +50,20 @@ for cc in $CLANG22 $APPLE; do
     LD=$([ $cc = $APPLE ] && echo "" || echo "-fuse-ld=ld -Wl,-lto_library,$(dirname $cc)/../lib/libLTO.dylib")
     $cc --target=x86_64-apple-darwin -isysroot $SDK -$O -flto $LD -shared -undefined dynamic_lookup lto/*.o -o lto/libhqc.dylib 2>/dev/null
     printf '%-10s %-8s %-4s %s\n' $name lto $O "$(count lto/libhqc.dylib)"
+  done
+done
+
+# AArch64 (scripts/hqc-bench/immintrin.h stands in for the x86 header vector.h includes and does not
+# use). In _hqc_kem_decaps the branch on the acceptance bit is a cbz/cbnz/tbz/tbnz; the function has
+# none otherwise, so the count is that column. LTO is not repeated here.
+echo "-- AArch64: cbz/cbnz/tbz/tbnz in _hqc_kem_decaps"
+printf '%-10s %-8s %-4s %s\n' compiler build opt cb/tb
+for cc in $CLANG22 $APPLE; do
+  name=$([ $cc = $APPLE ] && echo apple14 || echo clang22)
+  for O in O1 O2 O3 Os; do
+    for u in tu nohqc barrier v41; do
+      $cc --target=arm64-apple-darwin -isysroot $SDK -D_FORTIFY_SOURCE=0 -$O -S -I ../../../scripts/hqc-bench $INC $u.c -o a64_$u.s
+      printf '%-10s %-8s %-4s %s\n' $name $u $O "$(awk '/^_hqc_kem_decaps:/{f=1;next} f&&/\.cfi_endproc/{f=0} f' a64_$u.s | grep -cE '^\s+(cbz|cbnz|tbz|tbnz)\s' || true)"
+    done
   done
 done
