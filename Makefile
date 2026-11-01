@@ -18,7 +18,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: hqc-decaps hqc-decaps51 hqc-decaps51-O2 hqc-decaps51-hardened hqc-decaps51-faults hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-wire hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean hqc-all
+.PHONY: hqc-decaps hqc-decaps51 hqc-decaps51-O2 hqc-decaps51-hardened hqc-decaps51-faults hqc-decaps51-cc hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-wire hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean hqc-all
 
 all: verify
 
@@ -236,6 +236,11 @@ hqc-decaps51-O2: hqc-decaps51
 hqc-decaps51-hardened: hqc-decaps51
 	@mkdir -p build/hqc-decaps51/cm
 	@for v in v4 v41; do patch -s -o build/hqc-decaps51/cm/kem_$$v.c target/hqc-5.1/kem/hqc-kem.c proof/hqc-decaps/hardened/$$v.patch || exit 1; printf '#include "crypto_memset.c"\n#include "vector.c"\n#include "parsing.c"\n#include "kem_%s.c"\n' $$v > build/hqc-decaps51/cm/_dec_$$v.c; $(DEC_CC) -c -emit-llvm -I build/hqc-decaps51/cm -I target/hqc-5.1/kem -I target/hqc-5.1/hqc-1 -o build/hqc-decaps51/dec_1_$$v.bc build/hqc-decaps51/cm/_dec_$$v.c || exit 1; sed -e "s#^check false \"../../build/hqc-decaps51/dec_1.bc\";#check false \"../../build/hqc-decaps51/dec_1_$$v.bc\";#" -e '/^\/\/ Positive control/,$$d' proof/hqc-decaps/decaps51_1.saw > build/hqc-decaps51/decaps51_1_$$v.saw; grep -q "dec_1_$$v.bc" build/hqc-decaps51/decaps51_1_$$v.saw || { echo "!! $$v script not generated"; exit 1; }; echo ">> SAW: hardened $$v"; (cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) ../../build/hqc-decaps51/decaps51_1_$$v.saw) || exit 1; echo "VERIFIED: hardened $$v hqc_kem_decaps == decaps (saw exit 0)"; done
+
+## Code generation of the key selection (paper 2, Section 7): branch on the acceptance bit, x86_64,
+## clang 22 and Apple clang 14; fetches upstream v5.1.0 (hqc.c is not vendored). Not a proof.
+hqc-decaps51-cc:
+	@scripts/hqc_decaps51_cc.sh
 
 ## Single-fault maps (paper 2, Sections 4 to 6), hqc-1: shipped v5.1.0, v4, v4.1. One SAW run per
 ## fault site and property; slow (scripts/hqc_decaps51_faultmap.sh). Not part of hqc-all.

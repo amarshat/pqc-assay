@@ -1649,6 +1649,17 @@ control of the same restricted check on the shipped code. hqc-3/5 model and scri
    decryption stays an external call: this is not the single-translation-unit build in which clang
    turns the selection into a branch.
 
+8. Code generation, not a proof (`make hqc-decaps51-cc`, hqc-1, x86_64, 2026-11-01). The masked
+   selection relies on the compiler not knowing that `result` is 0 or 1. clang 22.1.8 learns it
+   from `hqc_pke_decrypt`'s constant `return 0` and emits a conditional jump on the acceptance bit
+   (`test; je`: on accept K is loaded, on reject zero, with K_bar entering through the mask) in two builds: `vector.c`, `parsing.c`,
+   `hqc.c` and `hqc-kem.c` as one translation unit at `-O2`, `-O3` and `-Os`; and the whole
+   library as `-O1 -flto` objects linked by ld64 with clang 22's libLTO, where decryption is not
+   inlined and its return value is propagated across modules. No jump: the unit without `hqc.c`,
+   the unit with `__asm__("" : "+r"(result))` after `result -= 1`, the hardened v4.1, LTO with
+   `-O2`/`-O3`/`-Os` objects, and Apple clang 14.0.3 in every configuration. AArch64 not tested
+   (the reference headers include `immintrin.h`). The item 7 proof is of a unit without `hqc.c`.
+
 Not covered: the x86_64 build's decapsulation, optimized builds other than the one in item 7, timing.
 Faults: A-HQC-DEC51-F.
 
