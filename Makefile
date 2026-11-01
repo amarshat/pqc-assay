@@ -18,7 +18,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: hqc-decaps hqc-decaps51 hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-wire hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean hqc-all
+.PHONY: hqc-decaps hqc-decaps51 hqc-decaps51-O2 hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-wire hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean hqc-all
 
 all: verify
 
@@ -218,6 +218,18 @@ hqc-decaps51:
 	cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) -v 3 decaps51_1.saw
 	@echo "VERIFIED: v5.1.0 hqc-1 hqc_kem_decaps == decaps (implicit rejection; XOF, PKE and hashes uninterpreted); mutants refuted (saw exit 0)"
 	@for p in 3 5; do echo ">> SAW: proof/hqc-decaps/decaps51_$$p.saw"; (cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) -v 3 decaps51_$$p.saw) || exit 1; echo "VERIFIED: v5.1.0 hqc-$$p hqc_kem_decaps == decaps (saw exit 0)"; done
+
+## v5.1.0 decapsulation at -O2 (clang 22, vectorized), hqc-1: same specification as hqc-decaps51. The
+## vectorizer's poison placeholders, which SAW 1.5.1 cannot evaluate, are replaced by zero after a
+## shape check (scripts/hqc_decaps_ir.py; A-HQC-DEC51 item 7).
+hqc-decaps51-O2: hqc-decaps51
+	@$(AVX_CLANG) --target=x86_64-apple-darwin -isysroot $$(xcrun --show-sdk-path) -D_FORTIFY_SOURCE=0 -O2 -S -emit-llvm -I target/hqc-5.1/kem -I target/hqc-5.1/hqc-1 -o build/hqc-decaps51/dec_1_O2.ll build/hqc-decaps51/_dec.c
+	@python3 scripts/hqc_decaps_ir.py build/hqc-decaps51/dec_1_O2.ll build/hqc-decaps51/dec_1_O2n.ll
+	@$(AVX_LLVM_BIN)llvm-as build/hqc-decaps51/dec_1_O2n.ll -o build/hqc-decaps51/dec_1_O2.bc
+	@sed -e 's#^check false "../../build/hqc-decaps51/dec_1.bc";#check false "../../build/hqc-decaps51/dec_1_O2.bc";#' -e '/^\/\/ Positive control/,$$d' proof/hqc-decaps/decaps51_1.saw > build/hqc-decaps51/decaps51_1_O2.saw
+	@grep -q 'dec_1_O2.bc' build/hqc-decaps51/decaps51_1_O2.saw || { echo "!! O2 script not generated"; exit 1; }
+	cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) ../../build/hqc-decaps51/decaps51_1_O2.saw
+	@echo "VERIFIED: v5.1.0 hqc-1 hqc_kem_decaps at -O2 (clang 22) == decaps (saw exit 0)"
 
 hqc-fft-wire: build/hqc-fft/wire_1.bc build/hqc-fft/wire_3.bc build/hqc-fft/wire_5.bc
 	@python3 scripts/hqc_fft_links.py
