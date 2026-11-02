@@ -1663,9 +1663,11 @@ control of the same restricted check on the shipped code. hqc-3/5 model and scri
    mask; Apple clang never; LTO not repeated. The item 7 proof is of a unit without `hqc.c`.
    Cost (`make hqc-decaps51-bench`, AArch64 native, separate objects at -O3, M2 Max, 2026-11-02,
    `proof/hqc-decaps/logs/bench_v42.txt`): shipped and v4.2 alternate, ten rounds of 2000 hqc-1
-   decapsulations. Median of round medians, valid ciphertext: 2.92 vs 2.94 ms (clang 22), 2.97 vs
-   2.99 ms (Apple clang). v4.2 is slower by 0.36-0.71% in all 40 paired rounds (both compilers,
-   valid and invalid ciphertexts). Same output keys. (v4.1, 2026-11-01, five unpaired rounds:
+   decapsulations. Median of round medians, valid ciphertext: 2.96 vs 2.98 ms (clang 22), 3.01 vs
+   3.03 ms (Apple clang). Median paired difference +0.39% to +0.78% across the two compilers and
+   the valid and invalid ciphertexts; single rounds range from -0.25% to +1.23% (load average
+   about 2.4 during the run). Same output keys. The earlier run (0.36-0.71%) was of the patch
+   before the word-25 fix. (v4.1, 2026-11-01, five unpaired rounds:
    `logs/bench.txt`.)
    Shipped builds (build files read 2026-11-01): upstream v5.0.0/v5.1.0 compile separate objects
    at -O3 (v5.0.0 adds -flto only for non-clang compilers; v5.1.0 none); liboqs 0.16.0 (HQC from
