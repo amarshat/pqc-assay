@@ -66,7 +66,7 @@ def result_type(rhs):
     m = re.match(r'(?:call (?:zeroext |signext )?(i\d+) )', rhs)
     if m:
         return m.group(1)
-    m = re.match(r'(?:load) (i\d+),', rhs)
+    m = re.match(r'load (?:volatile )?(i\d+),', rhs)
     if m:
         return m.group(1)
     m = re.match(r'icmp ', rhs)
@@ -154,7 +154,7 @@ def main():
             if t and reg not in index_regs and not any(re.search(rf'{re.escape(x)}\b', rhs) for x in idxs):
                 sites.append(('V', i, reg, t, ind, rhs, in_loop))
                 continue
-        sm = re.match(r'(\s*)store (i\d+) (%[\w.]+|-?\d+), ptr (%[\w.]+)', l)
+        sm = re.match(r'(\s*)store (?:volatile )?(i\d+) (%[\w.]+|-?\d+), ptr (%[\w.]+)', l)
         if sm and sm.group(4) not in idxs:
             sites.append(('S', i, sm, in_loop))
             continue
@@ -192,16 +192,17 @@ def main():
         elif kind == 'S':
             _, i, sm, _ = site
             ind, t, val, ptr = sm.groups()
+            vol = 'volatile ' if ' store volatile ' in ' ' + lines[i].lstrip() else ''
             # The first store to a location in the function: skipping it leaves stale stack, an
             # arbitrary value, which the symbolic global of its type models.
-            first = not any(re.search(rf'store i\d+ [^,]+, ptr {re.escape(ptr)},', x) for x in lines[fstart:i])
+            first = not any(re.search(rf'store (?:volatile )?i\d+ [^,]+, ptr {re.escape(ptr)},', x) for x in lines[fstart:i])
             g = {'i1': '@fault_v1', 'i8': '@fault_v8', 'i32': '@fault_v32', 'i64': '@fault_v64'}[t]
             oldv = f'  %{k}.old = load {t}, ptr {g}, align 1' if first else f'  %{k}.old = load {t}, ptr {ptr}, align 1'
             new = pre + [oldv,
                          f'  %{k}.v = select i1 %{k}.hit, {t} %{k}.old, {t} {val}',
-                         f'  store {t} %{k}.v, ptr {ptr}, align 1']
+                         f'  store {vol}{t} %{k}.v, ptr {ptr}, align 1']
             L[i] = '\n'.join(new)
-            desc = f'S store {t} {val} -> {ptr}'
+            desc = f'S store {vol}{t} {val} -> {ptr}'
         else:
             _, i, callee, _ = site
             call = lines[i].split(', !dbg')[0]

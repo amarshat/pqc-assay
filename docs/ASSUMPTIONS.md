@@ -1725,19 +1725,20 @@ the log shows the postcondition subgoal failed; any other failure is ERROR, and 
 decides is TIMEOUT. The earlier two-run P3 (rejection keys switched, outputs must differ in 31
 bytes) is withdrawn: an output of 32 copies of one byte of J passes it.
 
-Results (2026-11-01/02; verdicts in `build/hqc-decaps51/faults_1<tag>/{RESULTS,FIRED,NI,PRES}.tsv`,
-8 jobs on the M2 Max: v4.2 7412 s, v4.1 6754 s, v4 6726 s; shipped P2 and P3 also rerun on the M4
-Pro host with identical NI.tsv and PRES.tsv). Every P1-holding site in all four maps is FIRES.
+Results (2026-11-02, after volatile loads and stores became fault sites and the v4.2 word-25 fix;
+verdicts in `build/hqc-decaps51/faults_1<tag>/{RESULTS,FIRED,NI,PRES}.tsv`, 8 jobs on the M2 Max: v4.2
+7612 s, v4 7120 s; v4.1 5 jobs on the M4 Pro host, 8599 s; shipped P2 and P3 also rerun on the M4
+Pro host with identical NI.tsv and PRES.tsv; the shipped map has no volatile access in the region). Every P1-holding site in all four maps is FIRES.
 - v5.1.0 as shipped, 55 sites: P1 holds at 4, BROKEN 50, ERROR 1. Of the 50: P2 LEAK 36,
   NONINTERFERENT 13, TIMEOUT 1 (skip of `hash_g`); P3 VIOLATED 38, PRESERVED 12 (the 12 broken
   sites of the selection body; two of them, the mask load and its extension, also LEAK).
-- v4 (`proof/hqc-decaps/hardened/v4.patch`), 98 sites: P1 holds at 73, BROKEN 22, ERROR 3. P2 LEAK
+- v4 (`proof/hqc-decaps/hardened/v4.patch`), 104 sites: P1 holds at 79, BROKEN 22, ERROR 3. P2 LEAK
   6, NONINTERFERENT 15, TIMEOUT 1; P3 VIOLATED 9, PRESERVED 13.
 - v4.1 (`v41.patch`: v4 plus the rejection key written to the output before the selection),
-  107 sites: P1 holds at 82, BROKEN 21, ERROR 4. P2 LEAK 6, NONINTERFERENT 14, TIMEOUT 1; P3
+  113 sites: P1 holds at 88, BROKEN 21, ERROR 4. P2 LEAK 6, NONINTERFERENT 14, TIMEOUT 1; P3
   VIOLATED 8, PRESERVED 13.
 - v4.2 (`v42.patch`: v4.1 plus prefills from `dk_kem`, both J before G, `K_theta_prime` prefilled
-  with the rejection key), 135 sites: P1 holds at 105, BROKEN 20, ERROR 6, TIMEOUT 4. P2 LEAK 6,
+  with the rejection key), 150 sites: P1 holds at 120, BROKEN 20, ERROR 6, TIMEOUT 4. P2 LEAK 6,
   NONINTERFERENT 14; P3 VIOLATED 7, PRESERVED 13.
 In all three hardened variants P3 is violated at the skips of `xof_init_dom_sep`, both
 `xof_get_bytes`, `hqc_pke_keygen`, `hqc_c_kem_from_string`, `hqc_pke_decrypt` and `hash_h`, and P2
@@ -1753,4 +1754,10 @@ same specification as the shipped code.
 Limits: `-O0` IR, not machine code; one fault per execution; loop indices and the internals of
 `vect_compare`, the hashes, the XOF and the PKE are not faulted; uninterpreted functions cannot
 express that a value is secret, so P2 and P3 are the stand-ins, and a value prefilled from the
-secret key looks the same to them as a public zero; the one-byte allowance of P3 is a choice.
+secret key looks the same to them as a public zero; the one-byte allowance of P3 is a choice. The
+XOF context is opaque to the model, so a hardened variant that breaks its representation (v4.2 as
+first written prefilled word 25, the buffered-byte count that `keccak_inc_squeeze` indexes with) is
+not caught by any verdict; found in review 2026-11-02, fixed in v42.patch. Bitcode is from Homebrew
+clang 22.1.8 and SAW 1.5.1's parser reports "Invalid record size" warnings on its debug metadata
+(METADATA_COMPILE_UNIT, METADATA_BASIC_TYPE) in every log; the proofs and the mutant runs go
+through regardless, and the warnings are on debug records only.

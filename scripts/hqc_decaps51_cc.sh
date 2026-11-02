@@ -7,6 +7,7 @@
 #   nohqc   the same without hqc.c (hqc_pke_decrypt stays external)
 #   barrier tu with __asm__("" : "+r"(result)) after "result -= 1;"
 #   v41     tu with proof/hqc-decaps/hardened/v41.patch applied
+#   v42     tu with proof/hqc-decaps/hardened/v42.patch applied
 #   lto     every source file of src/common, src/ref and lib/fips202 as a separate -flto object,
 #           linked into one shared library by ld64 with that compiler's libLTO. The driver passes no
 #           optimization level to ld64, so the link-time pipeline is libLTO's default; the opt column
@@ -27,19 +28,19 @@ mkdir -p $B/lto; cd $B
 INC="-I ../../../$U/src/common -I ../../../$U/src/common/hqc-1 -I ../../../$U/src/ref -I ../../../$U/src/ref/hqc-1 -I ../../../$U/lib/fips202 -I ."
 sed 's/^    result -= 1;$/    result -= 1;\n    __asm__("" : "+r"(result));/' ../../../$U/src/common/hqc-kem.c > hqc-kem-bar.c
 grep -q '__asm__("" : "+r"(result));' hqc-kem-bar.c
-patch -s -o kem_v41.c ../../../$U/src/common/hqc-kem.c ../../../proof/hqc-decaps/hardened/v41.patch
+for v in v41 v42; do patch -s -o kem_$v.c ../../../$U/src/common/hqc-kem.c ../../../proof/hqc-decaps/hardened/$v.patch; done
 hdr='#include "crypto_memset.c"\n#include "vector.c"\n#include "parsing.c"\n'
 printf "$hdr"'#include "hqc.c"\n#include "hqc-kem.c"\n' > tu.c
 printf "$hdr"'#include "hqc-kem.c"\n' > nohqc.c
 printf "$hdr"'#include "hqc.c"\n#include "hqc-kem-bar.c"\n' > barrier.c
-printf "$hdr"'#include "hqc.c"\n#include "kem_v41.c"\n' > v41.c
+for v in v41 v42; do printf "$hdr"'#include "hqc.c"\n#include "kem_%s.c"\n' $v > $v.c; done
 count() { fn=${2:-_hqc_kem_decaps}; otool -tvV "$1" | awk -v fn="$fn:" '$0==fn{f=1;next} f&&/^_[A-Za-z]/{f=0} f' \
           | grep -A1 -E '\stest[bwlq]\s' | grep -cE '\sj[a-z]+\s' || true; }
 printf '%-10s %-8s %-4s %s\n' compiler build opt test+jcc
 for cc in $CLANG22 $APPLE; do
   name=$([ $cc = $APPLE ] && echo apple14 || echo clang22)
   for O in O1 O2 O3 Os; do
-    for u in tu nohqc barrier v41; do
+    for u in tu nohqc barrier v41 v42; do
       $cc --target=x86_64-apple-darwin -isysroot $SDK -D_FORTIFY_SOURCE=0 -$O -c $INC $u.c -o $u.o
       printf '%-10s %-8s %-4s %s\n' $name $u $O "$(count $u.o)"
     done
@@ -61,7 +62,7 @@ printf '%-10s %-8s %-4s %s\n' compiler build opt cb/tb
 for cc in $CLANG22 $APPLE; do
   name=$([ $cc = $APPLE ] && echo apple14 || echo clang22)
   for O in O1 O2 O3 Os; do
-    for u in tu nohqc barrier v41; do
+    for u in tu nohqc barrier v41 v42; do
       $cc --target=arm64-apple-darwin -isysroot $SDK -D_FORTIFY_SOURCE=0 -$O -S -I ../../../scripts/hqc-bench $INC $u.c -o a64_$u.s
       printf '%-10s %-8s %-4s %s\n' $name $u $O "$(awk '/^_hqc_kem_decaps:/{f=1;next} f&&/\.cfi_endproc/{f=0} f' a64_$u.s | grep -cE '^\s+(cbz|cbnz|tbz|tbnz)\s' || true)"
     done
