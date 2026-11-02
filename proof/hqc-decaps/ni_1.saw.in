@@ -116,6 +116,8 @@ let ncheck path = do {
         v64 <- llvm_fresh_var "fault_v64" (llvm_int 64);
         llvm_alloc_global "fault_v64";
         llvm_points_to (llvm_global "fault_v64") (llvm_term v64);
+        llvm_alloc_global "fault_fired";
+        llvm_points_to (llvm_global "fault_fired") (llvm_global_initializer "fault_fired");
         llvm_alloc_global "hqc_epoch";
         e0 <- llvm_fresh_var "epoch0" (llvm_int 8);
         llvm_points_to (llvm_global "hqc_epoch") (llvm_term e0);

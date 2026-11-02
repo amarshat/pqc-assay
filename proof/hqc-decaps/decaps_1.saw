@@ -136,7 +136,10 @@ print "VERIFIED: hqc-1 crypto_kem_dec == decaps (implicit rejection); vect_compa
 // Positive control: the restricted check passes on the shipped code, so the precondition the
 // mutant runs use type-checks and is satisfiable, and their failures are refutations.
 check true "../../build/hqc-decaps/dec_1.bc";
+print "MUTANT-BEGIN bug1";
 fails (check true "../../build/hqc-decaps/mut/dec_1_bug1.bc");
+print "MUTANT-BEGIN bug2";
 fails (check true "../../build/hqc-decaps/mut/dec_1_bug2.bc");
+print "MUTANT-BEGIN both";
 fails (check true "../../build/hqc-decaps/mut/dec_1_both.bc");
 print "REFUTED: all three CVE-2024-54137 mutants";

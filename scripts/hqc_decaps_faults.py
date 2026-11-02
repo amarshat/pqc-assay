@@ -3,20 +3,22 @@
 
 Reads the -O0 IR of $DEC_BUILD/dec_<p><tag>.ll (default build/hqc-decaps) and writes one .ll per
 fault site into $DEC_BUILD/faults_<p><tag>/. $DEC_FUNC names the function holding the
-decapsulation logic (default crypto_kem_dec; hqc_kem_decaps_internal for v5.1.0). The fault region is crypto_kem_dec from the call to hqc_pke_decrypt to the
-end of the selection loop (the first call through memset_volatile).
+decapsulation logic (default crypto_kem_dec; hqc_kem_decaps_internal for v5.1.0). The fault region
+runs from the first call matching $DEC_REGION_START in that function (default the call to
+hqc_pke_decrypt; the v5.1.0 driver starts at xof_init_dom_sep, so key regeneration is included) to
+the end of the selection loop (the first call through memset_volatile).
 
 Fault models, each at one dynamic instance chosen by the symbolic global @fault_J:
   V  value: an integer SSA value (i1, i8, i32, i64) is replaced by the symbolic global of its type
      when @fault_J equals the current loop iteration (0 outside the loop). Arbitrary value, so it
      covers bit flips, stuck-at and set/reset faults.
-  S  skip: a store writes back the old contents instead (instruction skip), and a memcpy or call
-     with a destination buffer writes to a scratch buffer instead (call skip), at that instance.
+  S  skip: a store writes back the old contents instead (instruction skip).
+  C  call skip: a call in SKIPPABLE writes its outputs to scratch buffers instead, at that instance.
 In the fault region the nsw/nuw flags are dropped: a faulted register wraps, it does not create
 poison. For @fault_J outside the executed instances the variant is the original program, so every
 property must also hold unfaulted.
 
-The loop index is the alloca compared against 32 in the selection loop header; its loads and
+Each loop index is the alloca compared against the loop bound in the loop header; its loads and
 increment are not fault sites (a corrupted index changes the iteration count, which symbolic
 execution cannot bound; out of the model). The exit test itself is a site: a flipped outcome at one
 iteration ends the loop early or runs one iteration past the end.
@@ -28,10 +30,35 @@ import sys
 INT_RE = re.compile(r'^(\s*)(%[\w.]+) = (.*)$')
 
 
-def region(lines):
-    start = next(i for i, l in enumerate(lines) if '@hqc_pke_decrypt(' in l and 'call' in l)
+def region(lines, fstart, start_pat):
+    # 'AFTER_INIT:<pat>': start after the last llvm.memset (the zero-initialization of the local
+    # arrays) that precedes the first call matching <pat>, so that code a variant adds before that
+    # call is in the region too.
+    after_init = start_pat.startswith('AFTER_INIT:')
+    pat = start_pat.split(':', 1)[1] if after_init else start_pat
+    start = next(i for i in range(fstart, len(lines)) if pat in lines[i] and 'call' in lines[i])
+    if after_init:
+        start = max(i for i in range(fstart, start) if '@llvm.memset' in lines[i]) + 1
     end = next(i for i in range(start, len(lines)) if '@memset_volatile' in lines[i])
     return start, end
+
+
+# Calls that can be skipped, and which pointer arguments are their outputs. A skipped call writes its
+# outputs to scratch buffers, so the real destinations keep their earlier contents. hqc_pke_encrypt
+# takes (outputs..., ek, m, theta); keygen and the parser take (outputs..., input); xof_get_bytes
+# takes (ctx, out, len) and only out is redirected (the XOF state still advances).
+def call_outputs(callee, args):
+    if callee == 'hqc_pke_encrypt':
+        return args[:len(args) - 3]
+    if callee in ('hqc_pke_keygen', 'hqc_c_kem_from_string'):
+        return args[:len(args) - 1]
+    if callee == 'xof_get_bytes':
+        return args[1:2]
+    return args[:1]
+
+
+SKIPPABLE = ('llvm.memcpy.p0.p0.i64', 'xof_init_dom_sep', 'xof_get_bytes', 'hqc_pke_keygen',
+             'hqc_c_kem_from_string', 'hqc_pke_decrypt', 'hash_h', 'hash_g', 'hash_j', 'hqc_pke_encrypt')
 
 
 def result_type(rhs):
@@ -59,20 +86,22 @@ def main():
     tag = sys.argv[2] if len(sys.argv) > 2 else ''
     build = os.environ.get('DEC_BUILD', 'build/hqc-decaps')
     func = os.environ.get('DEC_FUNC', 'crypto_kem_dec')
+    start_pat = os.environ.get('DEC_REGION_START', '@hqc_pke_decrypt(')
     src = f'{build}/dec_{p}{tag}.ll'
     out = f'{build}/faults_{p}{tag}'
     os.makedirs(out, exist_ok=True)
     text = open(src).read()
     lines = text.split('\n')
     fstart = next(i for i, l in enumerate(lines) if l.startswith('define') and f'@{func}(' in l)
-    s, e = region(lines)
+    s, e = region(lines, fstart, start_pat)
     assert fstart < s < e
 
-    # 32-iteration loops in the region: "icmp ult i64 %X, 32" with %X = load i64, ptr %IDX. Each loop
+    # Counted loops in the region: "icmp ult i64 %X, N" (N a constant) with %X = load i64, ptr %IDX.
+    # Each loop
     # spans from its header (the first load of IDX) to its exit label.
     loops = []  # (header line, exit-label line, index alloca)
     for i in range(s, e):
-        m = re.search(r'(%[\w.]+) = icmp ult i64 (%[\w.]+), 32', lines[i])
+        m = re.search(r'(%[\w.]+) = icmp ult i64 (%[\w.]+), \d+(?:,|$)', lines[i])
         if not m:
             continue
         ld = next(j for j in range(i, s, -1) if re.match(rf'\s*{re.escape(m.group(2))} = load i64, ptr (%[\w.]+)', lines[j]))
@@ -99,14 +128,19 @@ def main():
                 return ix
         return None
 
+    # @fault_fired is set when the chosen instance executes; the fired check (fired51_1.saw.in)
+    # proves that it can be set, so a RESILIENT verdict is never about a fault that cannot happen.
     globals_ir = ('@fault_J = global i64 0\n@fault_v1 = global i1 false\n@fault_v8 = global i8 0\n'
-                  '@fault_v32 = global i32 0\n@fault_v64 = global i64 0\n')
+                  '@fault_v32 = global i32 0\n@fault_v64 = global i64 0\n@fault_fired = global i8 0\n')
     sites = []
     for i in range(s, e):
         l = lines[i].split(', !dbg')[0]
         in_loop = loop_of(i)
+        cm = re.match(r'\s*(?:%[\w.]+ = )?(?:tail )?call (?:void|zeroext i8|i8|i32|ptr) @([\w.]+)\(', l)
+        if cm and cm.group(1) in SKIPPABLE:
+            sites.append(('C', i, cm.group(1), in_loop))
         m = INT_RE.match(l)
-        if m and re.search(rf'= icmp ult i64 %[\w.]+, 32$', l):
+        if m and re.search(r'= icmp ult i64 %[\w.]+, \d+$', l):
             # the selection loop's exit test, two sites: forced false at one iteration ends the loop
             # early (E); forced true at one iteration runs past the end (O), which SAW reports as an
             # out-of-bounds access
@@ -124,9 +158,6 @@ def main():
         if sm and sm.group(4) not in idxs:
             sites.append(('S', i, sm, in_loop))
             continue
-        cm = re.match(r'(\s*)call void @(llvm\.memcpy\.p0\.p0\.i64|hash_j|hqc_pke_encrypt)\(ptr (?:align \d+ )?(?:noundef )?(%[\w.]+)', l)
-        if cm:
-            sites.append(('C', i, cm, in_loop))
 
     manifest = []
     for n, site in enumerate(sites):
@@ -139,6 +170,9 @@ def main():
         if iter_load:
             pre.append(iter_load)
         pre.append(f'  %{k}.hit = icmp eq i64 %{k}.j, {it}')
+        pre += [f'  %{k}.f0 = load i8, ptr @fault_fired, align 1',
+                f'  %{k}.f1 = select i1 %{k}.hit, i8 1, i8 %{k}.f0',
+                f'  store i8 %{k}.f1, ptr @fault_fired, align 1']
         if kind == 'V':
             _, i, reg, t, ind, rhs, _ = site
             g = {'i1': '@fault_v1', 'i8': '@fault_v8', 'i32': '@fault_v32', 'i64': '@fault_v64'}[t]
@@ -169,14 +203,13 @@ def main():
             L[i] = '\n'.join(new)
             desc = f'S store {t} {val} -> {ptr}'
         else:
-            _, i, cm, _ = site
-            ind, callee, dst = cm.groups()
+            _, i, callee, _ = site
             call = lines[i].split(', !dbg')[0]
-            args = re.findall(r'ptr (?:align \d+ )?(?:noundef )?(%[\w.]+)', call)
-            # outputs: hqc_pke_encrypt's leading pointers before (ek, m, theta); otherwise the first
-            outs = args[:len(args) - 3] if callee == 'hqc_pke_encrypt' else [dst]
-            new = list(pre)
             head, rest = call.split('(', 1)
+            args = re.findall(r'ptr (?:align \d+ )?(?:noundef )?(?:nonnull )?(%[\w.]+)', rest)
+            outs = call_outputs(callee, args)
+            assert outs, f'no output pointer for {callee} at line {i + 1}'
+            new = list(pre)
             for j, o in enumerate(outs):
                 scratch = f'%{k}.scratch{j}'
                 new += [f'  {scratch} = alloca [65536 x i8], align 16',

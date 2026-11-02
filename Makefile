@@ -18,7 +18,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: hqc-decaps hqc-decaps51 hqc-decaps51-O2 hqc-decaps51-hardened hqc-decaps51-faults hqc-decaps51-cc hqc-decaps51-bench hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-wire hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean hqc-all
+.PHONY: hqc-decaps hqc-decaps51 hqc-decaps51-O2 hqc-decaps51-hardened hqc-decaps51-faults hqc-decaps51-cc hqc-decaps51-bench hqc-decaps51-spec hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-wire hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean hqc-all
 
 all: verify
 
@@ -196,7 +196,8 @@ hqc-decaps:
 	@sed -e '$(DEC_CVE1)' -e '$(DEC_CVE2)' target/hqc/kem/kem.c > build/hqc-decaps/mut/kem_both.c
 	@for k in bug1 bug2 both; do cmp -s target/hqc/kem/kem.c build/hqc-decaps/mut/kem_$$k.c && { echo "!! mutant $$k did not apply"; exit 1; }; printf '#include "crypto_memset.c"\n#include "vector.c"\n#include "parsing.c"\n#include "kem_%s.c"\n' $$k > build/hqc-decaps/mut/_dec_$$k.c; $(DEC_CC) -c -emit-llvm -I build/hqc-decaps/mut -I target/hqc/kem -I target/hqc/hqc-1 -I target/hqc -o build/hqc-decaps/mut/dec_1_$$k.bc build/hqc-decaps/mut/_dec_$$k.c || exit 1; done
 	@echo ">> SAW: proof/hqc-decaps/decaps_1.saw"
-	cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) -v 3 decaps_1.saw
+	set -o pipefail; cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) decaps_1.saw 2>&1 | tee $(CURDIR)/build/hqc-decaps/decaps_1.log
+	@scripts/check_mutant_log.sh build/hqc-decaps/decaps_1.log crypto_kem_dec 3 'decaps_1.saw:109:[0-9]*: error: in llvm_points_to'
 	@echo "VERIFIED: hqc-1 crypto_kem_dec == decaps (implicit rejection; PKE and hashes uninterpreted); CVE-2024-54137 mutants refuted (saw exit 0)"
 	@for p in 3 5; do echo ">> SAW: proof/hqc-decaps/decaps_$$p.saw"; (cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) -v 3 decaps_$$p.saw) || exit 1; echo "VERIFIED: hqc-$$p crypto_kem_dec == decaps (saw exit 0)"; done
 
@@ -215,7 +216,8 @@ hqc-decaps51:
 	@sed -e '$(DEC51_MASK)' -e '$(DEC51_NOV)' target/hqc-5.1/kem/hqc-kem.c > build/hqc-decaps51/mut/kem_both.c
 	@for k in mask nov both; do cmp -s target/hqc-5.1/kem/hqc-kem.c build/hqc-decaps51/mut/kem_$$k.c && { echo "!! mutant $$k did not apply"; exit 1; }; printf '#include "crypto_memset.c"\n#include "vector.c"\n#include "parsing.c"\n#include "kem_%s.c"\n' $$k > build/hqc-decaps51/mut/_dec_$$k.c; $(DEC_CC) -c -emit-llvm -I build/hqc-decaps51/mut -I target/hqc-5.1/kem -I target/hqc-5.1/hqc-1 -o build/hqc-decaps51/mut/dec_1_$$k.bc build/hqc-decaps51/mut/_dec_$$k.c || exit 1; done
 	@echo ">> SAW: proof/hqc-decaps/decaps51_1.saw"
-	cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) -v 3 decaps51_1.saw
+	set -o pipefail; cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) decaps51_1.saw 2>&1 | tee $(CURDIR)/build/hqc-decaps51/decaps51_1.log
+	@scripts/check_mutant_log.sh build/hqc-decaps51/decaps51_1.log hqc_kem_decaps 3 'decaps51_1.saw:138:[0-9]*: error: in llvm_points_to'
 	@echo "VERIFIED: v5.1.0 hqc-1 hqc_kem_decaps == decaps (implicit rejection; XOF, PKE and hashes uninterpreted); mutants refuted (saw exit 0)"
 	@for p in 3 5; do echo ">> SAW: proof/hqc-decaps/decaps51_$$p.saw"; (cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) -v 3 decaps51_$$p.saw) || exit 1; echo "VERIFIED: v5.1.0 hqc-$$p hqc_kem_decaps == decaps (saw exit 0)"; done
 
@@ -235,21 +237,35 @@ hqc-decaps51-O2: hqc-decaps51
 ## copy of v5.1.0 hqc-kem.c, hqc-1, proved equal to the same specification as hqc-decaps51.
 hqc-decaps51-hardened: hqc-decaps51
 	@mkdir -p build/hqc-decaps51/cm
-	@for v in v4 v41; do patch -s -o build/hqc-decaps51/cm/kem_$$v.c target/hqc-5.1/kem/hqc-kem.c proof/hqc-decaps/hardened/$$v.patch || exit 1; printf '#include "crypto_memset.c"\n#include "vector.c"\n#include "parsing.c"\n#include "kem_%s.c"\n' $$v > build/hqc-decaps51/cm/_dec_$$v.c; $(DEC_CC) -c -emit-llvm -I build/hqc-decaps51/cm -I target/hqc-5.1/kem -I target/hqc-5.1/hqc-1 -o build/hqc-decaps51/dec_1_$$v.bc build/hqc-decaps51/cm/_dec_$$v.c || exit 1; sed -e "s#^check false \"../../build/hqc-decaps51/dec_1.bc\";#check false \"../../build/hqc-decaps51/dec_1_$$v.bc\";#" -e '/^\/\/ Positive control/,$$d' proof/hqc-decaps/decaps51_1.saw > build/hqc-decaps51/decaps51_1_$$v.saw; grep -q "dec_1_$$v.bc" build/hqc-decaps51/decaps51_1_$$v.saw || { echo "!! $$v script not generated"; exit 1; }; echo ">> SAW: hardened $$v"; (cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) ../../build/hqc-decaps51/decaps51_1_$$v.saw) || exit 1; echo "VERIFIED: hardened $$v hqc_kem_decaps == decaps (saw exit 0)"; done
+	@for v in v4 v41 v42; do patch -s -o build/hqc-decaps51/cm/kem_$$v.c target/hqc-5.1/kem/hqc-kem.c proof/hqc-decaps/hardened/$$v.patch || exit 1; printf '#include "crypto_memset.c"\n#include "vector.c"\n#include "parsing.c"\n#include "kem_%s.c"\n' $$v > build/hqc-decaps51/cm/_dec_$$v.c; $(DEC_CC) -c -emit-llvm -I build/hqc-decaps51/cm -I target/hqc-5.1/kem -I target/hqc-5.1/hqc-1 -o build/hqc-decaps51/dec_1_$$v.bc build/hqc-decaps51/cm/_dec_$$v.c || exit 1; sed -e "s#^check false \"../../build/hqc-decaps51/dec_1.bc\";#check false \"../../build/hqc-decaps51/dec_1_$$v.bc\";#" -e '/^\/\/ Positive control/,$$d' proof/hqc-decaps/decaps51_1.saw > build/hqc-decaps51/decaps51_1_$$v.saw; grep -q "dec_1_$$v.bc" build/hqc-decaps51/decaps51_1_$$v.saw || { echo "!! $$v script not generated"; exit 1; }; echo ">> SAW: hardened $$v"; (cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) ../../build/hqc-decaps51/decaps51_1_$$v.saw) || exit 1; echo "VERIFIED: hardened $$v hqc_kem_decaps == decaps (saw exit 0)"; done
 
 ## Code generation of the key selection (paper 2, Section 7): branch on the acceptance bit, x86_64,
 ## clang 22 and Apple clang 14; fetches upstream v5.1.0 (hqc.c is not vendored). Not a proof.
 hqc-decaps51-cc:
 	@scripts/hqc_decaps51_cc.sh
 
-## Cost of the hardened v4.1 against shipped v5.1.0 decapsulation, hqc-1, native (paper 2, Section 6).
+## v5.1.0 hqc-1 against SpecV51_1::Decaps, written from the HQC specification of 2026-10-12 (not from
+## the C): decryption may return bottom, G and J take the document's concatenations. Two mutations of
+## the spec model (J over c' instead of c; bottom ignored) must fail at the output.
+SPEC51_M1 = s/Kbar            = J (H ekPKE \# sigma \# cKEM)  /Kbar            = J (H ekPKE \# sigma \# cKEM') /
+SPEC51_M2 = s|if bot \\\\/ cKEM' != cKEM then|if cKEM' != cKEM then|
+hqc-decaps51-spec: hqc-decaps51
+	@mkdir -p build/hqc-decaps51/specmut/m1 build/hqc-decaps51/specmut/m2
+	@sed "$(SPEC51_M1)" model/cryptol/hqc-decaps/SpecV51_1.cry > build/hqc-decaps51/specmut/m1/SpecV51_1.cry
+	@sed "$(SPEC51_M2)" model/cryptol/hqc-decaps/SpecV51_1.cry > build/hqc-decaps51/specmut/m2/SpecV51_1.cry
+	@for k in m1 m2; do if cmp -s model/cryptol/hqc-decaps/SpecV51_1.cry build/hqc-decaps51/specmut/$$k/SpecV51_1.cry; then echo "!! spec mutation $$k did not apply"; exit 1; fi; done
+	cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) spec51_1.saw
+	@echo "VERIFIED: v5.1.0 hqc-1 hqc_kem_decaps == SpecV51_1::Decaps (saw exit 0)"
+	@for k in m1 m2; do (cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/build/hqc-decaps51/specmut/$$k $(SAW) spec51_1.saw > $(CURDIR)/build/hqc-decaps51/specmut/$$k.log 2>&1) && { echo "!! spec mutation $$k was not refuted"; exit 1; }; grep -q 'Subgoal failed: hqc_kem_decaps.*llvm_points_to' build/hqc-decaps51/specmut/$$k.log || { echo "!! spec mutation $$k failed somewhere other than the output"; exit 1; }; echo "REFUTED: spec mutation $$k (output counterexample)"; done
+
+## Cost of the hardened v4.2 against shipped v5.1.0 decapsulation, hqc-1, native (paper 2, Section 6).
 hqc-decaps51-bench:
 	@scripts/hqc_decaps51_bench.sh
 
-## Single-fault maps (paper 2, Sections 4 to 6), hqc-1: shipped v5.1.0, v4, v4.1. One SAW run per
+## Single-fault maps (paper 2, Sections 4 to 6), hqc-1: shipped v5.1.0, v4, v4.1, v4.2. One SAW run per
 ## fault site and property; slow (scripts/hqc_decaps51_faultmap.sh). Not part of hqc-all.
 hqc-decaps51-faults:
-	@for v in shipped v4 v41; do scripts/hqc_decaps51_faultmap.sh $$v $(or $(JOBS),8) || exit 1; done
+	@for v in shipped v4 v41 v42; do scripts/hqc_decaps51_faultmap.sh $$v $(or $(JOBS),8) || exit 1; done
 
 hqc-fft-wire: build/hqc-fft/wire_1.bc build/hqc-fft/wire_3.bc build/hqc-fft/wire_5.bc
 	@python3 scripts/hqc_fft_links.py

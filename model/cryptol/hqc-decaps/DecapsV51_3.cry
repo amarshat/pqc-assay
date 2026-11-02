@@ -123,3 +123,9 @@ diffBytes x y = foldl (+) 0 [ if a != b then 1 else 0 | a <- x | b <- y ]
 unpred : [CT][8] -> [DK][8] -> [SS][8] -> [SS][8] -> Bit
 unpred c dk k1 k2 = (~ accepts c dk /\ diffBytes (rejKeyE 0 c dk) (rejKeyE 1 c dk) == `SS)
                     ==> diffBytes k1 k2 >= `SS - 1
+
+
+// P3 (rejection-key preservation): a ciphertext that does not re-encrypt yields an output that
+// equals the correct rejection key in at least SS - 1 of its SS bytes.
+preserves : [CT][8] -> [DK][8] -> [SS][8] -> Bit
+preserves c dk k = ~ accepts c dk ==> diffBytes k (rejKey c dk) <= 1

@@ -1,0 +1,63 @@
+# scripts/hqc_decaps51_bench.sh 5 2000, Apple M2 Max, macOS 13.7.8, 2026-11-01
+== clang22 (Homebrew clang version 22.1.8), arm64, N=2000
+-- shipped round 1
+valid    median  2925167 ns  mean  2933808 ns  key f481796091a5c687
+invalid  median  2923166 ns  mean  2930644 ns  key 11048d1f29661c05
+-- v41 round 1
+valid    median  2951958 ns  mean  2971373 ns  key f481796091a5c687
+invalid  median  2976083 ns  mean  2981898 ns  key 11048d1f29661c05
+-- shipped round 2
+valid    median  2968542 ns  mean  2992356 ns  key f481796091a5c687
+invalid  median  2974458 ns  mean  2982421 ns  key 11048d1f29661c05
+-- v41 round 2
+valid    median  2978542 ns  mean  3000008 ns  key f481796091a5c687
+invalid  median  2987250 ns  mean  2992924 ns  key 11048d1f29661c05
+-- shipped round 3
+valid    median  2954208 ns  mean  2964397 ns  key f481796091a5c687
+invalid  median  2977167 ns  mean  2983641 ns  key 11048d1f29661c05
+-- v41 round 3
+valid    median  2998625 ns  mean  3003540 ns  key f481796091a5c687
+invalid  median  3005500 ns  mean  3010307 ns  key 11048d1f29661c05
+-- shipped round 4
+valid    median  2987625 ns  mean  2991865 ns  key f481796091a5c687
+invalid  median  2987708 ns  mean  2993715 ns  key 11048d1f29661c05
+-- v41 round 4
+valid    median  3004875 ns  mean  3025018 ns  key f481796091a5c687
+invalid  median  2992125 ns  mean  3002337 ns  key 11048d1f29661c05
+-- shipped round 5
+valid    median  2978542 ns  mean  3003487 ns  key f481796091a5c687
+invalid  median  2973542 ns  mean  2978005 ns  key 11048d1f29661c05
+-- v41 round 5
+valid    median  2995458 ns  mean  3003876 ns  key f481796091a5c687
+invalid  median  3003833 ns  mean  3011051 ns  key 11048d1f29661c05
+== apple (Apple clang version 14.0.3 (clang-1403.0.22.14.1)), arm64, N=2000
+-- shipped round 1
+valid    median  3042792 ns  mean  3050048 ns  key f481796091a5c687
+invalid  median  3030041 ns  mean  3036066 ns  key 11048d1f29661c05
+-- v41 round 1
+valid    median  3043209 ns  mean  3049238 ns  key f481796091a5c687
+invalid  median  3032375 ns  mean  3040981 ns  key 11048d1f29661c05
+-- shipped round 2
+valid    median  3019750 ns  mean  3029065 ns  key f481796091a5c687
+invalid  median  3021750 ns  mean  3041534 ns  key 11048d1f29661c05
+-- v41 round 2
+valid    median  3050125 ns  mean  3076313 ns  key f481796091a5c687
+invalid  median  3054833 ns  mean  3155423 ns  key 11048d1f29661c05
+-- shipped round 3
+valid    median  3060333 ns  mean  3095848 ns  key f481796091a5c687
+invalid  median  3069667 ns  mean  3108063 ns  key 11048d1f29661c05
+-- v41 round 3
+valid    median  3045625 ns  mean  3073385 ns  key f481796091a5c687
+invalid  median  3040000 ns  mean  3071934 ns  key 11048d1f29661c05
+-- shipped round 4
+valid    median  3001042 ns  mean  3039355 ns  key f481796091a5c687
+invalid  median  3032625 ns  mean  3054423 ns  key 11048d1f29661c05
+-- v41 round 4
+valid    median  3049958 ns  mean  3084752 ns  key f481796091a5c687
+invalid  median  3038625 ns  mean  3047837 ns  key 11048d1f29661c05
+-- shipped round 5
+valid    median  3022708 ns  mean  3032733 ns  key f481796091a5c687
+invalid  median  3035875 ns  mean  3042379 ns  key 11048d1f29661c05
+-- v41 round 5
+valid    median  3020959 ns  mean  3051198 ns  key f481796091a5c687
+invalid  median  2995542 ns  mean  3015051 ns  key 11048d1f29661c05

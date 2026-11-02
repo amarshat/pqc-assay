@@ -1,3 +1,5 @@
+// Fired check (generated from faults51_1.saw.in): the postcondition says the chosen fault instance
+// never executes. A counterexample shows that it can; a proof means the site is vacuous.
 // HQC v5.1.0 hqc_kem_decaps, hqc-1: the C equals DecapsV51_1::decaps (FO with implicit rejection,
 // keys regenerated from the 32-byte decapsulation key) for every ciphertext and decapsulation key.
 // The XOF, the PKE and the hash functions are assumed, uninterpreted specifications. Built from
@@ -6,14 +8,14 @@
 
 import "DecapsV51_1.cry";
 
-let ncheck path = do {
+let fcheck path = do {
     m <- llvm_load_module path;
 
     let i8 = llvm_int 8;
     let arr n = llvm_array n i8;
     let words n = llvm_array n (llvm_int 64);
     let UNINT = ["xofInit", "xofOut32", "xofNext32", "xofOutK", "xofNextK", "pkeKeyE", "pkeKeyD",
-                 "pkeDec", "pkeEncU", "pkeEncV", "hashH", "hashG", "hashJe", "hashJ"];
+                 "pkeDec", "pkeEncU", "pkeEncV", "hashH", "hashG", "hashJ"];
 
     let in_bytes name n = do {
         x <- llvm_fresh_var name (arr n);
@@ -95,8 +97,6 @@ let ncheck path = do {
         llvm_points_to out (llvm_term {{ hashG h mm s }});
     };
     let hash_j_spec = do {
-        e <- llvm_fresh_var "epoch" (llvm_int 8);
-        llvm_points_to (llvm_global "hqc_epoch") (llvm_term e);
         out <- llvm_alloc (arr 32);
         (h, hp) <- in_bytes "h" 32;
         (sg, sgp) <- in_bytes "sigma" 16;
@@ -104,8 +104,7 @@ let ncheck path = do {
         (v, vp) <- in_words "v" 276;
         (s, sp) <- in_bytes "salt" 16;
         llvm_execute_func [out, hp, sgp, up, vp, sp];
-        llvm_points_to (llvm_global "hqc_epoch") (llvm_term e);
-        llvm_points_to out (llvm_term {{ hashJe e h sg u v s }});
+        llvm_points_to out (llvm_term {{ hashJ h sg u v s }});
     };
     // vect_compare, proved at the three sizes decapsulation uses: 0 iff equal, else 1.
     let vect_compare_spec n = do {
@@ -147,28 +146,22 @@ let ncheck path = do {
         v64 <- llvm_fresh_var "fault_v64" (llvm_int 64);
         llvm_alloc_global "fault_v64";
         llvm_points_to (llvm_global "fault_v64") (llvm_term v64);
-        llvm_alloc_global "hqc_epoch";
-        e0 <- llvm_fresh_var "epoch0" (llvm_int 8);
-        llvm_points_to (llvm_global "hqc_epoch") (llvm_term e0);
+        llvm_alloc_global "fault_fired";
+        llvm_points_to (llvm_global "fault_fired") (llvm_global_initializer "fault_fired");
+        kp <- llvm_alloc (arr 32);
         k0 <- llvm_fresh_var "k_before" (arr 32);
-        kp1 <- llvm_alloc (arr 32);
-        llvm_points_to kp1 (llvm_term k0);
-        kp2 <- llvm_alloc (arr 32);
-        llvm_points_to kp2 (llvm_term k0);
+        llvm_points_to kp (llvm_term k0);
         (dk, dkp) <- in_bytes "dk_kem" 32;
         (c, cp) <- in_bytes "c" 4433;
         @RESTRICT@
-        llvm_execute_func [kp1, kp2, dkp, cp];
-        k1 <- llvm_fresh_var "k1" (arr 32);
-        llvm_points_to kp1 (llvm_term k1);
-        k2 <- llvm_fresh_var "k2" (arr 32);
-        llvm_points_to kp2 (llvm_term k2);
-        llvm_points_to (llvm_global "hqc_epoch") (llvm_term {{ 1 : [8] }});
-        llvm_postcond {{ unpred c dk k1 k2 }};
-        llvm_return (llvm_term {{ 0 : [32] }});
+        llvm_execute_func [kp, dkp, cp];
+        k <- llvm_fresh_var "k" (arr 32);
+        llvm_points_to kp (llvm_term k);
+        llvm_points_to (llvm_global "fault_fired") (llvm_term {{ 0 : [8] }});
+        llvm_return (llvm_term {{ 0 : [8] }});
     };
-    llvm_verify m "dec2" OV false kem_spec (w4_unint_yices UNINT);
+    llvm_verify m "hqc_kem_decaps" OV false kem_spec (w4_unint_yices UNINT);
     return ();
 };
 
-ncheck "@BC@";
+fcheck "@BC@";

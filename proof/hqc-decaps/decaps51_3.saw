@@ -144,6 +144,6 @@ let check restrict path = do {
 };
 
 check false "../../build/hqc-decaps51/dec_3.bc";
-print "VERIFIED: v5.1.0 hqc-1 hqc_kem_decaps == decaps (implicit rejection); vect_compare proved at 2209, 2208, 16";
+
 
 print "VERIFIED: v5.1.0 hqc-3 hqc_kem_decaps == decaps (implicit rejection); vect_compare proved at 4482, 4480, 16";

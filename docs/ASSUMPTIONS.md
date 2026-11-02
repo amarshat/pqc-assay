@@ -1661,9 +1661,12 @@ control of the same restricted check on the shipped code. hqc-3/5 model and scri
    stand-in `scripts/hqc-bench/immintrin.h`; `vector.h` includes the header and uses nothing from
    it): clang 22 branches (`cbz`) in the single unit at `-O3` only; `-O1` `csel`, `-O2`/`-Os` vector
    mask; Apple clang never; LTO not repeated. The item 7 proof is of a unit without `hqc.c`.
-   Cost (`make hqc-decaps51-bench`, AArch64 native, separate objects at -O3, M2 Max, 2026-11-01):
-   median of 2000 hqc-1 decapsulations 2.97 ms shipped vs 2.99 ms v4.1 (clang 22), 3.02 vs 3.05 ms
-   (Apple clang); 0.2-0.9% over five rounds, within round-to-round variation. Same output keys.
+   Cost (`make hqc-decaps51-bench`, AArch64 native, separate objects at -O3, M2 Max, 2026-11-02,
+   `proof/hqc-decaps/logs/bench_v42.txt`): shipped and v4.2 alternate, ten rounds of 2000 hqc-1
+   decapsulations. Median of round medians, valid ciphertext: 2.92 vs 2.94 ms (clang 22), 2.97 vs
+   2.99 ms (Apple clang). v4.2 is slower by 0.36-0.71% in all 40 paired rounds (both compilers,
+   valid and invalid ciphertexts). Same output keys. (v4.1, 2026-11-01, five unpaired rounds:
+   `logs/bench.txt`.)
    Shipped builds (build files read 2026-11-01): upstream v5.0.0/v5.1.0 compile separate objects
    at -O3 (v5.0.0 adds -flto only for non-clang compilers; v5.1.0 none); liboqs 0.16.0 (HQC from
    upstream 161cd4f, kem.c and hqc.c identical to v5.0.0) compiles separate objects at -O3, no LTO,
@@ -1673,43 +1676,81 @@ control of the same restricted check on the shipped code. hqc-3/5 model and scri
    enables -flto=auto at -O3 by default with a pre-v5 HQC using the same mask pattern: not tested
    (not built outside meson).
 
+9. Specification written from the document (`make hqc-decaps51-spec`, hqc-1, 2026-11-01).
+   `model/cryptol/hqc-decaps/SpecV51_1.cry` states HQC-KEM.Decaps from the HQC specification of
+   2026-10-12 (pqc-hqc.org/doc/hqc_specifications_2026_10_12.pdf, sha256 00970347...e5a9d5), p. 43,
+   without reference to DecapsV51_1.cry: byte strings c = u || v || salt, (K', theta') =
+   G(H(ek) || m' || salt), Kbar = J(H(ek) || sigma || c), rejection if Decrypt returns bottom or
+   c' != c. `proof/hqc-decaps/spec51_1.saw` proves the C equal to it, with overrides in the
+   document's terms: decryption returns a failure bit (the C's return value, 1 for bottom) and m;
+   encryption returns the byte strings u' and v' (the 7 bytes of the u' buffer past 2209 are an
+   uninterpreted PKE_EncPad); J reads the first 2209 and 2208 bytes of the u and v word arrays.
+   This relaxes item 3: the decoder may report failure, as long as it returns 0 or 1. XOF_Init is
+   uninterpreted over the 32 seed bytes; the other arguments of xof_init_dom_sep are constants at
+   this call site and are folded into the function. Two mutations of the spec model (J over c'; bottom ignored) are
+   refuted with a failed output subgoal. saw exit 0, 22 s.
+
 Not covered: the x86_64 build's decapsulation, optimized builds other than the one in item 7, timing.
 Faults: A-HQC-DEC51-F.
 
 ## A-HQC-DEC51-F: single-fault analysis of v5.1.0 decapsulation (recorded 2026-11-01)
 
-`scripts/hqc_decaps51_faultmap.sh <variant>` (all three: `make hqc-decaps51-faults`) writes one
+`scripts/hqc_decaps51_faultmap.sh <variant>` (all four: `make hqc-decaps51-faults`) writes one
 variant of the `-O0` IR per fault site (`scripts/hqc_decaps_faults.py`) and runs SAW on each. hqc-1
-only. Region: `hqc_kem_decaps_internal` from the `hqc_pke_decrypt` call to the first call through
-`memset_volatile`. Fault kinds: an integer SSA value replaced by a symbolic value; a store skipped
-(old contents, or a symbolic value for the first store to a location); a `memcpy`, `hash_j` or
-`hqc_pke_encrypt` call redirected to scratch; the selection loop exit test forced either way. One
-dynamic instance per variant, chosen by the symbolic global `fault_J`. Properties, with the same
-uninterpreted functions as A-HQC-DEC51:
+only. Region: `hqc_kem_decaps_internal` from the first instruction after the last `llvm.memset` that
+precedes the `xof_init_dom_sep` call (the zero-initialization of the locals) to the first call
+through `memset_volatile`. This includes key regeneration, the ciphertext parse, decryption, H, G,
+J, re-encryption, the comparisons and the selection, and any code a hardened variant adds before the
+key regeneration. Fault kinds: an integer SSA value replaced by a symbolic value; a store skipped
+(old contents, or a symbolic value for the first store to a location); a call to `xof_init_dom_sep`,
+`xof_get_bytes`, `hqc_pke_keygen`, `hqc_c_kem_from_string`, `hqc_pke_decrypt`, `hash_h`, `hash_g`,
+`hash_j`, `hqc_pke_encrypt` or `memcpy` redirected to scratch (for `xof_get_bytes` only the output;
+the XOF state still advances); the exit test of every counted loop forced either way. One dynamic
+instance per variant, chosen by the symbolic global `fault_J`; the variant sets the global
+`fault_fired` when that instance executes. `nsw`/`nuw` flags are dropped in the region. Properties,
+with the same uninterpreted functions as A-HQC-DEC51:
 - P1 (`faults51_1.saw.in`, `rejects`): a ciphertext that does not re-encrypt yields `rejKey`.
-- P2 (`ni51_1.saw.in`, `noLeak`, harness `scripts/hqc_decaps51_dec2.c`): two runs, same fault,
-  `hash_g` switched between independent functions by `hqc_epoch`; both reject implies equal outputs.
-- P3 (`un51_1.saw.in`, `unpred`): two runs with `hash_j` switched; both reject and the rejection
-  keys differ in all 32 bytes implies the outputs differ in at least 31.
-P2 and P3 run on P1-broken sites only, first with `c = 0` and `dk = dkRamp` and then, if that
-proves, on the full domain. A site is BROKEN, LEAK or PREDICTABLE only if the log shows the
-postcondition subgoal failed; anything else is ERROR.
+- Fired check (`fired51_1.saw.in`, P1-holding sites only): the postcondition `fault_fired == 0`
+  must fail (FIRES); NOT_FIRED would make the P1 result vacuous.
+- P2 (`ni51_1.saw.in`, `noLeak`, harness `scripts/hqc_decaps51_dec2.c`, P1-broken sites only): two
+  runs, same fault, `hash_g` switched between independent functions by `hqc_epoch`; both reject
+  implies equal outputs.
+- P3 (`pres51_1.saw.in`, `preserves`, P1-broken sites only): a ciphertext that does not re-encrypt
+  yields an output that differs from `rejKey` in at most one byte.
+Driver `scripts/hqc_decaps_faults_run.sh` / `scripts/hqc_decaps_ni_run.sh`: each check first with
+`c = 0` and `dk = dkRamp` for at most 600 s (a postcondition failure there is a counterexample), then
+on the full domain with yices and then z3, at most 1800 s each (`scripts/with_timeout.pl`). A
+property is proved only by a full-domain run that exits 0. A site gets the failing verdict only if
+the log shows the postcondition subgoal failed; any other failure is ERROR, and a site no run
+decides is TIMEOUT. The earlier two-run P3 (rejection keys switched, outputs must differ in 31
+bytes) is withdrawn: an output of 32 copies of one byte of J passes it.
 
-Results (verdicts in `build/hqc-decaps51/faults_1<tag>/{RESULTS,NI,UN}.tsv`):
-- v5.1.0 as shipped, 47 sites: P1 holds at 4; of the 42 broken, 28 leak and are predictable, 2 leak
-  only, 2 are predictable only (`hash_j` skipped, early loop exit), 10 neither; 1 ERROR.
-- v4 (`proof/hqc-decaps/hardened/v4.patch`), 82 sites: P1 holds at 67; of 14 broken, 0 leak,
-  1 predictable (early loop exit); 1 ERROR.
+Results (2026-11-01/02; verdicts in `build/hqc-decaps51/faults_1<tag>/{RESULTS,FIRED,NI,PRES}.tsv`,
+8 jobs on the M2 Max: v4.2 7412 s, v4.1 6754 s, v4 6726 s; shipped P2 and P3 also rerun on the M4
+Pro host with identical NI.tsv and PRES.tsv). Every P1-holding site in all four maps is FIRES.
+- v5.1.0 as shipped, 55 sites: P1 holds at 4, BROKEN 50, ERROR 1. Of the 50: P2 LEAK 36,
+  NONINTERFERENT 13, TIMEOUT 1 (skip of `hash_g`); P3 VIOLATED 38, PRESERVED 12 (the 12 broken
+  sites of the selection body; two of them, the mask load and its extension, also LEAK).
+- v4 (`proof/hqc-decaps/hardened/v4.patch`), 98 sites: P1 holds at 73, BROKEN 22, ERROR 3. P2 LEAK
+  6, NONINTERFERENT 15, TIMEOUT 1; P3 VIOLATED 9, PRESERVED 13.
 - v4.1 (`v41.patch`: v4 plus the rejection key written to the output before the selection),
-  91 sites: P1 holds at 76; of 13 broken, 0 leak, 0 predictable; 2 ERROR. Rerun with the driver
-  2026-11-01: verdicts identical to the first run, 12 min with 8 jobs on the M2 Max.
-Every ERROR is the loop exit forced past the end: SAW reports an invalid memory load one byte past a
-32-byte array. That fault is outside what this analysis covers.
+  107 sites: P1 holds at 82, BROKEN 21, ERROR 4. P2 LEAK 6, NONINTERFERENT 14, TIMEOUT 1; P3
+  VIOLATED 8, PRESERVED 13.
+- v4.2 (`v42.patch`: v4.1 plus prefills from `dk_kem`, both J before G, `K_theta_prime` prefilled
+  with the rejection key), 135 sites: P1 holds at 105, BROKEN 20, ERROR 6, TIMEOUT 4. P2 LEAK 6,
+  NONINTERFERENT 14; P3 VIOLATED 7, PRESERVED 13.
+In all three hardened variants P3 is violated at the skips of `xof_init_dom_sep`, both
+`xof_get_bytes`, `hqc_pke_keygen`, `hqc_c_kem_from_string`, `hqc_pke_decrypt` and `hash_h`, and P2
+fails at the same skips except the squeeze of sigma. v4 and v4.1 add the skip of `hash_g`; v4 adds
+the early exit of the selection loop. The prefills of v4.2 change no verdict at those seven skips;
+the paper (Section 6) argues from the code, not by proof, that their counterexamples need the secret
+key or (parse skip) a zero re-encryption. Every ERROR and TIMEOUT is a loop exit forced past the
+end; the ERROR logs show an invalid memory load. That fault is outside what this analysis covers.
 
-`make hqc-decaps51-hardened` proves v4 and v4.1 (hqc-1) equal to `DecapsV51_1::decaps`, the same
-specification as the shipped code: exit 0 (2026-11-01).
+`make hqc-decaps51-hardened` proves v4, v4.1 and v4.2 (hqc-1) equal to `DecapsV51_1::decaps`, the
+same specification as the shipped code.
 
-Limits: `-O0` IR, not machine code; one fault per execution; the loop index and code outside the
-region (key regeneration, the squeeze of sigma, the hash and PKE internals) are not faulted;
-uninterpreted functions cannot express that a value is secret, so P2 and P3 are the stand-ins; the
-31-byte threshold of P3 is a choice.
+Limits: `-O0` IR, not machine code; one fault per execution; loop indices and the internals of
+`vect_compare`, the hashes, the XOF and the PKE are not faulted; uninterpreted functions cannot
+express that a value is secret, so P2 and P3 are the stand-ins, and a value prefilled from the
+secret key looks the same to them as a public zero; the one-byte allowance of P3 is a choice.

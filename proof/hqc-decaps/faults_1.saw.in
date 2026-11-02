@@ -113,6 +113,8 @@ let fcheck path = do {
         v64 <- llvm_fresh_var "fault_v64" (llvm_int 64);
         llvm_alloc_global "fault_v64";
         llvm_points_to (llvm_global "fault_v64") (llvm_term v64);
+        llvm_alloc_global "fault_fired";
+        llvm_points_to (llvm_global "fault_fired") (llvm_global_initializer "fault_fired");
         kp <- llvm_alloc (arr 32);
         k0 <- llvm_fresh_var "k_before" (arr 32);
         llvm_points_to kp (llvm_term k0);

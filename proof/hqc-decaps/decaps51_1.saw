@@ -150,7 +150,10 @@ print "VERIFIED: v5.1.0 hqc-1 hqc_kem_decaps == decaps (implicit rejection); vec
 check true "../../build/hqc-decaps51/dec_1.bc";
 // Mutants (sed copies of hqc-kem.c in build/): mask, the selection mask inverted as in
 // CVE-2024-54137; nov, the comparison of v dropped; both. Each must be refuted.
+print "MUTANT-BEGIN mask";
 fails (check true "../../build/hqc-decaps51/mut/dec_1_mask.bc");
+print "MUTANT-BEGIN nov";
 fails (check true "../../build/hqc-decaps51/mut/dec_1_nov.bc");
+print "MUTANT-BEGIN both";
 fails (check true "../../build/hqc-decaps51/mut/dec_1_both.bc");
 print "REFUTED: v5.1.0 mutants mask, nov, both";

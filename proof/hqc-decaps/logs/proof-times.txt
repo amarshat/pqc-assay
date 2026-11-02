@@ -1,0 +1,26 @@
+# Wall clock of single SAW runs, one at a time, Apple M2 Max, SAW 1.5.1 (1f227d9 (release tag v1.5.1)), 2026-11-02.
+# Command per row: cd proof/hqc-decaps && CRYPTOLPATH=model/cryptol/hqc-decaps saw <script> (scripts/hqc_decaps_times.sh).
+decaps_1.saw exit=0 144s
+  VERIFIED: hqc-1 crypto_kem_dec == decaps (implicit rejection); vect_compare proved at 2209, 2208, 16
+  REFUTED: all three CVE-2024-54137 mutants
+decaps_3.saw exit=0 75s
+  VERIFIED: hqc-3 crypto_kem_dec == decaps (implicit rejection); vect_compare proved at 4482, 4480, 16
+decaps_5.saw exit=0 165s
+  VERIFIED: hqc-5 crypto_kem_dec == decaps (implicit rejection); vect_compare proved at 7205, 7200, 16
+decaps51_1.saw exit=0 145s
+  VERIFIED: v5.1.0 hqc-1 hqc_kem_decaps == decaps (implicit rejection); vect_compare proved at 2209, 2208, 16
+  REFUTED: v5.1.0 mutants mask, nov, both
+decaps51_3.saw exit=0 73s
+  VERIFIED: v5.1.0 hqc-3 hqc_kem_decaps == decaps (implicit rejection); vect_compare proved at 4482, 4480, 16
+decaps51_5.saw exit=0 155s
+  VERIFIED: v5.1.0 hqc-5 hqc_kem_decaps == decaps (implicit rejection); vect_compare proved at 7205, 7200, 16
+spec51_1.saw exit=0 22s
+  VERIFIED: v5.1.0 hqc-1 hqc_kem_decaps == SpecV51_1::Decaps (HQC specification 2026-10-12, p. 43; decryption may return bottom)
+decaps51_1_O2.saw exit=0 23s
+  VERIFIED: v5.1.0 hqc-1 hqc_kem_decaps == decaps (implicit rejection); vect_compare proved at 2209, 2208, 16
+decaps51_1_v4.saw exit=0 24s
+  VERIFIED: v5.1.0 hqc-1 hqc_kem_decaps == decaps (implicit rejection); vect_compare proved at 2209, 2208, 16
+decaps51_1_v41.saw exit=0 23s
+  VERIFIED: v5.1.0 hqc-1 hqc_kem_decaps == decaps (implicit rejection); vect_compare proved at 2209, 2208, 16
+decaps51_1_v42.saw exit=0 24s
+  VERIFIED: v5.1.0 hqc-1 hqc_kem_decaps == decaps (implicit rejection); vect_compare proved at 2209, 2208, 16

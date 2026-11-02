@@ -33,7 +33,7 @@ printf "$hdr"'#include "hqc.c"\n#include "hqc-kem.c"\n' > tu.c
 printf "$hdr"'#include "hqc-kem.c"\n' > nohqc.c
 printf "$hdr"'#include "hqc.c"\n#include "hqc-kem-bar.c"\n' > barrier.c
 printf "$hdr"'#include "hqc.c"\n#include "kem_v41.c"\n' > v41.c
-count() { otool -tvV "$1" | awk '/^_hqc_kem_decaps:/{f=1;next} f&&/^_[A-Za-z]/{f=0} f' \
+count() { fn=${2:-_hqc_kem_decaps}; otool -tvV "$1" | awk -v fn="$fn:" '$0==fn{f=1;next} f&&/^_[A-Za-z]/{f=0} f' \
           | grep -A1 -E '\stest[bwlq]\s' | grep -cE '\sj[a-z]+\s' || true; }
 printf '%-10s %-8s %-4s %s\n' compiler build opt test+jcc
 for cc in $CLANG22 $APPLE; do
@@ -64,6 +64,26 @@ for cc in $CLANG22 $APPLE; do
     for u in tu nohqc barrier v41; do
       $cc --target=arm64-apple-darwin -isysroot $SDK -D_FORTIFY_SOURCE=0 -$O -S -I ../../../scripts/hqc-bench $INC $u.c -o a64_$u.s
       printf '%-10s %-8s %-4s %s\n' $name $u $O "$(awk '/^_hqc_kem_decaps:/{f=1;next} f&&/\.cfi_endproc/{f=0} f' a64_$u.s | grep -cE '^\s+(cbz|cbnz|tbz|tbnz)\s' || true)"
+    done
+  done
+done
+
+# v5.0.0 (upstream f46e5422, the kem.c and hqc.c that liboqs 0.16.0 ships): the single unit, and the
+# first batch of a CMake unity build of liboqs's HQC target (sources in CMakeLists order, batch size
+# 8: kem_hqc_1.c, code.c, crypto_memset.c, fft.c, gf.c, gf2x.c, hqc.c, kem.c; the liboqs wrapper is
+# left out), in which vector.c is in the next batch. x86_64, test+jcc in _crypto_kem_dec.
+U50=../../hqc-upstream-5.0
+if [ ! -d $U50 ]; then mkdir -p $U50; git -C ../../../$U archive f46e54222ffb76706678a9ec8a43cd2188a12ab1 src lib | tar -x -C $U50; fi
+I50="-I $U50/src/common -I $U50/src/common/hqc-1 -I $U50/src/ref -I $U50/src/ref/hqc-1 -I $U50/lib/fips202"
+printf '#include "vector.c"\n#include "parsing.c"\n#include "hqc.c"\n#include "kem.c"\n' > tu50.c
+printf '#include "code.c"\n#include "crypto_memset.c"\n#include "fft.c"\n#include "gf.c"\n#include "gf2x.c"\n#include "hqc.c"\n#include "kem.c"\n' > unity50.c
+echo "-- v5.0.0, x86_64: test+jcc in _crypto_kem_dec"
+for cc in $CLANG22 $APPLE; do
+  name=$([ $cc = $APPLE ] && echo apple14 || echo clang22)
+  for O in O1 O2 O3 Os; do
+    for u in tu50 unity50; do
+      $cc --target=x86_64-apple-darwin -isysroot $SDK -D_FORTIFY_SOURCE=0 -$O -c $I50 $u.c -o $u.o
+      printf '%-10s %-8s %-4s %s\n' $name $u $O "$(count $u.o _crypto_kem_dec)"
     done
   done
 done
