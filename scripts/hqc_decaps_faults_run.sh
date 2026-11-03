@@ -26,7 +26,7 @@ export CRYPTOLPATH=$root/model/cryptol/hqc-decaps
 run_one() {
   k=$1; dir=$2; root=$3; tmpl=$4; func=$5; good=$6; bad=$7; pat=$8; sfx=$9
   [ -s "$dir/$k$sfx.verdict" ] && return   # resume: a site with a verdict is not rerun
-  s=$root/proof/hqc-decaps/_fault${sfx}_$k.saw
+  s=$root/proof/hqc-decaps/_fault${sfx}_$(basename $dir)_$k.saw
   # one SAW run with a time limit (perl alarm; exit 142 when it fires). $1 restriction, $2 solver.
   attempt() {
     sed -e "s#@BC@#$dir/$k.bc#" -e "s#@RESTRICT@#$1#" -e "s#w4_unint_yices UNINT#$2 UNINT#" "$root/proof/hqc-decaps/$tmpl" > "$s"

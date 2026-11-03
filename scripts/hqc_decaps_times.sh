@@ -12,9 +12,9 @@ tmp=$(mktemp -d)
   echo "# Wall clock of single SAW runs, one at a time, $(sysctl -n machdep.cpu.brand_string), SAW $($SAW --version 2>&1 | head -1), $(date +%F)."
   echo "# Command per row: cd proof/hqc-decaps && CRYPTOLPATH=model/cryptol/hqc-decaps saw <script> (scripts/hqc_decaps_times.sh)."
 } > "$out"
-for s in decaps_1.saw decaps_3.saw decaps_5.saw decaps51_1.saw decaps51_3.saw decaps51_5.saw spec51_1.saw \
+for s in decaps_1.saw decaps_3.saw decaps_5.saw decaps51_1.saw decaps51_3.saw decaps51_5.saw spec51_1.saw spec51_3.saw spec51_5.saw \
          ../../build/hqc-decaps51/decaps51_1_O2.saw ../../build/hqc-decaps51/decaps51_1_v4.saw \
-         ../../build/hqc-decaps51/decaps51_1_v41.saw ../../build/hqc-decaps51/decaps51_1_v42.saw; do
+         ../../build/hqc-decaps51/decaps51_1_v41.saw ../../build/hqc-decaps51/decaps51_1_v42.saw ../../build/hqc-decaps51/decaps51_1_v43.saw; do
   n=$(basename "$s")
   t0=$(date +%s)
   (cd proof/hqc-decaps && CRYPTOLPATH=$root/model/cryptol/hqc-decaps "$SAW" "$s" > "$tmp/$n.log" 2>&1); rc=$?

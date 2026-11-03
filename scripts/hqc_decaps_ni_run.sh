@@ -4,6 +4,8 @@
 # ciphertext under the same key and the same fault, with independent G functions. LEAK: SAW finds a
 # fault for which both runs reject and the outputs differ, so the output on rejection depends on G
 # (the real session key). NONINTERFERENT: proved equal for every fault value.
+# NI_G=hashGk NI_POST=noLeakK switches only the session-key half of G's output between the runs
+# (P2K); NI_G=hashGt NI_POST=noLeakT only the re-encryption randomness half (P2theta). Set NI_KIND too.
 # Usage: scripts/hqc_decaps_ni_run.sh <p> [jobs] [tag]
 set -u
 p=${1:-1}; jobs=${2:-4}; tag=${3:-}
@@ -19,9 +21,11 @@ run_one() {
   k=$1; dir=$2; root=$3; p=$4; ll=$5; tmpl=$6; dec2=$7; kind=$8; bad=$9; good=${10}
   [ -s "$dir/$k.${kind}verdict" ] && return   # resume
   "$ll" "$dir/$k.bc" "$dec2" -o "$dir/$k.${kind}.bc" || { printf '%s\tERROR\n' "$k" > "$dir/$k.${kind}verdict"; return; }
-  s=$root/proof/hqc-decaps/_${kind}_$k.saw
+  s=$root/proof/hqc-decaps/_${kind}_$(basename $dir)_$k.saw
   attempt() {
-    sed -e "s#@BC@#$dir/$k.${kind}.bc#" -e "s#@RESTRICT@#$1#" -e "s#w4_unint_yices UNINT#$2 UNINT#" "$root/proof/hqc-decaps/$tmpl" > "$s"
+    sed -e "s#@BC@#$dir/$k.${kind}.bc#" -e "s#@RESTRICT@#$1#" -e "s#w4_unint_yices UNINT#$2 UNINT#" \
+        -e "s#{{ hashGe e h mm s }}#{{ ${NI_G:-hashGe} e h mm s }}#" -e "s#{{ noLeak c dk k1 k2 }}#{{ ${NI_POST:-noLeak} c dk k1 k2 }}#" \
+        "$root/proof/hqc-decaps/$tmpl" > "$s"
     (cd "$root/proof/hqc-decaps" && "$root/scripts/with_timeout.pl" "$3" saw "$s" > "$dir/$k.${kind}.log" 2>&1)
   }
   failed_at_post() { grep -q "Subgoal failed: dec2.*llvm_postcond" "$dir/$k.${kind}.log"; }
@@ -41,6 +45,9 @@ run_one() {
   printf '%s\t%s\n' "$k" "$v" > "$dir/$k.${kind}verdict"
 }
 export -f run_one
-awk -F'\t' '$2=="BROKEN"{print $1}' "$dir/RESULTS.tsv" | xargs -P "$jobs" -I{} bash -c 'run_one "$@"' _ {} "$dir" "$root" "$p" "$LLVM_LINK" "$tmpl" "$dec2" "$kind" "$bad" "$good"
+# NI_FROM=<TSV>:<verdicts> (e.g. NI.tsv:LEAK|TIMEOUT) runs on those sites instead of every BROKEN one.
+from=${NI_FROM:-RESULTS.tsv:BROKEN}
+export NI_G NI_POST
+awk -F'\t' -v re="^(${from#*:})\$" '$2 ~ re {print $1}' "$dir/${from%%:*}" | xargs -P "$jobs" -I{} bash -c 'run_one "$@"' _ {} "$dir" "$root" "$p" "$LLVM_LINK" "$tmpl" "$dec2" "$kind" "$bad" "$good"
 cat "$dir"/*.${kind}verdict | sort > "$dir/$(echo $kind | tr a-z A-Z).tsv"
 cut -f2 "$dir/$(echo $kind | tr a-z A-Z).tsv" | sort | uniq -c

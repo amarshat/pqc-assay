@@ -1691,6 +1691,12 @@ control of the same restricted check on the shipped code. hqc-3/5 model and scri
    uninterpreted over the 32 seed bytes; the other arguments of xof_init_dom_sep are constants at
    this call site and are folded into the function. Two mutations of the spec model (J over c'; bottom ignored) are
    refuted with a failed output subgoal. saw exit 0, 22 s.
+   hqc-3 and hqc-5 (added 2026-11-02): `SpecV51_3.cry`, `SpecV51_5.cry`, `spec51_3.saw` and
+   `spec51_5.saw` are generated from the hqc-1 files by `scripts/hqc_decaps_gen.py` (sizes, pad
+   bytes, and at hqc-5 sigma from the same squeeze function as the seed); saw exit 0 for both. A
+   control assembles the hqc-1 bitcode with the constant argument of the first `xof_init_dom_sep`
+   call in `hqc_kem_decaps_internal` changed from 16 to 17: SAW stops with "No override
+   specification applies for xof_init_dom_sep", so the overrides do not accept a different constant.
 
 Not covered: the x86_64 build's decapsulation, optimized builds other than the one in item 7, timing.
 Faults: A-HQC-DEC51-F.
@@ -1719,6 +1725,15 @@ with the same uninterpreted functions as A-HQC-DEC51:
   implies equal outputs.
 - P3 (`pres51_1.saw.in`, `preserves`, P1-broken sites only): a ciphertext that does not re-encrypt
   yields an output that differs from `rejKey` in at most one byte.
+- P2K and P2theta (same harness, sites where P2 is LEAK or TIMEOUT; `NI_G=hashGk NI_POST=noLeakK`
+  and `NI_G=hashGt NI_POST=noLeakT` in `scripts/hqc_decaps_ni_run.sh`, verdicts `*.nikverdict`,
+  `*.nitverdict`): `hashGk` switches only the K' half of G's output between the runs and shares
+  theta', so a LEAK means the output depends on the candidate key; `hashGt` switches only theta'.
+- True squeeze skip (`DEC_SKIP_STATE=1 scripts/hqc_decaps_faults.py`, out dir
+  `faults_1<tag>_xs`): the two `xof_get_bytes` sites only. The 208-byte context is copied before
+  the call and, when the fault hits, stored back after it (a select on the loaded value, so the
+  call keeps one context pointer; a select on the pointer left SAW matching the two
+  `xof_get_bytes` overrides of v4.2 for over an hour), and the output goes to scratch.
 Driver `scripts/hqc_decaps_faults_run.sh` / `scripts/hqc_decaps_ni_run.sh`: each check first with
 `c = 0` and `dk = dkRamp` for at most 600 s (a postcondition failure there is a counterexample), then
 on the full domain with yices and then z3, at most 1800 s each (`scripts/with_timeout.pl`). A
@@ -1742,15 +1757,27 @@ Pro host with identical NI.tsv and PRES.tsv; the shipped map has no volatile acc
 - v4.2 (`v42.patch`: v4.1 plus prefills from `dk_kem`, both J before G, `K_theta_prime` prefilled
   with the rejection key), 150 sites: P1 holds at 120, BROKEN 20, ERROR 6, TIMEOUT 4. P2 LEAK 6,
   NONINTERFERENT 14; P3 VIOLATED 7, PRESERVED 13.
+- v4.3 (`v43.patch`: v4.2 without the prefills from `dk_kem` and the extra zeroization), 126 sites
+  (M4 Pro host, 5 jobs, 7698 s): P1 holds at 101 (all FIRES), BROKEN 20 (the same instructions as
+  v4.2), ERROR 5. P2 LEAK 6, NONINTERFERENT 14; P3 VIOLATED 7, PRESERVED 13.
+- P2K, at the P2 LEAK/TIMEOUT sites: shipped LEAK 36, NONINTERFERENT 1 (skip of `hash_g`); v4 and
+  v4.1 LEAK 6, NONINTERFERENT 1 (skip of `hash_g`); v4.2 LEAK 6. P2theta: shipped LEAK 16, NONINTERFERENT 20, TIMEOUT 1 (skip of `hash_g`); v4 and
+  v4.1 LEAK 6, TIMEOUT 1 (skip of `hash_g`); v4.2 LEAK 6. v4.3: P2K LEAK 6, P2theta LEAK 6 (the six P2
+  LEAK sites, M2 Max, 4 jobs).
+- True squeeze skips, shipped, v4, v4.1 and v4.2: P1 BROKEN at both sites; P2 LEAK at the first
+  squeeze (seed_pke), where P2K and P2theta also LEAK, NONINTERFERENT at the squeeze of sigma; P3
+  VIOLATED at both; in every build (M4 Pro host, `build/hqc-decaps51/faults_1<tag>_xs`).
 In all three hardened variants P3 is violated at the skips of `xof_init_dom_sep`, both
 `xof_get_bytes`, `hqc_pke_keygen`, `hqc_c_kem_from_string`, `hqc_pke_decrypt` and `hash_h`, and P2
 fails at the same skips except the squeeze of sigma. v4 and v4.1 add the skip of `hash_g`; v4 adds
 the early exit of the selection loop. The prefills of v4.2 change no verdict at those seven skips;
 the paper (Section 6) argues from the code, not by proof, that their counterexamples need the secret
 key or (parse skip) a zero re-encryption. Every ERROR and TIMEOUT is a loop exit forced past the
-end; the ERROR logs show an invalid memory load. That fault is outside what this analysis covers.
+end; every ERROR log shows an invalid memory load (an out-of-bounds read, a memory-safety fault
+whose effect on a real build depends on the stack layout), with `fault_J` concrete. The four v4.2
+TIMEOUTs are the overruns of its prefill loops. That fault is outside what this analysis covers.
 
-`make hqc-decaps51-hardened` proves v4, v4.1 and v4.2 (hqc-1) equal to `DecapsV51_1::decaps`, the
+`make hqc-decaps51-hardened` proves v4, v4.1, v4.2 and v4.3 (hqc-1) equal to `DecapsV51_1::decaps`, the
 same specification as the shipped code.
 
 Limits: `-O0` IR, not machine code; one fault per execution; loop indices and the internals of

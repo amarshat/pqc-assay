@@ -4,7 +4,7 @@
 # Region: hqc_kem_decaps_internal from the XOF initialization (key regeneration included) to the
 # end of the selection; every call in it can be skipped (scripts/hqc_decaps_faults.py SKIPPABLE).
 # A fired check runs on every RESILIENT site (FIRED.tsv; NOT_FIRED would make the verdict vacuous).
-# variant: shipped (target/hqc-5.1 as vendored), v4, v41 or v42 (proof/hqc-decaps/hardened/<v>.patch
+# variant: shipped (target/hqc-5.1 as vendored), v4, v41, v42 or v43 (proof/hqc-decaps/hardened/<v>.patch
 # applied to a copy of hqc-kem.c). Four passes, each a SAW run per fault site:
 #   strict  (faults51_1.saw.in): a rejected ciphertext yields the rejection key. RESILIENT / BROKEN.
 #   fired   (fired51_1.saw.in, RESILIENT sites only): the fault instance can execute. FIRES /
@@ -16,7 +16,7 @@
 # Verdicts land in build/hqc-decaps51/faults_1<tag>/{RESULTS,FIRED,NI,PRES}.tsv. ERROR means SAW failed
 # somewhere other than the postcondition; such a site is reported, never counted as either verdict.
 set -eu
-v=${1:?variant: shipped, v4, v41 or v42}; jobs=${2:-4}
+v=${1:?variant: shipped, v4, v41, v42 or v43}; jobs=${2:-4}
 root=$(cd "$(dirname "$0")/.." && pwd); cd "$root"
 B=build/hqc-decaps51
 LLVM=${AVX_LLVM_BIN:-/opt/homebrew/opt/llvm@22/bin/}
@@ -25,7 +25,7 @@ mkdir -p $B/cm
 case $v in
   shipped) tag=; src=$B/_dec.c; inc=
            printf '#include "crypto_memset.c"\n#include "vector.c"\n#include "parsing.c"\n#include "hqc-kem.c"\n' > $src ;;
-  v4|v41|v42) tag=_$v; src=$B/cm/_dec_$v.c; inc="-I $B/cm"
+  v4|v41|v42|v43) tag=_$v; src=$B/cm/_dec_$v.c; inc="-I $B/cm"
            patch -s -o $B/cm/kem_$v.c target/hqc-5.1/kem/hqc-kem.c proof/hqc-decaps/hardened/$v.patch
            printf '#include "crypto_memset.c"\n#include "vector.c"\n#include "parsing.c"\n#include "kem_%s.c"\n' $v > $src ;;
   *) echo "unknown variant $v"; exit 2 ;;

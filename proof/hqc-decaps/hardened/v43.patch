@@ -1,0 +1,99 @@
+--- a/hqc-kem.c
++++ b/hqc-kem.c
+@@ -232,6 +232,7 @@
+     uint8_t hash_ek_pke[SEED_BYTES] = {0};
+     uint8_t K_theta_prime[SHARED_SECRET_BYTES_KEM + SEED_BYTES] = {0};
+     uint8_t K_bar[SHARED_SECRET_BYTES_KEM] = {0};
++    uint8_t K_bar2[SHARED_SECRET_BYTES_KEM] = {0};
+     uint64_t c_pke_u[VEC_N_PKE_WORDS] = {0};
+     uint64_t c_pke_v[VEC_N1N2_PKE_WORDS] = {0};
+     uint8_t salt[SALT_BYTES] = {0};
+@@ -239,6 +240,9 @@
+     uint64_t c_pke_prime_v[VEC_N1N2_PKE_WORDS] = {0};
+     uint8_t salt_prime[SALT_BYTES] = {0};
+     uint8_t result;
++    uint8_t result2;
++    volatile uint8_t barrier;
++    // v4.3: v4.2 without the prefills from dk_kem.
+ 
+     // Re-derive seed_pke and sigma from dk_kem (the KEM master seed), then
+     // regenerate the PKE keypair (ek_pke, dk_pke)
+@@ -262,26 +266,66 @@
+ 
+     // Parse ciphertext c_kem
+     hqc_c_kem_from_string(c_pke_u, c_pke_v, salt, c_kem);
++
++    // v4: a skipped re-encryption must not leave buffers that a chosen ciphertext can match. Start
++    // them from the complement of the received u and v; volatile stores so that the compiler cannot
++    // drop them as dead.
++    for (size_t i = 0; i < VEC_N_PKE_WORDS; ++i) {
++        ((volatile uint64_t *)c_pke_prime_u)[i] = ~c_pke_u[i];
++    }
++    for (size_t i = 0; i < VEC_N1N2_PKE_WORDS; ++i) {
++        ((volatile uint64_t *)c_pke_prime_v)[i] = ~c_pke_v[i];
++    }
+ 
+     // Compute message m_prime
+     result = hqc_pke_decrypt((uint64_t *)m_prime, dk_pke, c_pke_u, c_pke_v);
+ 
+     // Compute shared key K_prime and ciphertext c_kem_prime
+     hash_h(hash_ek_pke, ek_pke);
++
++    // Compute rejection key K_bar (v4.2, v4.3: before hash_g, so that K_theta_prime can start from it)
++    hash_j(K_bar, hash_ek_pke, sigma, c_pke_u, c_pke_v, salt);
++    // v4: a second, independent computation of the rejection key. Both buffers start at zero, so if
++    // one call is skipped the OR of the two is still J; a corrupted buffer ORed with the other keeps
++    // the secret J bits.
++    hash_j(K_bar2, hash_ek_pke, sigma, c_pke_u, c_pke_v, salt);
++    // v4.2, v4.3: if hash_g is skipped, K_theta_prime keeps this value: the candidate key and theta are
++    // then the rejection key, which the attacker cannot use to build a ciphertext that re-encrypts,
++    // and which is what a rejected ciphertext yields anyway.
++    for (size_t i = 0; i < SHARED_SECRET_BYTES_KEM; ++i) {
++        uint8_t kb = K_bar[i] | K_bar2[i];
++        ((volatile uint8_t *)K_theta_prime)[i] = kb;
++        ((volatile uint8_t *)K_theta_prime)[SHARED_SECRET_BYTES_KEM + i] = kb;
++    }
+     hash_g(K_theta_prime, hash_ek_pke, m_prime, salt);
+ 
+     hqc_pke_encrypt(c_pke_prime_u, c_pke_prime_v, ek_pke, (uint64_t *)m_prime, K_theta_prime + SHARED_SECRET_BYTES_KEM);
+     memcpy(salt_prime, salt, SALT_BYTES);
+-
+-    // Compute rejection key K_bar
+-    hash_j(K_bar, hash_ek_pke, sigma, c_pke_u, c_pke_v, salt);
+     result |= vect_compare((uint8_t *)c_pke_u, (uint8_t *)c_pke_prime_u, VEC_N_SIZE_BYTES);
+     result |= vect_compare((uint8_t *)c_pke_v, (uint8_t *)c_pke_prime_v, VEC_N1N2_SIZE_BYTES);
+     result |= vect_compare(salt, salt_prime, SALT_BYTES);
+     result -= 1;
++    // v4: a second, independently computed validity mask.
++    result2 = vect_compare((uint8_t *)c_pke_u, (uint8_t *)c_pke_prime_u, VEC_N_SIZE_BYTES);
++    result2 |= vect_compare((uint8_t *)c_pke_v, (uint8_t *)c_pke_prime_v, VEC_N1N2_SIZE_BYTES);
++    result2 |= vect_compare(salt, salt_prime, SALT_BYTES);
++    result2 -= 1;
++    // v4: hide the 0/1 range of both masks from the optimizer.
++    barrier = result;
++    result = barrier;
++    barrier = result2;
++    result2 = barrier;
++    // v4.1: write the rejection key into the output first, so a fault that ends the selection loop
++    // early leaves rejection-key bytes there instead of the caller's previous buffer.
+     for (size_t i = 0; i < SHARED_SECRET_BYTES_KEM; ++i) {
+-        K_prime[i] = (K_theta_prime[i] & result) ^ (K_bar[i] & ~result);
++        K_prime[i] = K_bar[i] | K_bar2[i];
+     }
++    // v4: each mask is applied in turn, so one corrupted mask leaves the other at zero for a
++    // rejected ciphertext.
++    for (size_t i = 0; i < SHARED_SECRET_BYTES_KEM; ++i) {
++        uint8_t kb = K_bar[i] | K_bar2[i];
++        K_prime[i] = kb ^ (((K_theta_prime[i] ^ kb) & result) & result2);
++    }
+ 
+ #ifdef VERBOSE
+     printf("\n\nc_kem: ");
+@@ -316,6 +360,7 @@
+     memset_zero(m_prime, sizeof m_prime);
+     memset_zero(K_theta_prime, sizeof K_theta_prime);
+     memset_zero(K_bar, sizeof K_bar);
++    memset_zero(K_bar2, sizeof K_bar2);
+ 
+     return 0;
+ }

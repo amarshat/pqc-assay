@@ -114,3 +114,27 @@ diffBytes x y = foldl (+) 0 [ if a != b then 1 else 0 | a <- x | b <- y ]
 // equals the correct rejection key in at least SS - 1 of its SS bytes.
 preserves : [CT][8] -> [DK][8] -> [SS][8] -> Bit
 preserves c dk k = ~ accepts c dk ==> diffBytes k (rejKey c dk) <= 1
+
+// P2 split (the two halves of G's output): hashGk switches only the session-key half K' between the
+// runs, hashGt only the re-encryption randomness theta'. acceptsWith is accepts with G given.
+hashGk : [8] -> [SEED][8] -> [K][8] -> [SALT][8] -> [SS + SEED][8]
+hashGk e h m s = take`{SS} (hashGe e h m s) # drop`{SS} (hashGe 0 h m s)
+
+hashGt : [8] -> [SEED][8] -> [K][8] -> [SALT][8] -> [SS + SEED][8]
+hashGt e h m s = take`{SS} (hashGe 0 h m s) # drop`{SS} (hashGe e h m s)
+
+acceptsWith : ([SEED][8] -> [K][8] -> [SALT][8] -> [SS + SEED][8]) -> [CT][8] -> [DK][8] -> Bit
+acceptsWith g c dk = take`{NB} (toBytes u') == take`{NB} c /\ toBytes v' == take`{VB} (drop`{NB} c)
+  where
+    ek = pkeKeyE (seedPke dk)
+    m  = pkeDec (pkeKeyD (seedPke dk)) (ctU c) (ctV c)
+    kt = g (hashH ek) m (ctSalt c)
+    u' = pkeEncU ek m (drop`{SS} kt)
+    v' = pkeEncV ek m (drop`{SS} kt)
+
+// P2K: theta' is the same in both runs, so both runs reject together.
+noLeakK : [CT][8] -> [DK][8] -> [SS][8] -> [SS][8] -> Bit
+noLeakK c dk k1 k2 = ~ acceptsWith (hashGk 0) c dk ==> k1 == k2
+
+noLeakT : [CT][8] -> [DK][8] -> [SS][8] -> [SS][8] -> Bit
+noLeakT c dk k1 k2 = (~ acceptsWith (hashGt 0) c dk /\ ~ acceptsWith (hashGt 1) c dk) ==> k1 == k2

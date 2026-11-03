@@ -88,7 +88,9 @@ def main():
     func = os.environ.get('DEC_FUNC', 'crypto_kem_dec')
     start_pat = os.environ.get('DEC_REGION_START', '@hqc_pke_decrypt(')
     src = f'{build}/dec_{p}{tag}.ll'
-    out = f'{build}/faults_{p}{tag}'
+    # DEC_SKIP_STATE=1: only the squeeze call sites, as a true skip (out dir faults_<p><tag>_xs).
+    state_skip = os.environ.get('DEC_SKIP_STATE') == '1'
+    out = f'{build}/faults_{p}{tag}' + ('_xs' if state_skip else '')
     os.makedirs(out, exist_ok=True)
     text = open(src).read()
     lines = text.split('\n')
@@ -137,6 +139,10 @@ def main():
         l = lines[i].split(', !dbg')[0]
         in_loop = loop_of(i)
         cm = re.match(r'\s*(?:%[\w.]+ = )?(?:tail )?call (?:void|zeroext i8|i8|i32|ptr) @([\w.]+)\(', l)
+        if state_skip:
+            if cm and cm.group(1) == 'xof_get_bytes':
+                sites.append(('C', i, cm.group(1), in_loop))
+            continue
         if cm and cm.group(1) in SKIPPABLE:
             sites.append(('C', i, cm.group(1), in_loop))
         m = INT_RE.match(l)
@@ -211,13 +217,25 @@ def main():
             outs = call_outputs(callee, args)
             assert outs, f'no output pointer for {callee} at line {i + 1}'
             new = list(pre)
+            if state_skip:
+                # True skip of a squeeze: the context is saved before the call and, when the fault
+                # hits, restored after it, so it does not advance; the output goes to scratch. The
+                # restore selects on the saved value rather than the pointer, so the call keeps a
+                # single context pointer for override matching.
+                ctx = args[0]
+                new += [f'  %{k}.sctx = alloca [208 x i8], align 16',
+                        f'  call void @llvm.memcpy.p0.p0.i64(ptr align 16 %{k}.sctx, ptr align 8 {ctx}, i64 208, i1 false)']
+                post = [f'  %{k}.cnew = load [208 x i8], ptr {ctx}, align 1',
+                        f'  %{k}.cold = load [208 x i8], ptr %{k}.sctx, align 1',
+                        f'  %{k}.cv = select i1 %{k}.hit, [208 x i8] %{k}.cold, [208 x i8] %{k}.cnew',
+                        f'  store [208 x i8] %{k}.cv, ptr {ctx}, align 1']
             for j, o in enumerate(outs):
                 scratch = f'%{k}.scratch{j}'
                 new += [f'  {scratch} = alloca [65536 x i8], align 16',
                         f'  %{k}.dst{j} = select i1 %{k}.hit, ptr {scratch}, ptr {o}']
                 rest = re.sub(rf'(ptr (?:align \d+ )?(?:noundef )?){re.escape(o)}(?=[,)])', rf'\g<1>%{k}.dst{j}', rest, count=1)
-            L[i] = '\n'.join(new + [head + '(' + rest])
-            desc = f'C skip {callee} -> {", ".join(outs)}'
+            L[i] = '\n'.join(new + [head + '(' + rest] + (post if state_skip else []))
+            desc = f'C skip {callee} -> {", ".join(outs)}' + (' (state not advanced)' if state_skip else '')
         for j in range(s, e):
             L[j] = re.sub(r' (nsw|nuw)\b', '', L[j]) if not L[j].lstrip().startswith(('call', 'store')) and 'getelementptr' not in L[j] else L[j]
         body = '\n'.join(L)
