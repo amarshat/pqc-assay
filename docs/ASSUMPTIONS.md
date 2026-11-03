@@ -1698,6 +1698,15 @@ control of the same restricted check on the shipped code. hqc-3/5 model and scri
    call in `hqc_kem_decaps_internal` changed from 16 to 17: SAW stops with "No override
    specification applies for xof_init_dom_sep", so the overrides do not accept a different constant.
 
+10. CVE-2024-54137 on the real code (`scripts/hqc_cve_witness.sh`, 2026-11-03). Downloads the HQC
+   team's archive_submissions.zip (sha256 pinned in the script), builds the hqc-128 reference
+   implementation of the submissions of 2024-10-30 and 2025-02-19 natively with clang++ -O2 and
+   Homebrew NTL 11.6.0, driver `scripts/hqc-cve/witness.cpp`. One honest ciphertext with one bit of
+   v flipped: 2024-10-30 returns SHAKE256-512(m' || u || v) (the accept key) and 0; 2025-02-19
+   returns SHAKE256-512(sigma || u || v) (the reject key) and -1; both return the encapsulated key on
+   the honest ciphertext. A test of one input, not a proof; it ties the sed mutants of `make hqc-decaps` to the
+   defect as shipped.
+
 Not covered: the x86_64 build's decapsulation, optimized builds other than the one in item 7, timing.
 Faults: A-HQC-DEC51-F.
 
