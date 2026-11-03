@@ -1656,7 +1656,8 @@ control of the same restricted check on the shipped code. hqc-3/5 model and scri
    `hqc.c` and `hqc-kem.c` as one translation unit at `-O2`, `-O3` and `-Os`; and the whole
    library as `-O1 -flto` objects linked by ld64 with clang 22's libLTO, where decryption is not
    inlined and its return value is propagated across modules. No jump: the unit without `hqc.c`,
-   the unit with `__asm__("" : "+r"(result))` after `result -= 1`, the hardened v4.1, LTO with
+   the unit with `__asm__("" : "+r"(result))` after `result -= 1`, the hardened v4.1, v4.2 and v4.3
+   (v4.3 added 2026-11-03, x86_64 and AArch64, both compilers, `-O1` to `-Os`), LTO with
    `-O2`/`-O3`/`-Os` objects, and Apple clang 14.0.3 in every configuration. AArch64 (empty
    stand-in `scripts/hqc-bench/immintrin.h`; `vector.h` includes the header and uses nothing from
    it): clang 22 branches (`cbz`) in the single unit at `-O3` only; `-O1` `csel`, `-O2`/`-Os` vector
@@ -1669,6 +1670,11 @@ control of the same restricted check on the shipped code. hqc-3/5 model and scri
    about 2.4 during the run). Same output keys. The earlier run (0.36-0.71%) was of the patch
    before the word-25 fix. (v4.1, 2026-11-01, five unpaired rounds:
    `logs/bench.txt`.)
+   v4.3 (2026-11-03, `proof/hqc-decaps/logs/bench_v43.txt`, `VARIANTS="v42 v43"`, ten rounds of
+   2000, shipped/v4.2/v4.3 in turn, load average 4.3 at start and 3.0 at the end): median of round
+   medians, valid ciphertext, 2.92 / 2.94 / 2.94 ms (clang 22) and 2.97 / 2.99 / 2.99 ms (Apple
+   clang). v4.3 median paired difference +0.52% to +0.65%, single rounds +0.44% to +0.76%; v4.2
+   +0.56% to +0.63%. One key per ciphertext across all builds and rounds.
    Shipped builds (build files read 2026-11-01): upstream v5.0.0/v5.1.0 compile separate objects
    at -O3 (v5.0.0 adds -flto only for non-clang compilers; v5.1.0 none); liboqs 0.16.0 (HQC from
    upstream 161cd4f, kem.c and hqc.c identical to v5.0.0) compiles separate objects at -O3, no LTO,
@@ -1690,7 +1696,8 @@ control of the same restricted check on the shipped code. hqc-3/5 model and scri
    This relaxes item 3: the decoder may report failure, as long as it returns 0 or 1. XOF_Init is
    uninterpreted over the 32 seed bytes and the separator byte; the override accepts any separator
    the C passes and the spec passes k/8 (SpecV51_1::XofSep). The HQC document's XOF.Init absorbs
-   the seed alone; v5.1.0 appends k/8, and the spec follows the C here. Two mutations of the spec model (J over c'; bottom ignored) are
+   the seed alone; v5.1.0 appends k/8, and the spec follows the C here. The HQC team confirmed
+   (2026-11-03) that the byte is intentional and that the next specification will include it. Two mutations of the spec model (J over c'; bottom ignored) are
    refuted with a failed output subgoal. saw exit 0, 22 s.
    hqc-3 and hqc-5 (added 2026-11-02): `SpecV51_3.cry`, `SpecV51_5.cry`, `spec51_3.saw` and
    `spec51_5.saw` are generated from the hqc-1 files by `scripts/hqc_decaps_gen.py` (sizes, pad
@@ -1734,11 +1741,15 @@ instance per variant, chosen by the symbolic global `fault_J`; the variant sets 
 `fault_fired` when that instance executes. `nsw`/`nuw` flags are dropped in the region. Properties,
 with the same uninterpreted functions as A-HQC-DEC51:
 - P1 (`faults51_1.saw.in`, `rejects`): a ciphertext that does not re-encrypt yields `rejKey`.
-- Fired check (`fired51_1.saw.in`, P1-holding sites only): the postcondition `fault_fired == 0`
-  must fail (FIRES); NOT_FIRED would make the P1 result vacuous.
+- Fired check (`fired51_1.saw.in`, P1-holding sites only): under the precondition `~ accepts c dk`
+  (the premise of P1) the postcondition `fault_fired == 0` must fail (FIRES); NOT_FIRED would make
+  the P1 result vacuous. Before 2026-11-03 the check had no premise, so it showed only that the
+  fault fires on some input; those verdicts are in `faults_1<tag>/fired_any/`.
 - P2 (`ni51_1.saw.in`, `noLeak`, harness `scripts/hqc_decaps51_dec2.c`, P1-broken sites only): two
   runs, same fault, `hash_g` switched between independent functions by `hqc_epoch`; both reject
-  implies equal outputs.
+  implies equal outputs. Both runs execute one faulted program: `fault_J` and `fault_v*` are
+  globals the injected code reads and never writes, and the loop index of a site is the run's own
+  stack slot, so the fault instance and value are the same in both runs.
 - P3 (`pres51_1.saw.in`, `preserves`, P1-broken sites only): a ciphertext that does not re-encrypt
   yields an output that differs from `rejKey` in at most one byte.
 - P2K and P2theta (same harness, sites where P2 is LEAK or TIMEOUT; `NI_G=hashGk NI_POST=noLeakK`
@@ -1761,7 +1772,14 @@ bytes) is withdrawn: an output of 32 copies of one byte of J passes it.
 Results (2026-11-02, after volatile loads and stores became fault sites and the v4.2 word-25 fix;
 verdicts in `build/hqc-decaps51/faults_1<tag>/{RESULTS,FIRED,NI,PRES}.tsv`, 8 jobs on the M2 Max: v4.2
 7612 s, v4 7120 s; v4.1 5 jobs on the M4 Pro host, 8599 s; shipped P2 and P3 also rerun on the M4
-Pro host with identical NI.tsv and PRES.tsv; the shipped map has no volatile access in the region). Every P1-holding site in all five maps is FIRES.
+Pro host with identical NI.tsv and PRES.tsv; the shipped map has no volatile access in the region). Every P1-holding site in all five maps is FIRES
+(rerun 2026-11-03 with the `~ accepts c dk` premise: 4, 79, 89, 121 and 102 sites, all FIRES).
+Two-run fired check (`nifired51_1.saw.in`, `NI_PREM=premP2|premP2K|premP2T` in
+`scripts/hqc_decaps_ni_run.sh`, verdicts `*.nifired2verdict`, `*.nifiredkverdict`,
+`*.nifiredtverdict`): at every site where P2, P2K or P2theta is NONINTERFERENT, SAW finds a pair of
+runs that meets that property's premise and sets `fault_fired` (shipped 13 + 1 + 20, v4 15 + 1,
+v4.1 13 + 1, v4.2 13, v4.3 13: 90 sites, all FIRES). Controls for both fired templates: with
+`fault_J` pinned to 1000000 (an instance that never executes) SAW proves the flag stays 0.
 - v5.1.0 as shipped, 55 sites: P1 holds at 4, BROKEN 50, ERROR 1. Of the 50: P2 LEAK 36,
   NONINTERFERENT 13, TIMEOUT 1 (skip of `hash_g`); P3 VIOLATED 38, PRESERVED 12 (the 12 broken
   sites of the selection body; two of them, the mask load and its extension, also LEAK).

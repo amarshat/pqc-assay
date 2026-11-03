@@ -1,5 +1,6 @@
 // Fired check (generated from faults51_1.saw.in): the postcondition says the chosen fault instance
-// never executes. A counterexample shows that it can; a proof means the site is vacuous.
+// never executes on a ciphertext that P1 covers (one that does not re-encrypt). A counterexample
+// shows that it can; a proof means the site's P1 verdict is vacuous.
 // HQC v5.1.0 hqc_kem_decaps, hqc-1: the C equals DecapsV51_1::decaps (FO with implicit rejection,
 // keys regenerated from the 32-byte decapsulation key) for every ciphertext and decapsulation key.
 // The XOF, the PKE and the hash functions are assumed, uninterpreted specifications. Built from
@@ -154,6 +155,7 @@ let fcheck path = do {
         (dk, dkp) <- in_bytes "dk_kem" 32;
         (c, cp) <- in_bytes "c" 4433;
         @RESTRICT@
+        llvm_precond {{ ~ accepts c dk }};
         llvm_execute_func [kp, dkp, cp];
         k <- llvm_fresh_var "k" (arr 32);
         llvm_points_to kp (llvm_term k);
