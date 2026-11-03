@@ -61,6 +61,35 @@ SKIPPABLE = ('llvm.memcpy.p0.p0.i64', 'xof_init_dom_sep', 'xof_get_bytes', 'hqc_
              'hqc_c_kem_from_string', 'hqc_pke_decrypt', 'hash_h', 'hash_g', 'hash_j', 'hqc_pke_encrypt')
 
 
+def base_of(lines, fstart, i, reg):
+    """The object a pointer register points into: an alloca, or ('arg', slot) for a pointer loaded
+    from an argument's stack slot. getelementptr chains are followed."""
+    for _ in range(64):
+        d = next((l for l in reversed(lines[fstart:i]) if re.match(rf'\s*{re.escape(reg)} = ', l)), None)
+        if d is None:
+            return reg
+        m = re.search(r'= getelementptr (?:inbounds )?(?:nuw )?(?:nusw )?[^,]+, ptr (%[\w.]+)', d)
+        if m:
+            reg = m.group(1)
+            continue
+        m = re.search(r'= load ptr, ptr (%[\w.]+)', d)
+        if m:
+            return ('arg', m.group(1))
+        return reg
+    return reg
+
+
+def written_before(lines, fstart, i, base):
+    """Whether a store, memset or memcpy before line i writes into base."""
+    for j in range(fstart, i):
+        l = lines[j]
+        m = (re.search(r'store (?:volatile )?\S+ [^,]+, ptr (%[\w.]+)', l)
+             or re.search(r'call void @llvm\.mem(?:set|cpy)[\w.]*\(ptr (?:align \d+ )?(%[\w.]+)', l))
+        if m and base_of(lines, fstart, j, m.group(1)) == base:
+            return True
+    return False
+
+
 def result_type(rhs):
     """Integer type of an SSA definition's value, or None."""
     m = re.match(r'(?:call (?:zeroext |signext )?(i\d+) )', rhs)
@@ -199,9 +228,12 @@ def main():
             _, i, sm, _ = site
             ind, t, val, ptr = sm.groups()
             vol = 'volatile ' if ' store volatile ' in ' ' + lines[i].lstrip() else ''
-            # The first store to a location in the function: skipping it leaves stale stack, an
-            # arbitrary value, which the symbolic global of its type models.
-            first = not any(re.search(rf'store (?:volatile )?i\d+ [^,]+, ptr {re.escape(ptr)},', x) for x in lines[fstart:i])
+            # A store to an object nothing in the function wrote before: skipping it leaves stale
+            # stack or the caller's bytes, an arbitrary value, which the symbolic global of its type
+            # models. Otherwise the skip leaves what the object held. Objects are compared by base
+            # (through getelementptr, and a pointer loaded from an argument's slot), so an earlier
+            # write through another pointer into the same buffer counts.
+            first = not written_before(lines, fstart, i, base_of(lines, fstart, i, ptr))
             g = {'i1': '@fault_v1', 'i8': '@fault_v8', 'i32': '@fault_v32', 'i64': '@fault_v64'}[t]
             oldv = f'  %{k}.old = load {t}, ptr {g}, align 1' if first else f'  %{k}.old = load {t}, ptr {ptr}, align 1'
             new = pre + [oldv,

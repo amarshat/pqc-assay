@@ -1688,15 +1688,20 @@ control of the same restricted check on the shipped code. hqc-3/5 model and scri
    encryption returns the byte strings u' and v' (the 7 bytes of the u' buffer past 2209 are an
    uninterpreted PKE_EncPad); J reads the first 2209 and 2208 bytes of the u and v word arrays.
    This relaxes item 3: the decoder may report failure, as long as it returns 0 or 1. XOF_Init is
-   uninterpreted over the 32 seed bytes; the other arguments of xof_init_dom_sep are constants at
-   this call site and are folded into the function. Two mutations of the spec model (J over c'; bottom ignored) are
+   uninterpreted over the 32 seed bytes and the separator byte; the override accepts any separator
+   the C passes and the spec passes k/8 (SpecV51_1::XofSep). The HQC document's XOF.Init absorbs
+   the seed alone; v5.1.0 appends k/8, and the spec follows the C here. Two mutations of the spec model (J over c'; bottom ignored) are
    refuted with a failed output subgoal. saw exit 0, 22 s.
    hqc-3 and hqc-5 (added 2026-11-02): `SpecV51_3.cry`, `SpecV51_5.cry`, `spec51_3.saw` and
    `spec51_5.saw` are generated from the hqc-1 files by `scripts/hqc_decaps_gen.py` (sizes, pad
    bytes, and at hqc-5 sigma from the same squeeze function as the seed); saw exit 0 for both. A
    control assembles the hqc-1 bitcode with the constant argument of the first `xof_init_dom_sep`
-   call in `hqc_kem_decaps_internal` changed from 16 to 17: SAW stops with "No override
-   specification applies for xof_init_dom_sep", so the overrides do not accept a different constant.
+   call in `hqc_kem_decaps_internal` changed from 16 to 17. With the primitives uninterpreted,
+   Yices gave no verdict on it in over four hours, so the Make target checks it under a concrete
+   instance of the primitives (`SPEC51_INST` in the Makefile: XOF_Init puts the separator byte in
+   the context, the squeezes return a prefix of the context bytes, H and J a prefix of their input,
+   encryption never matches). Under that instance the shipped bitcode verifies and the mutant fails
+   at the output points-to, 22 s and 25 s.
 
 10. CVE-2024-54137 on the real code (`scripts/hqc_cve_witness.sh`, 2026-11-03). Downloads the HQC
    team's archive_submissions.zip (sha256 pinned in the script), builds the hqc-128 reference
@@ -1719,7 +1724,9 @@ precedes the `xof_init_dom_sep` call (the zero-initialization of the locals) to 
 through `memset_volatile`. This includes key regeneration, the ciphertext parse, decryption, H, G,
 J, re-encryption, the comparisons and the selection, and any code a hardened variant adds before the
 key regeneration. Fault kinds: an integer SSA value replaced by a symbolic value; a store skipped
-(old contents, or a symbolic value for the first store to a location); a call to `xof_init_dom_sep`,
+(old contents, or a symbolic value if nothing in the function wrote the object before: objects are
+compared by base through getelementptr and pointers loaded from an argument's slot, so a write
+through another pointer into the same buffer counts); a call to `xof_init_dom_sep`,
 `xof_get_bytes`, `hqc_pke_keygen`, `hqc_c_kem_from_string`, `hqc_pke_decrypt`, `hash_h`, `hash_g`,
 `hash_j`, `hqc_pke_encrypt` or `memcpy` redirected to scratch (for `xof_get_bytes` only the output;
 the XOF state still advances); the exit test of every counted loop forced either way. One dynamic
@@ -1754,21 +1761,35 @@ bytes) is withdrawn: an output of 32 copies of one byte of J passes it.
 Results (2026-11-02, after volatile loads and stores became fault sites and the v4.2 word-25 fix;
 verdicts in `build/hqc-decaps51/faults_1<tag>/{RESULTS,FIRED,NI,PRES}.tsv`, 8 jobs on the M2 Max: v4.2
 7612 s, v4 7120 s; v4.1 5 jobs on the M4 Pro host, 8599 s; shipped P2 and P3 also rerun on the M4
-Pro host with identical NI.tsv and PRES.tsv; the shipped map has no volatile access in the region). Every P1-holding site in all four maps is FIRES.
+Pro host with identical NI.tsv and PRES.tsv; the shipped map has no volatile access in the region). Every P1-holding site in all five maps is FIRES.
 - v5.1.0 as shipped, 55 sites: P1 holds at 4, BROKEN 50, ERROR 1. Of the 50: P2 LEAK 36,
   NONINTERFERENT 13, TIMEOUT 1 (skip of `hash_g`); P3 VIOLATED 38, PRESERVED 12 (the 12 broken
   sites of the selection body; two of them, the mask load and its extension, also LEAK).
 - v4 (`proof/hqc-decaps/hardened/v4.patch`), 104 sites: P1 holds at 79, BROKEN 22, ERROR 3. P2 LEAK
   6, NONINTERFERENT 15, TIMEOUT 1; P3 VIOLATED 9, PRESERVED 13.
 - v4.1 (`v41.patch`: v4 plus the rejection key written to the output before the selection),
-  113 sites: P1 holds at 88, BROKEN 21, ERROR 4. P2 LEAK 6, NONINTERFERENT 14, TIMEOUT 1; P3
-  VIOLATED 8, PRESERVED 13.
+  113 sites: P1 holds at 89, BROKEN 20, ERROR 4. P2 LEAK 6, NONINTERFERENT 13, TIMEOUT 1; P3
+  VIOLATED 8, PRESERVED 12.
 - v4.2 (`v42.patch`: v4.1 plus prefills from `dk_kem`, both J before G, `K_theta_prime` prefilled
-  with the rejection key), 150 sites: P1 holds at 120, BROKEN 20, ERROR 6, TIMEOUT 4. P2 LEAK 6,
-  NONINTERFERENT 14; P3 VIOLATED 7, PRESERVED 13.
+  with the rejection key), 150 sites: P1 holds at 121, BROKEN 19, ERROR 6, TIMEOUT 4. P2 LEAK 6,
+  NONINTERFERENT 13; P3 VIOLATED 7, PRESERVED 12.
 - v4.3 (`v43.patch`: v4.2 without the prefills from `dk_kem` and the extra zeroization), 126 sites
-  (M4 Pro host, 5 jobs, 7698 s): P1 holds at 101 (all FIRES), BROKEN 20 (the same instructions as
-  v4.2), ERROR 5. P2 LEAK 6, NONINTERFERENT 14; P3 VIOLATED 7, PRESERVED 13.
+  (M4 Pro host, 5 jobs, 7698 s): P1 holds at 102 (all FIRES), BROKEN 19 (the same instructions as
+  v4.2), ERROR 5. P2 LEAK 6, NONINTERFERENT 13; P3 VIOLATED 7, PRESERVED 12.
+- First-store correction (2026-11-03): the first injector compared pointer registers, so the store of
+  the output byte in the selection of v4.1, v4.2 and v4.3 (f112, f149, f125) wrote a symbolic value
+  although v4.1's loop had already written the rejection key there. With the real old value P1 holds
+  at all three (FIRES), and the counts above include that; the earlier verdicts (BROKEN, P2
+  NONINTERFERENT, P3 PRESERVED) are kept in `faults_1<tag>/symbolic_first_store/`. No other BROKEN
+  site changes under the corrected rule: the remaining symbolic first stores are `result` (shipped),
+  `kb` and the output byte of shipped and v4, whose objects nothing wrote before, and an
+  experiment loading the real old value there stops with a memory-load error (uninitialized) or, for
+  the output byte, gives the same BROKEN verdict. Sites that were RESILIENT stay so, since a proof for
+  every old value covers the real one.
+- Controls (`make hqc-decaps51-faultctl`, 2026-11-03): the five programs with the region's nsw/nuw
+  dropped and no fault are equal to `DecapsV51_1::decaps` (saw exit 0); the premises of P2, P2K and
+  P2theta are satisfiable with the switched half of G's output different (`ni51_sat.saw`, sat,
+  exit 0; a contradictory premise fed to the same check exits 1).
 - P2K, at the P2 LEAK/TIMEOUT sites: shipped LEAK 36, NONINTERFERENT 1 (skip of `hash_g`); v4 and
   v4.1 LEAK 6, NONINTERFERENT 1 (skip of `hash_g`); v4.2 LEAK 6. P2theta: shipped LEAK 16, NONINTERFERENT 20, TIMEOUT 1 (skip of `hash_g`); v4 and
   v4.1 LEAK 6, TIMEOUT 1 (skip of `hash_g`); v4.2 LEAK 6. v4.3: P2K LEAK 6, P2theta LEAK 6 (the six P2

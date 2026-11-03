@@ -30,13 +30,15 @@ let check path = do {
         return (x, p);
     };
 
-    // XOF_Init: uninterpreted over the 32 seed bytes; the other arguments of xof_init_dom_sep are
-    // constants at this call site and are folded into the function.
+    // XOF_Init: uninterpreted over the 32 seed bytes and the separator byte, which any call may
+    // pass; the specification fixes it (SpecV51_1::XofSep), so a call with another byte reaches the
+    // output with a different context.
     let xof_init_spec = do {
         cp <- llvm_alloc (llvm_alias "struct.shake256incctx");
         (dk, dkp) <- in_bytes "dk" 32;
-        llvm_execute_func [cp, dkp, llvm_term {{ 32 : [32] }}, llvm_term {{ 32 : [8] }}];
-        llvm_points_to cp (llvm_struct_value [llvm_term {{ XOF_Init dk }}]);
+        d <- llvm_fresh_var "dsep" (llvm_int 8);
+        llvm_execute_func [cp, dkp, llvm_term {{ 32 : [32] }}, llvm_term d];
+        llvm_points_to cp (llvm_struct_value [llvm_term {{ XOF_Init dk d }}]);
     };
     // (ctx, out) <- XOF.GetBytes(ctx, out, n), for the two lengths decapsulation uses.
     let xof_get_spec n = do {

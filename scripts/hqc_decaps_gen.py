@@ -117,6 +117,7 @@ def subst_spec_cry(src, p):
     out = out.replace(f'// The {pa} bytes of the C\'s u\' buffer after the {a["NB"]} bytes of u\'',
                       f'// The {pb} bytes of the C\'s u\' buffer after the {b["NB"]} bytes of u\'')
     out = out.replace(f'-> [{pa}][8]', f'-> [{pb}][8]')
+    out = re.sub(rf'^XofSep = {a["K"]}$', f'XofSep = {b["K"]}', out, flags=re.M)
     if b['K'] == 32:
         # both squeezes are 32 bytes, so the C cannot tell them apart by length: one GetBytes
         out = out.replace('(_, sigma)      = XOF_Get_sigma ctx1  ', '(_, sigma)      = XOF_Get_seed ctx1   ')

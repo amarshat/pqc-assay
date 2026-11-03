@@ -1,0 +1,24 @@
+// Premises of the two-run checks are satisfiable (paper 2, Section 4). For P2, P2K and P2theta the
+// solver must find a ciphertext and key for which the premise holds and the switched half of G's
+// output differs between the two runs, so a NONINTERFERENT verdict is not a consequence of an
+// impossible premise. Same uninterpreted functions as ni51_1.saw.in. Each query must be SAT.
+import "DecapsV51_1.cry";
+let UNINT = ["xofInit", "xofOut32", "xofNext32", "xofOutK", "xofNextK", "pkeKeyE", "pkeKeyD",
+             "pkeDec", "pkeEncU", "pkeEncV", "hashH", "hashG", "hashGe", "hashJ"];
+let gin = {{ \(c : [CT][8]) (dk : [DK][8]) ->
+    (hashH (pkeKeyE (seedPke dk)), pkeDec (pkeKeyD (seedPke dk)) (ctU c) (ctV c), ctSalt c) }};
+let must_sat name t = do {
+    r <- sat (w4_unint_z3 UNINT) t;
+    caseSatResult r (do { print (str_concat "!! not satisfiable: " name); exit 1; })
+                    (\_ -> print (str_concat "SAT: " name));
+};
+must_sat "P2 premise, K' differs"
+  {{ \c dk -> ~ acceptsE 0 c dk /\ ~ acceptsE 1 c dk /\
+       (take`{SS} (hashGe 0 h m s) != take`{SS} (hashGe 1 h m s) where (h, m, s) = gin c dk) }};
+must_sat "P2K premise, K' differs"
+  {{ \c dk -> ~ acceptsWith (hashGk 0) c dk /\
+       (take`{SS} (hashGk 0 h m s) != take`{SS} (hashGk 1 h m s) where (h, m, s) = gin c dk) }};
+must_sat "P2theta premise, theta' differs"
+  {{ \c dk -> ~ acceptsWith (hashGt 0) c dk /\ ~ acceptsWith (hashGt 1) c dk /\
+       (drop`{SS} (hashGt 0 h m s) != drop`{SS} (hashGt 1 h m s) where (h, m, s) = gin c dk) }};
+print "VERIFIED: P2, P2K and P2theta premises satisfiable with the switched half different (saw exit 0)";

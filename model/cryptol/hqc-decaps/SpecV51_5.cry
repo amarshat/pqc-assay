@@ -17,8 +17,12 @@ type MB   = 32
 type KB   = 32            // |K|
 type XS   = 26            // XOF context, opaque
 
-XOF_Init      : [SEED][8] -> [XS][64]
-XOF_Init _ = zero
+XOF_Init      : [SEED][8] -> [8] -> [XS][64]
+XOF_Init _ _ = zero
+// The second argument of XOF_Init is the byte v5.1.0 appends to the seed, k / 8. The document's
+// XOF.Init (Table 3) absorbs the seed alone; here the specification follows the C.
+XofSep : [8]
+XofSep = 32
 XOF_Get_seed  : [XS][64] -> ([XS][64], [SEED][8])
 XOF_Get_seed _ = zero
 XOF_Get_sigma : [XS][64] -> ([XS][64], [MB][8])
@@ -40,7 +44,7 @@ J _ = zero
 Decaps : [SEED][8] -> [CT][8] -> [KB][8]
 Decaps dkKEM cKEM = if bot \/ cKEM' != cKEM then Kbar else K'
   where
-    ctx0            = XOF_Init dkKEM                       // 2
+    ctx0            = XOF_Init dkKEM XofSep                // 2
     (ctx1, seedPKE) = XOF_Get_seed ctx0                    // 3
     (ekPKE, dkPKE)  = PKE_Keygen seedPKE                   // 4
     (_, sigma)      = XOF_Get_seed ctx1                    // 6

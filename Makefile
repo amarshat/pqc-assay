@@ -247,10 +247,19 @@ hqc-decaps51-cc:
 ## v5.1.0 against SpecV51_<p>::Decaps, written from the HQC specification of 2026-10-12 (not from
 ## the C): decryption may return bottom, G and J take the document's concatenations. SpecV51_3/5.cry
 ## and spec51_3/5.saw are generated from the hqc-1 files (scripts/hqc_decaps_gen.py). Two mutations of
-## the spec model (J over c' instead of c; bottom ignored) must fail at the output, and a mutation of
-## the C passing another XOF separator in decapsulation must match no override.
+## the spec model (J over c' instead of c; bottom ignored) must fail at the output. For the XOF
+## separator the primitives are replaced by small concrete functions (XOF_Init puts the separator
+## byte into the context, H and J take a prefix, encryption never matches); under that instance the
+## shipped C must verify and a mutation of the C passing 17 instead of 16 must fail at the output.
+## With the primitives uninterpreted, Yices ran for more than four hours on the mutant without a verdict.
 SPEC51_M1 = s/Kbar            = J (H ekPKE \# sigma \# cKEM)  /Kbar            = J (H ekPKE \# sigma \# cKEM') /
 SPEC51_M2 = s|if bot \\\\/ cKEM' != cKEM then|if cKEM' != cKEM then|
+SPEC51_INST = -e 's/^XOF_Init _ _ = zero$$/XOF_Init _ d = [(0 : [56]) \# d] \# zero/' \
+  -e 's/^XOF_Get_seed _ = zero$$/XOF_Get_seed ctx = (ctx, take (toBytes ctx))/' \
+  -e 's/^XOF_Get_sigma _ = zero$$/XOF_Get_sigma ctx = (ctx, take (toBytes ctx))/' \
+  -e 's/^PKE_Keygen _ = zero$$/PKE_Keygen s = (s \# zero, s)/' \
+  -e 's/^PKE_Encrypt _ _ _ = zero$$/PKE_Encrypt _ _ _ = (repeat 1, zero)/' \
+  -e 's/^H _ = zero$$/H ek = take ek/' -e 's/^J _ = zero$$/J x = take x/'
 hqc-decaps51-spec: hqc-decaps51
 	@mkdir -p build/hqc-decaps51/specmut/m1 build/hqc-decaps51/specmut/m2
 	@sed "$(SPEC51_M1)" model/cryptol/hqc-decaps/SpecV51_1.cry > build/hqc-decaps51/specmut/m1/SpecV51_1.cry
@@ -265,8 +274,12 @@ hqc-decaps51-spec: hqc-decaps51
 	@awk '/define .*@hqc_kem_decaps_internal\(/{f=1} f && /call void @xof_init_dom_sep\(/ && !d {sub(/i8 noundef zeroext 16\)/, "i8 noundef zeroext 17)"); d=1} {print}' build/hqc-decaps51/specmut/ds/orig.ll > build/hqc-decaps51/specmut/ds/dec_1.ll
 	@if cmp -s build/hqc-decaps51/specmut/ds/orig.ll build/hqc-decaps51/specmut/ds/dec_1.ll; then echo "!! separator mutation did not apply"; exit 1; fi
 	@$(AVX_LLVM_BIN)llvm-as build/hqc-decaps51/specmut/ds/dec_1.ll -o build/hqc-decaps51/specmut/ds/dec_1.bc
-	@sed 's#^check "../../build/hqc-decaps51/dec_1.bc";#check "$(CURDIR)/build/hqc-decaps51/specmut/ds/dec_1.bc";#' proof/hqc-decaps/spec51_1.saw > build/hqc-decaps51/specmut/ds/spec.saw
-	@(cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) ../../build/hqc-decaps51/specmut/ds/spec.saw > $(CURDIR)/build/hqc-decaps51/specmut/ds.log 2>&1) && { echo "!! separator mutation was not refuted"; exit 1; }; grep -q 'No override specification applies for xof_init_dom_sep' build/hqc-decaps51/specmut/ds.log || { echo "!! separator mutation failed for another reason"; exit 1; }; echo "REFUTED: XOF separator 17 instead of 16 in decapsulation (no override applies)"
+	@mkdir -p build/hqc-decaps51/specmut/inst
+	@sed $(SPEC51_INST) model/cryptol/hqc-decaps/SpecV51_1.cry > build/hqc-decaps51/specmut/inst/SpecV51_1.cry
+	@test $$(diff model/cryptol/hqc-decaps/SpecV51_1.cry build/hqc-decaps51/specmut/inst/SpecV51_1.cry | grep -c '^>') -eq 7 || { echo "!! separator instance did not apply"; exit 1; }
+	@for k in pos ds; do if [ $$k = pos ]; then bc=$(CURDIR)/build/hqc-decaps51/dec_1.bc; else bc=$(CURDIR)/build/hqc-decaps51/specmut/ds/dec_1.bc; fi; sed -e "s#^check \"../../build/hqc-decaps51/dec_1.bc\";#check \"$$bc\";#" -e 's/(w4_unint_yices UNINT)/(w4_unint_yices [])/' proof/hqc-decaps/spec51_1.saw > build/hqc-decaps51/specmut/inst/$$k.saw; grep -q "$$bc" build/hqc-decaps51/specmut/inst/$$k.saw && grep -q 'w4_unint_yices \[\]' build/hqc-decaps51/specmut/inst/$$k.saw || { echo "!! separator script $$k not generated"; exit 1; }; done
+	@(cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/build/hqc-decaps51/specmut/inst $(SAW) ../../build/hqc-decaps51/specmut/inst/pos.saw > $(CURDIR)/build/hqc-decaps51/specmut/inst/pos.log 2>&1) || { echo "!! shipped C does not verify under the separator instance"; exit 1; }; echo "VERIFIED: v5.1.0 hqc-1 decaps == Decaps with the separator instance of the primitives"
+	@(cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/build/hqc-decaps51/specmut/inst $(SAW) ../../build/hqc-decaps51/specmut/inst/ds.saw > $(CURDIR)/build/hqc-decaps51/specmut/inst/ds.log 2>&1) && { echo "!! separator mutation was not refuted"; exit 1; }; grep -q 'Subgoal failed: hqc_kem_decaps.*llvm_points_to' build/hqc-decaps51/specmut/inst/ds.log || { echo "!! separator mutation failed somewhere other than the output"; exit 1; }; echo "REFUTED: XOF separator 17 instead of 16 in decapsulation (output counterexample under the separator instance)"
 
 ## Cost of the hardened v4.2 against shipped v5.1.0 decapsulation, hqc-1, native (paper 2, Section 6).
 hqc-decaps51-bench:
@@ -276,6 +289,16 @@ hqc-decaps51-bench:
 ## fault site and property; slow (scripts/hqc_decaps51_faultmap.sh). Not part of hqc-all.
 hqc-decaps51-faults:
 	@for v in shipped v4 v41 v42 v43; do scripts/hqc_decaps51_faultmap.sh $$v $(or $(JOBS),8) || exit 1; done
+
+## Controls for the fault maps (paper 2, Section 4): the IR with the fault region's nsw/nuw flags
+## dropped and no fault equals the specification (shipped, v4, v4.1, v4.2, v4.3), and the premises
+## of the two-run checks P2, P2K and P2theta are satisfiable with the switched half of G different.
+hqc-decaps51-faultctl:
+	@mkdir -p build/hqc-decaps51/nsw
+	@head -144 proof/hqc-decaps/decaps51_1.saw > build/hqc-decaps51/nsw/base.saw
+	@for t in "" _v4 _v41 _v42 _v43; do [ -f build/hqc-decaps51/dec_1$$t.ll ] || { echo "!! build/hqc-decaps51/dec_1$$t.ll missing (scripts/hqc_decaps51_faultmap.sh)"; exit 1; }; python3 scripts/hqc_decaps_strip_flags.py build/hqc-decaps51/dec_1$$t.ll build/hqc-decaps51/nsw/dec_1$$t.ll && $(AVX_LLVM_BIN)llvm-as build/hqc-decaps51/nsw/dec_1$$t.ll -o build/hqc-decaps51/nsw/dec_1$$t.bc || exit 1; printf 'check false "%s";\nprint "VERIFIED: nsw/nuw dropped, no fault: dec_1%s == decaps";\n' $(CURDIR)/build/hqc-decaps51/nsw/dec_1$$t.bc "$$t" >> build/hqc-decaps51/nsw/base.saw; done
+	cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) ../../build/hqc-decaps51/nsw/base.saw
+	cd proof/hqc-decaps && CRYPTOLPATH=$(CURDIR)/model/cryptol/hqc-decaps $(SAW) ni51_sat.saw
 
 hqc-fft-wire: build/hqc-fft/wire_1.bc build/hqc-fft/wire_3.bc build/hqc-fft/wire_5.bc
 	@python3 scripts/hqc_fft_links.py
