@@ -5,15 +5,20 @@
 # end of the selection; every call in it can be skipped (scripts/hqc_decaps_faults.py SKIPPABLE).
 # A fired check runs on every RESILIENT site (FIRED.tsv; NOT_FIRED would make the verdict vacuous).
 # variant: shipped (target/hqc-5.1 as vendored), v4, v41, v42 or v43 (proof/hqc-decaps/hardened/<v>.patch
-# applied to a copy of hqc-kem.c). Four passes, each a SAW run per fault site:
+# applied to a copy of hqc-kem.c). Each pass is a SAW run per fault site:
 #   strict  (faults51_1.saw.in): a rejected ciphertext yields the rejection key. RESILIENT / BROKEN.
 #   fired   (fired51_1.saw.in, RESILIENT sites only): the fault instance can execute. FIRES /
 #           NOT_FIRED.
 #   ni      (ni51_1.saw.in, BROKEN sites only; P2, G-independence): two runs with independent G;
 #           both reject implies equal outputs. NONINTERFERENT / LEAK.
+#   P2K, P2theta (ni51_1.saw.in with NI_G=hashGk / hashGt, sites where P2 is LEAK or TIMEOUT): only
+#           the K' half, or only the theta' half, of G differs between the runs. NIK.tsv, NIT.tsv.
+#   two-run fired (nifired51_1.saw.in, sites where P2, P2K or P2theta holds): the fault instance
+#           executes on a pair of runs that meets that property's premise. NIFIRED{2,K,T}.tsv.
 #   pres    (pres51_1.saw.in, BROKEN sites only; P3): a rejected ciphertext yields an output that
 #           differs from the rejection key in at most one byte. PRESERVED / VIOLATED.
-# Verdicts land in build/hqc-decaps51/faults_1<tag>/{RESULTS,FIRED,NI,PRES}.tsv. ERROR means SAW failed
+# Verdicts land in build/hqc-decaps51/faults_1<tag>/{RESULTS,FIRED,NI,NIK,NIT,NIFIRED*,PRES}.tsv;
+# scripts/hqc_decaps_sites.py joins and cross-checks them. ERROR means SAW failed
 # somewhere other than the postcondition; such a site is reported, never counted as either verdict.
 set -eu
 v=${1:?variant: shipped, v4, v41, v42 or v43}; jobs=${2:-4}
@@ -43,5 +48,14 @@ rm -f $B/dec2.bc
 common="DEC_BUILD=$B DEC2_SRC=scripts/hqc_decaps51_dec2.c"
 echo ">> noninterference ($v)"
 env $common NI_TMPL=ni51_1.saw.in NI_RESTRICT="$restrict" scripts/hqc_decaps_ni_run.sh 1 "$jobs" "$tag"
+echo ">> P2K and P2theta at the sites where P2 fails or times out ($v)"
+env $common NI_TMPL=ni51_1.saw.in NI_RESTRICT="$restrict" NI_G=hashGk NI_POST=noLeakK NI_KIND=nik NI_FROM='NI.tsv:LEAK|TIMEOUT' scripts/hqc_decaps_ni_run.sh 1 "$jobs" "$tag"
+env $common NI_TMPL=ni51_1.saw.in NI_RESTRICT="$restrict" NI_G=hashGt NI_POST=noLeakT NI_KIND=nit NI_FROM='NI.tsv:LEAK|TIMEOUT' scripts/hqc_decaps_ni_run.sh 1 "$jobs" "$tag"
+echo ">> two-run fired checks under each premise, where P2, P2K or P2theta holds ($v)"
+for spec in "NI premP2 hashGe nifired2" "NIK premP2K hashGk nifiredk" "NIT premP2T hashGt nifiredt"; do
+  set -- $spec
+  grep -q NONINTERFERENT $B/faults_1$tag/$1.tsv || continue
+  env $common NI_TMPL=nifired51_1.saw.in NI_RESTRICT="$restrict" NI_BAD=FIRES NI_GOOD=NOT_FIRED NI_PREM=$2 NI_G=$3 NI_KIND=$4 NI_FROM=$1.tsv:NONINTERFERENT scripts/hqc_decaps_ni_run.sh 1 "$jobs" "$tag"
+done
 echo ">> rejection-key preservation, P3 ($v)"
 DEC_BUILD=$B FAULT_KIND=pres DEC_TOP=hqc_kem_decaps FAULT_RESTRICT="$restrict" scripts/hqc_decaps_faults_run.sh 1 "$jobs" "$tag"

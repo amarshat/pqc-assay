@@ -18,7 +18,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: hqc-decaps hqc-decaps51 hqc-decaps51-O2 hqc-decaps51-hardened hqc-decaps51-faults hqc-decaps51-cc hqc-decaps51-bench hqc-decaps51-spec hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-wire hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean hqc-all
+.PHONY: hqc-decaps hqc-decaps51 hqc-decaps51-firedctl hqc-decaps51-O2 hqc-decaps51-hardened hqc-decaps51-faults hqc-decaps51-cc hqc-decaps51-bench hqc-decaps51-spec hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-wire hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean hqc-all
 
 all: verify
 
@@ -289,6 +289,13 @@ hqc-decaps51-bench:
 ## fault site and property; slow (scripts/hqc_decaps51_faultmap.sh). Not part of hqc-all.
 hqc-decaps51-faults:
 	@for v in shipped v4 v41 v42 v43; do scripts/hqc_decaps51_faultmap.sh $$v $(or $(JOBS),8) || exit 1; done
+
+## Controls for the fired checks (paper 2, Section 4): with the fault pinned to an instance that never
+## executes, SAW must prove the fired flag stays 0 (scripts/hqc_decaps51_firedctl.sh). Then the per-site
+## verdicts are joined and cross-checked into proof/hqc-decaps/logs/sites.tsv (scripts/hqc_decaps_sites.py).
+hqc-decaps51-firedctl:
+	@scripts/hqc_decaps51_firedctl.sh
+	@python3 scripts/hqc_decaps_sites.py > proof/hqc-decaps/logs/sites.tsv
 
 ## Controls for the fault maps (paper 2, Section 4): the IR with the fault region's nsw/nuw flags
 ## dropped and no fault equals the specification (shipped, v4, v4.1, v4.2, v4.3), and the premises

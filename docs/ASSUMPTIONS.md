@@ -1779,7 +1779,15 @@ Two-run fired check (`nifired51_1.saw.in`, `NI_PREM=premP2|premP2K|premP2T` in
 `*.nifiredtverdict`): at every site where P2, P2K or P2theta is NONINTERFERENT, SAW finds a pair of
 runs that meets that property's premise and sets `fault_fired` (shipped 13 + 1 + 20, v4 15 + 1,
 v4.1 13 + 1, v4.2 13, v4.3 13: 90 sites, all FIRES). Controls for both fired templates: with
-`fault_J` pinned to 1000000 (an instance that never executes) SAW proves the flag stays 0.
+`fault_J` pinned to 1000000 (an instance that never executes) SAW proves the flag stays 0. (`make
+hqc-decaps51-firedctl`, `scripts/hqc_decaps51_firedctl.sh`; rerun 2026-11-03, saw exit 0 for both).
+The same target writes `proof/hqc-decaps/logs/sites.tsv` with `scripts/hqc_decaps_sites.py`, one row
+per site and variant with every verdict, and exits 1 unless each pass ran on exactly its sites (P3
+and P2 on the P1 failures, P2K and P2theta where P2 fails, the fired checks where the property they
+guard holds) and every fired check says FIRES; it passed on these maps. The P2K, P2theta and
+two-run fired passes were run as separate commands and then added to
+`scripts/hqc_decaps51_faultmap.sh` with the same settings; the driver has not been rerun end to end
+since. `docs/AUDIT-hqc-decaps.md` is a checklist for an independent audit.
 - v5.1.0 as shipped, 55 sites: P1 holds at 4, BROKEN 50, ERROR 1. Of the 50: P2 LEAK 36,
   NONINTERFERENT 13, TIMEOUT 1 (skip of `hash_g`); P3 VIOLATED 38, PRESERVED 12 (the 12 broken
   sites of the selection body; two of them, the mask load and its extension, also LEAK).

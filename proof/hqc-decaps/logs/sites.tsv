@@ -1,0 +1,549 @@
+variant	site	kind	P1	P1fired	P3	P2	P2fired	P2K	P2Kfired	P2T	P2Tfired	description
+shipped	f000	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip xof_init_dom_sep -> %8
+shipped	f001	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip xof_get_bytes -> %25
+shipped	f002	C	BROKEN	-	VIOLATED	NONINTERFERENT	FIRES	-	-	-	-	C skip xof_get_bytes -> %26
+shipped	f003	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hqc_pke_keygen -> %27, %28
+shipped	f004	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hqc_c_kem_from_string -> %30, %31, %32
+shipped	f005	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hqc_pke_decrypt -> %34
+shipped	f006	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	V i8 %38 = call zeroext i8 @hqc_pke_decrypt(ptr noundef %34, ptr nounde
+shipped	f007	S	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	S store i8 %38 -> %22
+shipped	f008	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hash_h -> %39
+shipped	f009	C	BROKEN	-	VIOLATED	TIMEOUT	-	NONINTERFERENT	FIRES	TIMEOUT	-	C skip hash_g -> %41
+shipped	f010	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	C skip hqc_pke_encrypt -> %45, %46
+shipped	f011	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip llvm.memcpy.p0.p0.i64 -> %51
+shipped	f012	C	BROKEN	-	VIOLATED	NONINTERFERENT	FIRES	-	-	-	-	C skip hash_j -> %53
+shipped	f013	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	V i8 %61 = call zeroext i8 @vect_compare(ptr noundef %59, ptr noundef %
+shipped	f014	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	V i32 %62 = zext i8 %61 to i32
+shipped	f015	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	V i8 %63 = load i8, ptr %22, align 1
+shipped	f016	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	V i32 %64 = zext i8 %63 to i32
+shipped	f017	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	V i32 %65 = or i32 %64, %62
+shipped	f018	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	V i8 %66 = trunc i32 %65 to i8
+shipped	f019	S	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	S store i8 %66 -> %22
+shipped	f020	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	V i8 %69 = call zeroext i8 @vect_compare(ptr noundef %67, ptr noundef %
+shipped	f021	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	V i32 %70 = zext i8 %69 to i32
+shipped	f022	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	V i8 %71 = load i8, ptr %22, align 1
+shipped	f023	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	V i32 %72 = zext i8 %71 to i32
+shipped	f024	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	V i32 %73 = or i32 %72, %70
+shipped	f025	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	V i8 %74 = trunc i32 %73 to i8
+shipped	f026	S	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	S store i8 %74 -> %22
+shipped	f027	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	V i8 %77 = call zeroext i8 @vect_compare(ptr noundef %75, ptr noundef %
+shipped	f028	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	V i32 %78 = zext i8 %77 to i32
+shipped	f029	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	V i8 %79 = load i8, ptr %22, align 1
+shipped	f030	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	V i32 %80 = zext i8 %79 to i32
+shipped	f031	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	V i32 %81 = or i32 %80, %78
+shipped	f032	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	V i8 %82 = trunc i32 %81 to i8
+shipped	f033	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %82 -> %22
+shipped	f034	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	V i8 %83 = load i8, ptr %22, align 1
+shipped	f035	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	V i32 %84 = zext i8 %83 to i32
+shipped	f036	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	V i32 %85 = sub nsw i32 %84, 1
+shipped	f037	V	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	V i8 %86 = trunc i32 %85 to i8
+shipped	f038	S	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	S store i8 %86 -> %22
+shipped	f039	E	BROKEN	-	VIOLATED	NONINTERFERENT	FIRES	-	-	-	-	E loop exit test forced false (early exit)
+shipped	f040	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+shipped	f041	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %93 = load i8, ptr %92, align 1
+shipped	f042	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %94 = zext i8 %93 to i32
+shipped	f043	V	BROKEN	-	PRESERVED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	V i8 %95 = load i8, ptr %22, align 1
+shipped	f044	V	BROKEN	-	PRESERVED	LEAK	-	LEAK	-	NONINTERFERENT	FIRES	V i32 %96 = zext i8 %95 to i32
+shipped	f045	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %97 = and i32 %94, %96
+shipped	f046	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %100 = load i8, ptr %99, align 1
+shipped	f047	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %101 = zext i8 %100 to i32
+shipped	f048	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %102 = load i8, ptr %22, align 1
+shipped	f049	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %103 = zext i8 %102 to i32
+shipped	f050	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %104 = xor i32 %103, -1
+shipped	f051	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %105 = and i32 %101, %104
+shipped	f052	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %106 = xor i32 %97, %105
+shipped	f053	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %107 = trunc i32 %106 to i8
+shipped	f054	S	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	S store i8 %107 -> %110
+v4	f000	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip xof_init_dom_sep -> %8
+v4	f001	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip xof_get_bytes -> %31
+v4	f002	C	BROKEN	-	VIOLATED	NONINTERFERENT	FIRES	-	-	-	-	C skip xof_get_bytes -> %32
+v4	f003	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hqc_pke_keygen -> %33, %34
+v4	f004	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hqc_c_kem_from_string -> %36, %37, %38
+v4	f005	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4	f006	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4	f007	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i64 %46 = load i64, ptr %45, align 8
+v4	f008	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i64 %47 = xor i64 %46, -1
+v4	f009	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i64 %47 -> %50
+v4	f010	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4	f011	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4	f012	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i64 %61 = load i64, ptr %60, align 8
+v4	f013	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i64 %62 = xor i64 %61, -1
+v4	f014	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i64 %62 -> %65
+v4	f015	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hqc_pke_decrypt -> %70
+v4	f016	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %74 = call zeroext i8 @hqc_pke_decrypt(ptr noundef %70, ptr nounde
+v4	f017	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %74 -> %23
+v4	f018	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hash_h -> %75
+v4	f019	C	BROKEN	-	VIOLATED	TIMEOUT	-	NONINTERFERENT	FIRES	TIMEOUT	-	C skip hash_g -> %77
+v4	f020	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip hqc_pke_encrypt -> %81, %82
+v4	f021	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip llvm.memcpy.p0.p0.i64 -> %87
+v4	f022	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip hash_j -> %89
+v4	f023	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip hash_j -> %95
+v4	f024	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %103 = call zeroext i8 @vect_compare(ptr noundef %101, ptr noundef 
+v4	f025	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %104 = zext i8 %103 to i32
+v4	f026	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %105 = load i8, ptr %23, align 1
+v4	f027	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %106 = zext i8 %105 to i32
+v4	f028	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %107 = or i32 %106, %104
+v4	f029	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %108 = trunc i32 %107 to i8
+v4	f030	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %108 -> %23
+v4	f031	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %111 = call zeroext i8 @vect_compare(ptr noundef %109, ptr noundef 
+v4	f032	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %112 = zext i8 %111 to i32
+v4	f033	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %113 = load i8, ptr %23, align 1
+v4	f034	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %114 = zext i8 %113 to i32
+v4	f035	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %115 = or i32 %114, %112
+v4	f036	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %116 = trunc i32 %115 to i8
+v4	f037	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %116 -> %23
+v4	f038	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %119 = call zeroext i8 @vect_compare(ptr noundef %117, ptr noundef 
+v4	f039	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %120 = zext i8 %119 to i32
+v4	f040	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %121 = load i8, ptr %23, align 1
+v4	f041	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %122 = zext i8 %121 to i32
+v4	f042	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %123 = or i32 %122, %120
+v4	f043	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %124 = trunc i32 %123 to i8
+v4	f044	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %124 -> %23
+v4	f045	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %125 = load i8, ptr %23, align 1
+v4	f046	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %126 = zext i8 %125 to i32
+v4	f047	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %127 = sub nsw i32 %126, 1
+v4	f048	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %128 = trunc i32 %127 to i8
+v4	f049	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %128 -> %23
+v4	f050	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %131 = call zeroext i8 @vect_compare(ptr noundef %129, ptr noundef 
+v4	f051	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %131 -> %24
+v4	f052	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %134 = call zeroext i8 @vect_compare(ptr noundef %132, ptr noundef 
+v4	f053	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %135 = zext i8 %134 to i32
+v4	f054	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %136 = load i8, ptr %24, align 1
+v4	f055	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %137 = zext i8 %136 to i32
+v4	f056	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %138 = or i32 %137, %135
+v4	f057	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %139 = trunc i32 %138 to i8
+v4	f058	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %139 -> %24
+v4	f059	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %142 = call zeroext i8 @vect_compare(ptr noundef %140, ptr noundef 
+v4	f060	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %143 = zext i8 %142 to i32
+v4	f061	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %144 = load i8, ptr %24, align 1
+v4	f062	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %145 = zext i8 %144 to i32
+v4	f063	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %146 = or i32 %145, %143
+v4	f064	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %147 = trunc i32 %146 to i8
+v4	f065	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %147 -> %24
+v4	f066	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %148 = load i8, ptr %24, align 1
+v4	f067	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %149 = zext i8 %148 to i32
+v4	f068	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %150 = sub nsw i32 %149, 1
+v4	f069	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %151 = trunc i32 %150 to i8
+v4	f070	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %151 -> %24
+v4	f071	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %152 = load i8, ptr %23, align 1
+v4	f072	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %152 -> %25
+v4	f073	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %153 = load volatile i8, ptr %25, align 1
+v4	f074	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %153 -> %23
+v4	f075	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %154 = load i8, ptr %24, align 1
+v4	f076	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %154 -> %25
+v4	f077	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %155 = load volatile i8, ptr %25, align 1
+v4	f078	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %155 -> %24
+v4	f079	E	BROKEN	-	VIOLATED	NONINTERFERENT	FIRES	-	-	-	-	E loop exit test forced false (early exit)
+v4	f080	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4	f081	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %162 = load i8, ptr %161, align 1
+v4	f082	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %163 = zext i8 %162 to i32
+v4	f083	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %166 = load i8, ptr %165, align 1
+v4	f084	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %167 = zext i8 %166 to i32
+v4	f085	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %168 = or i32 %163, %167
+v4	f086	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %169 = trunc i32 %168 to i8
+v4	f087	S	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	S store i8 %169 -> %29
+v4	f088	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %170 = load i8, ptr %29, align 1
+v4	f089	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %171 = zext i8 %170 to i32
+v4	f090	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %174 = load i8, ptr %173, align 1
+v4	f091	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %175 = zext i8 %174 to i32
+v4	f092	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %176 = load i8, ptr %29, align 1
+v4	f093	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %177 = zext i8 %176 to i32
+v4	f094	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %178 = xor i32 %175, %177
+v4	f095	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %179 = load i8, ptr %23, align 1
+v4	f096	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %180 = zext i8 %179 to i32
+v4	f097	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %181 = and i32 %178, %180
+v4	f098	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %182 = load i8, ptr %24, align 1
+v4	f099	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %183 = zext i8 %182 to i32
+v4	f100	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %184 = and i32 %181, %183
+v4	f101	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %185 = xor i32 %171, %184
+v4	f102	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %186 = trunc i32 %185 to i8
+v4	f103	S	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	S store i8 %186 -> %189
+v4.1	f000	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip xof_init_dom_sep -> %8
+v4.1	f001	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip xof_get_bytes -> %32
+v4.1	f002	C	BROKEN	-	VIOLATED	NONINTERFERENT	FIRES	-	-	-	-	C skip xof_get_bytes -> %33
+v4.1	f003	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hqc_pke_keygen -> %34, %35
+v4.1	f004	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hqc_c_kem_from_string -> %37, %38, %39
+v4.1	f005	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.1	f006	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.1	f007	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i64 %47 = load i64, ptr %46, align 8
+v4.1	f008	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i64 %48 = xor i64 %47, -1
+v4.1	f009	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i64 %48 -> %51
+v4.1	f010	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.1	f011	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.1	f012	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i64 %62 = load i64, ptr %61, align 8
+v4.1	f013	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i64 %63 = xor i64 %62, -1
+v4.1	f014	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i64 %63 -> %66
+v4.1	f015	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hqc_pke_decrypt -> %71
+v4.1	f016	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %75 = call zeroext i8 @hqc_pke_decrypt(ptr noundef %71, ptr nounde
+v4.1	f017	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %75 -> %23
+v4.1	f018	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hash_h -> %76
+v4.1	f019	C	BROKEN	-	VIOLATED	TIMEOUT	-	NONINTERFERENT	FIRES	TIMEOUT	-	C skip hash_g -> %78
+v4.1	f020	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip hqc_pke_encrypt -> %82, %83
+v4.1	f021	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip llvm.memcpy.p0.p0.i64 -> %88
+v4.1	f022	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip hash_j -> %90
+v4.1	f023	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip hash_j -> %96
+v4.1	f024	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %104 = call zeroext i8 @vect_compare(ptr noundef %102, ptr noundef 
+v4.1	f025	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %105 = zext i8 %104 to i32
+v4.1	f026	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %106 = load i8, ptr %23, align 1
+v4.1	f027	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %107 = zext i8 %106 to i32
+v4.1	f028	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %108 = or i32 %107, %105
+v4.1	f029	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %109 = trunc i32 %108 to i8
+v4.1	f030	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %109 -> %23
+v4.1	f031	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %112 = call zeroext i8 @vect_compare(ptr noundef %110, ptr noundef 
+v4.1	f032	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %113 = zext i8 %112 to i32
+v4.1	f033	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %114 = load i8, ptr %23, align 1
+v4.1	f034	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %115 = zext i8 %114 to i32
+v4.1	f035	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %116 = or i32 %115, %113
+v4.1	f036	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %117 = trunc i32 %116 to i8
+v4.1	f037	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %117 -> %23
+v4.1	f038	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %120 = call zeroext i8 @vect_compare(ptr noundef %118, ptr noundef 
+v4.1	f039	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %121 = zext i8 %120 to i32
+v4.1	f040	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %122 = load i8, ptr %23, align 1
+v4.1	f041	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %123 = zext i8 %122 to i32
+v4.1	f042	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %124 = or i32 %123, %121
+v4.1	f043	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %125 = trunc i32 %124 to i8
+v4.1	f044	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %125 -> %23
+v4.1	f045	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %126 = load i8, ptr %23, align 1
+v4.1	f046	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %127 = zext i8 %126 to i32
+v4.1	f047	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %128 = sub nsw i32 %127, 1
+v4.1	f048	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %129 = trunc i32 %128 to i8
+v4.1	f049	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %129 -> %23
+v4.1	f050	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %132 = call zeroext i8 @vect_compare(ptr noundef %130, ptr noundef 
+v4.1	f051	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %132 -> %24
+v4.1	f052	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %135 = call zeroext i8 @vect_compare(ptr noundef %133, ptr noundef 
+v4.1	f053	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %136 = zext i8 %135 to i32
+v4.1	f054	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %137 = load i8, ptr %24, align 1
+v4.1	f055	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %138 = zext i8 %137 to i32
+v4.1	f056	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %139 = or i32 %138, %136
+v4.1	f057	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %140 = trunc i32 %139 to i8
+v4.1	f058	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %140 -> %24
+v4.1	f059	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %143 = call zeroext i8 @vect_compare(ptr noundef %141, ptr noundef 
+v4.1	f060	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %144 = zext i8 %143 to i32
+v4.1	f061	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %145 = load i8, ptr %24, align 1
+v4.1	f062	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %146 = zext i8 %145 to i32
+v4.1	f063	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %147 = or i32 %146, %144
+v4.1	f064	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %148 = trunc i32 %147 to i8
+v4.1	f065	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %148 -> %24
+v4.1	f066	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %149 = load i8, ptr %24, align 1
+v4.1	f067	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %150 = zext i8 %149 to i32
+v4.1	f068	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %151 = sub nsw i32 %150, 1
+v4.1	f069	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %152 = trunc i32 %151 to i8
+v4.1	f070	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %152 -> %24
+v4.1	f071	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %153 = load i8, ptr %23, align 1
+v4.1	f072	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %153 -> %25
+v4.1	f073	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %154 = load volatile i8, ptr %25, align 1
+v4.1	f074	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %154 -> %23
+v4.1	f075	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %155 = load i8, ptr %24, align 1
+v4.1	f076	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %155 -> %25
+v4.1	f077	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %156 = load volatile i8, ptr %25, align 1
+v4.1	f078	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %156 -> %24
+v4.1	f079	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.1	f080	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.1	f081	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %163 = load i8, ptr %162, align 1
+v4.1	f082	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %164 = zext i8 %163 to i32
+v4.1	f083	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %167 = load i8, ptr %166, align 1
+v4.1	f084	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %168 = zext i8 %167 to i32
+v4.1	f085	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %169 = or i32 %164, %168
+v4.1	f086	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %170 = trunc i32 %169 to i8
+v4.1	f087	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %170 -> %173
+v4.1	f088	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.1	f089	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.1	f090	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %184 = load i8, ptr %183, align 1
+v4.1	f091	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %185 = zext i8 %184 to i32
+v4.1	f092	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %188 = load i8, ptr %187, align 1
+v4.1	f093	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %189 = zext i8 %188 to i32
+v4.1	f094	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %190 = or i32 %185, %189
+v4.1	f095	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %191 = trunc i32 %190 to i8
+v4.1	f096	S	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	S store i8 %191 -> %30
+v4.1	f097	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %192 = load i8, ptr %30, align 1
+v4.1	f098	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %193 = zext i8 %192 to i32
+v4.1	f099	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %196 = load i8, ptr %195, align 1
+v4.1	f100	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %197 = zext i8 %196 to i32
+v4.1	f101	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %198 = load i8, ptr %30, align 1
+v4.1	f102	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %199 = zext i8 %198 to i32
+v4.1	f103	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %200 = xor i32 %197, %199
+v4.1	f104	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %201 = load i8, ptr %23, align 1
+v4.1	f105	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %202 = zext i8 %201 to i32
+v4.1	f106	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %203 = and i32 %200, %202
+v4.1	f107	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %204 = load i8, ptr %24, align 1
+v4.1	f108	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %205 = zext i8 %204 to i32
+v4.1	f109	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %206 = and i32 %203, %205
+v4.1	f110	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %207 = xor i32 %193, %206
+v4.1	f111	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %208 = trunc i32 %207 to i8
+v4.1	f112	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %208 -> %211
+v4.2	f000	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.2	f001	E	TIMEOUT	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.2	f002	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %46 = load i8, ptr %45, align 1
+v4.2	f003	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %46 -> %48
+v4.2	f004	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.2	f005	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.2	f006	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %60 = load i8, ptr %59, align 1
+v4.2	f007	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %60 -> %63
+v4.2	f008	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %69 = load i8, ptr %68, align 1
+v4.2	f009	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %69 -> %72
+v4.2	f010	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.2	f011	E	TIMEOUT	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.2	f012	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %86 = load i8, ptr %85, align 1
+v4.2	f013	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %86 -> %89
+v4.2	f014	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %95 = load i8, ptr %94, align 1
+v4.2	f015	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %95 -> %98
+v4.2	f016	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.2	f017	E	TIMEOUT	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.2	f018	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %112 = load i8, ptr %111, align 1
+v4.2	f019	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %112 -> %115
+v4.2	f020	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.2	f021	E	TIMEOUT	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.2	f022	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %129 = load i8, ptr %128, align 1
+v4.2	f023	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %129 -> %132
+v4.2	f024	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip xof_init_dom_sep -> %8
+v4.2	f025	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip xof_get_bytes -> %138
+v4.2	f026	C	BROKEN	-	VIOLATED	NONINTERFERENT	FIRES	-	-	-	-	C skip xof_get_bytes -> %139
+v4.2	f027	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hqc_pke_keygen -> %140, %141
+v4.2	f028	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hqc_c_kem_from_string -> %143, %144, %145
+v4.2	f029	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.2	f030	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.2	f031	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i64 %153 = load i64, ptr %152, align 8
+v4.2	f032	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i64 %154 = xor i64 %153, -1
+v4.2	f033	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i64 %154 -> %157
+v4.2	f034	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.2	f035	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.2	f036	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i64 %168 = load i64, ptr %167, align 8
+v4.2	f037	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i64 %169 = xor i64 %168, -1
+v4.2	f038	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i64 %169 -> %172
+v4.2	f039	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hqc_pke_decrypt -> %177
+v4.2	f040	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %181 = call zeroext i8 @hqc_pke_decrypt(ptr noundef %177, ptr nound
+v4.2	f041	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %181 -> %23
+v4.2	f042	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hash_h -> %182
+v4.2	f043	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip hash_j -> %184
+v4.2	f044	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip hash_j -> %190
+v4.2	f045	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.2	f046	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.2	f047	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %202 = load i8, ptr %201, align 1
+v4.2	f048	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %203 = zext i8 %202 to i32
+v4.2	f049	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %206 = load i8, ptr %205, align 1
+v4.2	f050	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %207 = zext i8 %206 to i32
+v4.2	f051	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %208 = or i32 %203, %207
+v4.2	f052	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %209 = trunc i32 %208 to i8
+v4.2	f053	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %209 -> %34
+v4.2	f054	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %210 = load i8, ptr %34, align 1
+v4.2	f055	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %210 -> %213
+v4.2	f056	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %214 = load i8, ptr %34, align 1
+v4.2	f057	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %214 -> %218
+v4.2	f058	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip hash_g -> %223
+v4.2	f059	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip hqc_pke_encrypt -> %227, %228
+v4.2	f060	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip llvm.memcpy.p0.p0.i64 -> %233
+v4.2	f061	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %237 = call zeroext i8 @vect_compare(ptr noundef %235, ptr noundef 
+v4.2	f062	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %238 = zext i8 %237 to i32
+v4.2	f063	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %239 = load i8, ptr %23, align 1
+v4.2	f064	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %240 = zext i8 %239 to i32
+v4.2	f065	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %241 = or i32 %240, %238
+v4.2	f066	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %242 = trunc i32 %241 to i8
+v4.2	f067	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %242 -> %23
+v4.2	f068	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %245 = call zeroext i8 @vect_compare(ptr noundef %243, ptr noundef 
+v4.2	f069	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %246 = zext i8 %245 to i32
+v4.2	f070	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %247 = load i8, ptr %23, align 1
+v4.2	f071	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %248 = zext i8 %247 to i32
+v4.2	f072	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %249 = or i32 %248, %246
+v4.2	f073	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %250 = trunc i32 %249 to i8
+v4.2	f074	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %250 -> %23
+v4.2	f075	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %253 = call zeroext i8 @vect_compare(ptr noundef %251, ptr noundef 
+v4.2	f076	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %254 = zext i8 %253 to i32
+v4.2	f077	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %255 = load i8, ptr %23, align 1
+v4.2	f078	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %256 = zext i8 %255 to i32
+v4.2	f079	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %257 = or i32 %256, %254
+v4.2	f080	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %258 = trunc i32 %257 to i8
+v4.2	f081	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %258 -> %23
+v4.2	f082	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %259 = load i8, ptr %23, align 1
+v4.2	f083	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %260 = zext i8 %259 to i32
+v4.2	f084	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %261 = sub nsw i32 %260, 1
+v4.2	f085	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %262 = trunc i32 %261 to i8
+v4.2	f086	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %262 -> %23
+v4.2	f087	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %265 = call zeroext i8 @vect_compare(ptr noundef %263, ptr noundef 
+v4.2	f088	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %265 -> %24
+v4.2	f089	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %268 = call zeroext i8 @vect_compare(ptr noundef %266, ptr noundef 
+v4.2	f090	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %269 = zext i8 %268 to i32
+v4.2	f091	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %270 = load i8, ptr %24, align 1
+v4.2	f092	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %271 = zext i8 %270 to i32
+v4.2	f093	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %272 = or i32 %271, %269
+v4.2	f094	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %273 = trunc i32 %272 to i8
+v4.2	f095	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %273 -> %24
+v4.2	f096	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %276 = call zeroext i8 @vect_compare(ptr noundef %274, ptr noundef 
+v4.2	f097	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %277 = zext i8 %276 to i32
+v4.2	f098	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %278 = load i8, ptr %24, align 1
+v4.2	f099	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %279 = zext i8 %278 to i32
+v4.2	f100	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %280 = or i32 %279, %277
+v4.2	f101	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %281 = trunc i32 %280 to i8
+v4.2	f102	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %281 -> %24
+v4.2	f103	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %282 = load i8, ptr %24, align 1
+v4.2	f104	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %283 = zext i8 %282 to i32
+v4.2	f105	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %284 = sub nsw i32 %283, 1
+v4.2	f106	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %285 = trunc i32 %284 to i8
+v4.2	f107	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %285 -> %24
+v4.2	f108	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %286 = load i8, ptr %23, align 1
+v4.2	f109	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %286 -> %25
+v4.2	f110	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %287 = load volatile i8, ptr %25, align 1
+v4.2	f111	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %287 -> %23
+v4.2	f112	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %288 = load i8, ptr %24, align 1
+v4.2	f113	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %288 -> %25
+v4.2	f114	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %289 = load volatile i8, ptr %25, align 1
+v4.2	f115	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %289 -> %24
+v4.2	f116	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.2	f117	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.2	f118	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %296 = load i8, ptr %295, align 1
+v4.2	f119	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %297 = zext i8 %296 to i32
+v4.2	f120	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %300 = load i8, ptr %299, align 1
+v4.2	f121	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %301 = zext i8 %300 to i32
+v4.2	f122	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %302 = or i32 %297, %301
+v4.2	f123	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %303 = trunc i32 %302 to i8
+v4.2	f124	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %303 -> %306
+v4.2	f125	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.2	f126	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.2	f127	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %317 = load i8, ptr %316, align 1
+v4.2	f128	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %318 = zext i8 %317 to i32
+v4.2	f129	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %321 = load i8, ptr %320, align 1
+v4.2	f130	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %322 = zext i8 %321 to i32
+v4.2	f131	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %323 = or i32 %318, %322
+v4.2	f132	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %324 = trunc i32 %323 to i8
+v4.2	f133	S	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	S store i8 %324 -> %37
+v4.2	f134	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %325 = load i8, ptr %37, align 1
+v4.2	f135	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %326 = zext i8 %325 to i32
+v4.2	f136	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %329 = load i8, ptr %328, align 1
+v4.2	f137	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %330 = zext i8 %329 to i32
+v4.2	f138	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %331 = load i8, ptr %37, align 1
+v4.2	f139	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %332 = zext i8 %331 to i32
+v4.2	f140	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %333 = xor i32 %330, %332
+v4.2	f141	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %334 = load i8, ptr %23, align 1
+v4.2	f142	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %335 = zext i8 %334 to i32
+v4.2	f143	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %336 = and i32 %333, %335
+v4.2	f144	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %337 = load i8, ptr %24, align 1
+v4.2	f145	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %338 = zext i8 %337 to i32
+v4.2	f146	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %339 = and i32 %336, %338
+v4.2	f147	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %340 = xor i32 %326, %339
+v4.2	f148	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %341 = trunc i32 %340 to i8
+v4.2	f149	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %341 -> %344
+v4.3	f000	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip xof_init_dom_sep -> %8
+v4.3	f001	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip xof_get_bytes -> %34
+v4.3	f002	C	BROKEN	-	VIOLATED	NONINTERFERENT	FIRES	-	-	-	-	C skip xof_get_bytes -> %35
+v4.3	f003	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hqc_pke_keygen -> %36, %37
+v4.3	f004	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hqc_c_kem_from_string -> %39, %40, %41
+v4.3	f005	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.3	f006	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.3	f007	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i64 %49 = load i64, ptr %48, align 8
+v4.3	f008	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i64 %50 = xor i64 %49, -1
+v4.3	f009	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i64 %50 -> %53
+v4.3	f010	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.3	f011	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.3	f012	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i64 %64 = load i64, ptr %63, align 8
+v4.3	f013	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i64 %65 = xor i64 %64, -1
+v4.3	f014	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i64 %65 -> %68
+v4.3	f015	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hqc_pke_decrypt -> %73
+v4.3	f016	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %77 = call zeroext i8 @hqc_pke_decrypt(ptr noundef %73, ptr nounde
+v4.3	f017	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %77 -> %23
+v4.3	f018	C	BROKEN	-	VIOLATED	LEAK	-	LEAK	-	LEAK	-	C skip hash_h -> %78
+v4.3	f019	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip hash_j -> %80
+v4.3	f020	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip hash_j -> %86
+v4.3	f021	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.3	f022	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.3	f023	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %98 = load i8, ptr %97, align 1
+v4.3	f024	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %99 = zext i8 %98 to i32
+v4.3	f025	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %102 = load i8, ptr %101, align 1
+v4.3	f026	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %103 = zext i8 %102 to i32
+v4.3	f027	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %104 = or i32 %99, %103
+v4.3	f028	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %105 = trunc i32 %104 to i8
+v4.3	f029	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %105 -> %29
+v4.3	f030	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %106 = load i8, ptr %29, align 1
+v4.3	f031	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %106 -> %109
+v4.3	f032	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %110 = load i8, ptr %29, align 1
+v4.3	f033	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %110 -> %114
+v4.3	f034	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip hash_g -> %119
+v4.3	f035	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip hqc_pke_encrypt -> %123, %124
+v4.3	f036	C	RESILIENT	FIRES	-	-	-	-	-	-	-	C skip llvm.memcpy.p0.p0.i64 -> %129
+v4.3	f037	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %133 = call zeroext i8 @vect_compare(ptr noundef %131, ptr noundef 
+v4.3	f038	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %134 = zext i8 %133 to i32
+v4.3	f039	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %135 = load i8, ptr %23, align 1
+v4.3	f040	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %136 = zext i8 %135 to i32
+v4.3	f041	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %137 = or i32 %136, %134
+v4.3	f042	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %138 = trunc i32 %137 to i8
+v4.3	f043	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %138 -> %23
+v4.3	f044	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %141 = call zeroext i8 @vect_compare(ptr noundef %139, ptr noundef 
+v4.3	f045	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %142 = zext i8 %141 to i32
+v4.3	f046	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %143 = load i8, ptr %23, align 1
+v4.3	f047	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %144 = zext i8 %143 to i32
+v4.3	f048	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %145 = or i32 %144, %142
+v4.3	f049	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %146 = trunc i32 %145 to i8
+v4.3	f050	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %146 -> %23
+v4.3	f051	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %149 = call zeroext i8 @vect_compare(ptr noundef %147, ptr noundef 
+v4.3	f052	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %150 = zext i8 %149 to i32
+v4.3	f053	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %151 = load i8, ptr %23, align 1
+v4.3	f054	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %152 = zext i8 %151 to i32
+v4.3	f055	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %153 = or i32 %152, %150
+v4.3	f056	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %154 = trunc i32 %153 to i8
+v4.3	f057	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %154 -> %23
+v4.3	f058	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %155 = load i8, ptr %23, align 1
+v4.3	f059	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %156 = zext i8 %155 to i32
+v4.3	f060	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %157 = sub nsw i32 %156, 1
+v4.3	f061	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %158 = trunc i32 %157 to i8
+v4.3	f062	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %158 -> %23
+v4.3	f063	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %161 = call zeroext i8 @vect_compare(ptr noundef %159, ptr noundef 
+v4.3	f064	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %161 -> %24
+v4.3	f065	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %164 = call zeroext i8 @vect_compare(ptr noundef %162, ptr noundef 
+v4.3	f066	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %165 = zext i8 %164 to i32
+v4.3	f067	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %166 = load i8, ptr %24, align 1
+v4.3	f068	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %167 = zext i8 %166 to i32
+v4.3	f069	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %168 = or i32 %167, %165
+v4.3	f070	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %169 = trunc i32 %168 to i8
+v4.3	f071	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %169 -> %24
+v4.3	f072	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %172 = call zeroext i8 @vect_compare(ptr noundef %170, ptr noundef 
+v4.3	f073	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %173 = zext i8 %172 to i32
+v4.3	f074	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %174 = load i8, ptr %24, align 1
+v4.3	f075	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %175 = zext i8 %174 to i32
+v4.3	f076	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %176 = or i32 %175, %173
+v4.3	f077	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %177 = trunc i32 %176 to i8
+v4.3	f078	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %177 -> %24
+v4.3	f079	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %178 = load i8, ptr %24, align 1
+v4.3	f080	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %179 = zext i8 %178 to i32
+v4.3	f081	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %180 = sub nsw i32 %179, 1
+v4.3	f082	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %181 = trunc i32 %180 to i8
+v4.3	f083	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %181 -> %24
+v4.3	f084	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %182 = load i8, ptr %23, align 1
+v4.3	f085	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %182 -> %25
+v4.3	f086	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %183 = load volatile i8, ptr %25, align 1
+v4.3	f087	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %183 -> %23
+v4.3	f088	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %184 = load i8, ptr %24, align 1
+v4.3	f089	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store volatile i8 %184 -> %25
+v4.3	f090	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %185 = load volatile i8, ptr %25, align 1
+v4.3	f091	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %185 -> %24
+v4.3	f092	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.3	f093	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.3	f094	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %192 = load i8, ptr %191, align 1
+v4.3	f095	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %193 = zext i8 %192 to i32
+v4.3	f096	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %196 = load i8, ptr %195, align 1
+v4.3	f097	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %197 = zext i8 %196 to i32
+v4.3	f098	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %198 = or i32 %193, %197
+v4.3	f099	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %199 = trunc i32 %198 to i8
+v4.3	f100	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %199 -> %202
+v4.3	f101	E	RESILIENT	FIRES	-	-	-	-	-	-	-	E loop exit test forced false (early exit)
+v4.3	f102	E	ERROR	-	-	-	-	-	-	-	-	E loop exit test forced true (overrun)
+v4.3	f103	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %213 = load i8, ptr %212, align 1
+v4.3	f104	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %214 = zext i8 %213 to i32
+v4.3	f105	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %217 = load i8, ptr %216, align 1
+v4.3	f106	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %218 = zext i8 %217 to i32
+v4.3	f107	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %219 = or i32 %214, %218
+v4.3	f108	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %220 = trunc i32 %219 to i8
+v4.3	f109	S	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	S store i8 %220 -> %32
+v4.3	f110	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %221 = load i8, ptr %32, align 1
+v4.3	f111	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %222 = zext i8 %221 to i32
+v4.3	f112	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %225 = load i8, ptr %224, align 1
+v4.3	f113	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %226 = zext i8 %225 to i32
+v4.3	f114	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %227 = load i8, ptr %32, align 1
+v4.3	f115	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %228 = zext i8 %227 to i32
+v4.3	f116	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %229 = xor i32 %226, %228
+v4.3	f117	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %230 = load i8, ptr %23, align 1
+v4.3	f118	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %231 = zext i8 %230 to i32
+v4.3	f119	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %232 = and i32 %229, %231
+v4.3	f120	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i8 %233 = load i8, ptr %24, align 1
+v4.3	f121	V	RESILIENT	FIRES	-	-	-	-	-	-	-	V i32 %234 = zext i8 %233 to i32
+v4.3	f122	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %235 = and i32 %232, %234
+v4.3	f123	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i32 %236 = xor i32 %222, %235
+v4.3	f124	V	BROKEN	-	PRESERVED	NONINTERFERENT	FIRES	-	-	-	-	V i8 %237 = trunc i32 %236 to i8
+v4.3	f125	S	RESILIENT	FIRES	-	-	-	-	-	-	-	S store i8 %237 -> %240
