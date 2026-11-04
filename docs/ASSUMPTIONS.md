@@ -1788,6 +1788,10 @@ guard holds) and every fired check says FIRES; it passed on these maps. The P2K,
 two-run fired passes were run as separate commands and then added to
 `scripts/hqc_decaps51_faultmap.sh` with the same settings; the driver has not been rerun end to end
 since. `docs/AUDIT-hqc-decaps.md` is a checklist for an independent audit.
+The two-run fired check under the P2 premise also passes at the four true-skip sites where P2
+holds (squeeze of sigma, `faults_1{,_v4,_v41,_v42}_xs`, 2026-11-03, all FIRES). The per-site logs,
+verdicts and TSVs of all maps are in `proof/hqc-decaps/logs/faultmaps.tar.gz` (home paths replaced
+by `$ROOT`); the joiner reproduces `sites.tsv` from it byte for byte.
 - v5.1.0 as shipped, 55 sites: P1 holds at 4, BROKEN 50, ERROR 1. Of the 50: P2 LEAK 36,
   NONINTERFERENT 13, TIMEOUT 1 (skip of `hash_g`); P3 VIOLATED 38, PRESERVED 12 (the 12 broken
   sites of the selection body; two of them, the mask load and its extension, also LEAK).

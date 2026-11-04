@@ -103,6 +103,11 @@ total    P1 fired 395  two-run fired 90 checks at 90 sites
 ```
 
   Every ERROR and TIMEOUT P1 verdict is a loop exit forced past the end (kind E).
+- [ ] `proof/hqc-decaps/logs/faultmaps.tar.gz` has every per-site SAW log, verdict file and TSV of
+  the maps (including the true-skip `_xs` and first-store `_st` runs), with home paths replaced by
+  `$ROOT`. `scripts/hqc_decaps_sites.py <extracted>/faultmaps` reproduces `sites.tsv` byte for byte.
+  The passes ran on two machines, an Apple M2 Max and an Apple M4 Pro; A-HQC-DEC51-F in
+  `docs/ASSUMPTIONS.md` records which ran where. TIMEOUT verdicts depend on the machine.
 - [ ] Spot-check verdicts by hand: pick a RESILIENT, a BROKEN and a PRESERVED site, regenerate the
   SAW script from its template with the `sed` in the runner's `attempt` function, and run it.
 
