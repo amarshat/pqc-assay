@@ -1789,7 +1789,8 @@ two-run fired passes were run as separate commands and then added to
 `scripts/hqc_decaps51_faultmap.sh` with the same settings; the driver has not been rerun end to end
 since. `docs/AUDIT-hqc-decaps.md` is a checklist for an independent audit.
 The two-run fired check under the P2 premise also passes at the four true-skip sites where P2
-holds (squeeze of sigma, `faults_1{,_v4,_v41,_v42}_xs`, 2026-11-03, all FIRES). The per-site logs,
+holds (squeeze of sigma, `faults_1{,_v4,_v41,_v42}_xs`, 2026-11-03, and `faults_1_v43_xs`,
+2026-11-04; all FIRES). The per-site logs,
 verdicts and TSVs of all maps are in `proof/hqc-decaps/logs/faultmaps.tar.gz` (home paths replaced
 by `$ROOT`); the joiner reproduces `sites.tsv` from it byte for byte.
 - v5.1.0 as shipped, 55 sites: P1 holds at 4, BROKEN 50, ERROR 1. Of the 50: P2 LEAK 36,
@@ -1824,9 +1825,10 @@ by `$ROOT`); the joiner reproduces `sites.tsv` from it byte for byte.
   v4.1 LEAK 6, NONINTERFERENT 1 (skip of `hash_g`); v4.2 LEAK 6. P2theta: shipped LEAK 16, NONINTERFERENT 20, TIMEOUT 1 (skip of `hash_g`); v4 and
   v4.1 LEAK 6, TIMEOUT 1 (skip of `hash_g`); v4.2 LEAK 6. v4.3: P2K LEAK 6, P2theta LEAK 6 (the six P2
   LEAK sites, M2 Max, 4 jobs).
-- True squeeze skips, shipped, v4, v4.1 and v4.2: P1 BROKEN at both sites; P2 LEAK at the first
+- True squeeze skips, shipped, v4, v4.1, v4.2 and v4.3: P1 BROKEN at both sites; P2 LEAK at the first
   squeeze (seed_pke), where P2K and P2theta also LEAK, NONINTERFERENT at the squeeze of sigma; P3
-  VIOLATED at both; in every build (M4 Pro host, `build/hqc-decaps51/faults_1<tag>_xs`).
+  VIOLATED at both; in every build (M4 Pro host, `build/hqc-decaps51/faults_1<tag>_xs`; v4.3 on the M2 Max,
+  2026-11-04).
 In all three hardened variants P3 is violated at the skips of `xof_init_dom_sep`, both
 `xof_get_bytes`, `hqc_pke_keygen`, `hqc_c_kem_from_string`, `hqc_pke_decrypt` and `hash_h`, and P2
 fails at the same skips except the squeeze of sigma. v4 and v4.1 add the skip of `hash_g`; v4 adds
