@@ -18,7 +18,7 @@ BITCODE     := build/mldsa_ntt.bc
 SAW_SCRIPT  := proof/saw/mldsa_ntt.saw
 ISA_SESSION := Assay
 
-.PHONY: hqc-decaps hqc-decaps51 hqc-decaps51-firedctl hqc-decaps51-O2 hqc-decaps51-hardened hqc-decaps51-faults hqc-decaps51-cc hqc-decaps51-bench hqc-decaps51-spec hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-wire hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean hqc-all
+.PHONY: hqc-decaps hqc-decaps51 hqc-decaps51-replay hqc-decaps51-firedctl hqc-decaps51-O2 hqc-decaps51-hardened hqc-decaps51-faults hqc-decaps51-cc hqc-decaps51-bench hqc-decaps51-spec hqc-fft-isabelle hqc-fft-bitcode hqc-fft hqc-fft-wire hqc-fft-3 hqc-fft-5 hqc-fft-asis hqc hqc-avx hqc-avx-asis hqc-isabelle hqc-solvers hqc-rme-scaling hqc-c-mutants ac2 poly-nsw convolution external-corpus claim-lint paper-figures qseal-tactic-collapse afp-dist afp-dist-verify cve-anchor-fidelity eid-anchor eid-spec-mutation qseal-evidence-scale all verify target-identity bitcode saw isabelle tier2 tier2-inv tier2-signed tier2-invsigned barrett barrett-solver lift-check mutation-test mlkem-reduce mlkem-ntt mlkem-isabelle qseal-tbs qseal-ref qseal-assert qseal-hybrid qseal-nonce qseal-validate qseal-evidence qseal-mutants qseal-reachability cve-anchor qseal-demo writeup clean hqc-all
 
 all: verify
 
@@ -284,6 +284,11 @@ hqc-decaps51-spec: hqc-decaps51
 ## Cost of the hardened v4.2 against shipped v5.1.0 decapsulation, hqc-1, native (paper 2, Section 6).
 hqc-decaps51-bench:
 	@scripts/hqc_decaps51_bench.sh
+
+## Native replay of the seven call skips with the real primitives (paper 2, Section 6); fetches
+## upstream v5.1.0. Eight inputs per build, not a proof. Output: proof/hqc-decaps/logs/replay.txt.
+hqc-decaps51-replay:
+	@scripts/hqc_decaps51_replay.sh
 
 ## Single-fault maps (paper 2, Sections 4 to 6), hqc-1: shipped v5.1.0, v4, v4.1, v4.2, v4.3. One SAW run per
 ## fault site and property; slow (scripts/hqc_decaps51_faultmap.sh). Not part of hqc-all.

@@ -134,6 +134,15 @@ mask. Output: `proof/hqc-decaps/logs/cc.txt`.
 hardened variant, same keys checked. Logs: `proof/hqc-decaps/logs/bench*.txt`. One machine, one
 load level; expect the overhead to move by tenths of a percent between runs.
 
+## 7. Replay with the real primitives
+
+`make hqc-decaps51-replay` (`scripts/hqc_decaps51_replay.sh`) fetches upstream v5.1.0, builds shipped
+and v4.3 once per call skip with that call's outputs sent to scratch buffers, and runs each build
+on two key pairs and four rejected ciphertexts. Expect `proof/hqc-decaps/logs/replay.txt`: at the
+skip of the squeeze of sigma (skip 2) every rejected ciphertext returns the public value J(H(ek), 0, c)
+(`pubJ 8/8`); at the skip of the decryption (skip 5) the correct rejection key (`P1 8/8`). Read
+`scripts/hqc-replay/skip.py` to check that each skip changes only the one call.
+
 ## Not covered by any of this
 
 The PKE, the decoder, SHA-3 and the XOF are uninterpreted. The AVX2 build is not covered. Faults

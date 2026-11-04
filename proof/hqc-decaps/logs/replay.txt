@@ -1,0 +1,19 @@
+# scripts/hqc_decaps51_replay.sh, arm64, Apple clang version 14.0.3 (clang-1403.0.22.14.1), 2026-11-04
+# skips: s0 xof_init s1 seed s2 sigma s3 keygen s4 parse s5 decrypt s6 hash_h 
+build    skip   valid  P1    bytes pubJ  samekey
+shipped  none   True   8/8      32 0/8   False
+shipped  0      False  0/8       0 0/8   True
+shipped  1      False  0/8       0 0/8   False
+shipped  2      True   0/8       0 8/8   False
+shipped  3      False  0/8       0 0/8   False
+shipped  4      False  2/8       0 0/8   False
+shipped  5      False  8/8      32 0/8   False
+shipped  6      False  0/8       0 0/8   False
+v43      none   True   8/8      32 0/8   False
+v43      0      False  0/8       0 0/8   True
+v43      1      False  0/8       0 0/8   False
+v43      2      True   0/8       0 8/8   False
+v43      3      False  0/8       0 0/8   False
+v43      4      False  2/8       0 0/8   False
+v43      5      False  8/8      32 0/8   False
+v43      6      False  0/8       0 0/8   False

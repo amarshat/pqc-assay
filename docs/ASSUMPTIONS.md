@@ -1829,6 +1829,19 @@ by `$ROOT`); the joiner reproduces `sites.tsv` from it byte for byte.
   squeeze (seed_pke), where P2K and P2theta also LEAK, NONINTERFERENT at the squeeze of sigma; P3
   VIOLATED at both; in every build (M4 Pro host, `build/hqc-decaps51/faults_1<tag>_xs`; v4.3 on the M2 Max,
   2026-11-04).
+- Native replay of the seven call skips (`scripts/hqc_decaps51_replay.sh`, 2026-11-04, log
+  `proof/hqc-decaps/logs/replay.txt`): upstream v5.1.0 at 06567ccb and v4.3, hqc-1, Apple clang -O2 on
+  AArch64, real SHAKE256, PKE and decoder. One build per skip, with that call's outputs redirected to
+  zero-initialized scratch buffers (`scripts/hqc-replay/skip.py`); two key pairs, four rejected
+  ciphertexts each (one bit of v flipped, two bits flipped, all zero, random) and one honest
+  ciphertext. Shipped and v4.3 give the same table. Skip of the squeeze of sigma: the honest
+  ciphertext still decapsulates correctly, and every rejected ciphertext gets J(H(ek), 0^k, c), which
+  anyone with the public key can compute (8/8). Skip of the decryption: the correct rejection key in
+  8/8, so SAW's refutation there needs a decryption failure of an honest encryption. Skip of
+  `xof_init_dom_sep`: the zero and random ciphertexts give the same output under both keys. Seed
+  squeeze, key generation, parse and `hash_h`: wrong outputs that depend on the key (parse: correct
+  on the two all-zero ciphertexts). Eight inputs per build, not a proof, and no physical fault
+  experiment. Reported to the HQC team before publication (2026-11-04).
 In all three hardened variants P3 is violated at the skips of `xof_init_dom_sep`, both
 `xof_get_bytes`, `hqc_pke_keygen`, `hqc_c_kem_from_string`, `hqc_pke_decrypt` and `hash_h`, and P2
 fails at the same skips except the squeeze of sigma. v4 and v4.1 add the skip of `hash_g`; v4 adds
