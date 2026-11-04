@@ -139,3 +139,12 @@ noLeakK c dk k1 k2 = ~ acceptsWith (hashGk 0) c dk ==> k1 == k2
 
 noLeakT : [CT][8] -> [DK][8] -> [SS][8] -> [SS][8] -> Bit
 noLeakT c dk k1 k2 = (~ acceptsWith (hashGt 0) c dk /\ ~ acceptsWith (hashGt 1) c dk) ==> k1 == k2
+
+// Premises of P2, P2K and P2theta, for the fired check at the sites where they hold
+// (proof/hqc-decaps/nifired51_1.saw.in).
+premP2 : [CT][8] -> [DK][8] -> Bit
+premP2 c dk = ~ acceptsE 0 c dk /\ ~ acceptsE 1 c dk
+premP2K : [CT][8] -> [DK][8] -> Bit
+premP2K c dk = ~ acceptsWith (hashGk 0) c dk
+premP2T : [CT][8] -> [DK][8] -> Bit
+premP2T c dk = ~ acceptsWith (hashGt 0) c dk /\ ~ acceptsWith (hashGt 1) c dk
