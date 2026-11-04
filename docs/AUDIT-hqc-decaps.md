@@ -25,7 +25,7 @@ Times are for an Apple M2 Max; the fault maps are much slower than the proofs.
 | `make hqc-decaps51` | `VERIFIED` for v5.1.0 hqc-1, hqc-3, hqc-5; mutants mask, nov, both refuted |
 | `make hqc-decaps51-O2` | `VERIFIED` for the `-O2` unit |
 | `make hqc-decaps51-hardened` | `VERIFIED` for v4, v4.1, v4.2, v4.3 |
-| `make hqc-decaps51-spec` | `VERIFIED` against `SpecV51_{1,3,5}::Decaps`; spec mutations m1, m2 refuted; separator instance verified and the separator-17 mutant refuted |
+| `make hqc-decaps51-spec` | `VERIFIED` against `SpecV51_{1,3,5}::Decaps`; spec mutations m1, m2 refuted; separator instance verified and the separator-17 mutant refuted, under the instance and by the C-derived proof (no `xof_init_dom_sep` override applies) |
 
 `proof/hqc-decaps/logs/proof-times.txt` has the wall clock of each script.
 

@@ -1708,7 +1708,12 @@ control of the same restricted check on the shipped code. hqc-3/5 model and scri
    instance of the primitives (`SPEC51_INST` in the Makefile: XOF_Init puts the separator byte in
    the context, the squeezes return a prefix of the context bytes, H and J a prefix of their input,
    encryption never matches). Under that instance the shipped bitcode verifies and the mutant fails
-   at the output points-to, 22 s and 25 s.
+   at the output points-to, 22 s and 25 s. The same mutant run through the C-derived proof
+   (`decaps51_1.saw`, primitives uninterpreted) fails at the call: the `xof_init_dom_sep` override
+   requires the literal 16, and SAW reports that no override applies, with actual value 17
+   (2026-11-04, in `make hqc-decaps51-spec`). So the C-derived proofs and the fault maps check the
+   byte the C passes; only the specification proof, whose override accepts any byte, needs the
+   concrete instance.
 
 10. CVE-2024-54137 on the real code (`scripts/hqc_cve_witness.sh`, 2026-11-03). Downloads the HQC
    team's archive_submissions.zip (sha256 pinned in the script), builds the hqc-128 reference
