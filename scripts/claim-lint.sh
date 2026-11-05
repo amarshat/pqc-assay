@@ -132,7 +132,7 @@ fi
 note "== 5. paths cited in comments exist =="
 missing=0
 for f in $(git ls-files '*.c' '*.h' '*.cry' '*.saw' '*.pv'); do
-  for cited in $(grep -ohE '(\.\./)*\b(qseal|target|implementations|docs|spec|proof|model|ref|cve-anchor|scripts)/[A-Za-z0-9_./-]+\.(c|h|cry|saw|pv|md|rs|thy|py|sh)' "$f" 2>/dev/null | sort -u); do
+  for cited in $(grep -ohE '(\.\./)*\b(qseal|target|implementations|docs|spec|proof|model|ref|cve-anchor|scripts)/[A-Za-z0-9_./-]+\.(c|h|cry|saw|pv|md|rs|thy|py|sh)(\.in)?' "$f" 2>/dev/null | sort -u); do
     found=0
     # resolve against the repo root, the citing file's directory, and each ancestor up to the root
     dir="$(dirname "$f")"
