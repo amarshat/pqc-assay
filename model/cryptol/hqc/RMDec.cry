@@ -1,0 +1,59 @@
+/* HQC's Reed-Muller decoder (reference reed_muller.c, v5.0.0) as a functional model, step for step.
+   The C expands each received 128-bit block into 128 counters (0/1 per copy, summed over the mult
+   copies), runs seven butterfly passes of the fast Hadamard transform in 16-bit arithmetic, removes
+   64 * mult from entry 0, and returns the position of the largest absolute value, with bit 7 set
+   when that value is positive. Entries are int16 in the C; [16] wraparound here is exact because no
+   intermediate exceeds 128 * mult in absolute value. */
+module RMDec where
+
+import RM
+
+type Exp = [128][16]
+
+// expand_and_sum: entry part*32 + bit is the sum over the copies of bit `bit` (counted from the
+// least significant) of 32-bit word `part`.
+expandSum : {mult} (fin mult) => [mult][4][32] -> Exp
+expandSum src = [ sum [ zext [ (cw @ (k / 32)) ! (k % 32) ] | cw <- src ] | k <- [0 .. 127] : [128][8] ]
+
+// One butterfly pass: q[i] = p[2i] + p[2i+1], q[i+64] = p[2i] - p[2i+1].
+hadStep : Exp -> Exp
+hadStep p = [ p @ (2 * i) + p @ (2 * i + 1) | i <- [0 .. 63] : [64][8] ]
+          # [ p @ (2 * i) - p @ (2 * i + 1) | i <- [0 .. 63] : [64][8] ]
+
+// hadamard runs seven passes alternating between its two buffers, so dst ends with pass 7 and src
+// with pass 6.
+hadPasses : Exp -> [8]Exp
+hadPasses x = take`{8} (iterate hadStep x)
+
+// find_peaks: first position of the largest absolute value (strict > keeps the earliest), plus 128
+// if the value there is positive.
+findPeaks : Exp -> [32]
+findPeaks tr = pos || (if val >$ 0 then 128 else 0)
+  where
+    (_, val, pos) = foldl step (0, 0, 0) (zip tr ([0 .. 127] : [128][32]))
+    step : ([32], [32], [32]) -> ([16], [32]) -> ([32], [32], [32])
+    step (pa, pv, pp) (t16, i) = if a >$ pa then (a, t, i) else (pa, pv, pp)
+      where
+        t = sext t16 : [32]
+        a = if t >$ 0 then t else (- t)
+
+// Little-endian 64-bit words to the four 32-bit words of the union view.
+toU32 : [2][64] -> [4][32]
+toU32 ws = [drop`{32} (ws @ 0), take`{32} (ws @ 0), drop`{32} (ws @ 1), take`{32} (ws @ 1)]
+
+// The C's per-block decode: transform[0] -= 64 * MULTIPLICITY, then the low byte of find_peaks.
+rmDecodeBlock : {mult} (fin mult, mult >= 1, 16 >= width mult) => [mult * 2][64] -> [8]
+rmDecodeBlock blk = drop`{24} (findPeaks t')
+  where
+    e  = expandSum [ toU32 c | c <- split`{mult} blk ]
+    t  = (hadPasses e) @ 7
+    t' = update t (0 : [8]) (t @ 0 - 64 * (`mult : [16]))
+
+// reed_muller_decode: one byte per block of mult codewords.
+rmDecode : {n1, mult} (fin n1, fin mult, mult >= 1, 16 >= width mult) =>
+           [n1 * (mult * 2)][64] -> [n1][8]
+rmDecode w = [ rmDecodeBlock`{mult} blk | blk <- split`{n1, mult * 2} w ]
+
+// Anchor to the encoder property of RM.cry: an error-free block decodes to its byte.
+decodesClean : {mult} (fin mult, mult >= 1, 16 >= width mult) => [8] -> Bit
+decodesClean m = rmDecodeBlock`{mult} (join [ rmWords m | _ <- (zero : [mult]) ]) == m

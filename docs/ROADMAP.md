@@ -90,6 +90,10 @@ Next: the AVX2 variant of the FFT multiplier.
    (`/usr/bin/time -l`, 396 s), more than the M4 Pro has. `make hqc` on the idle M4 Pro: 21 min 30 s, exit 0.
 2. Decoding (Reed-Muller, Reed-Solomon with its additive FFT), which is not linear and is the hard
    part.
+   Done 2026-11-19: `reed_muller_decode` equals a step-for-step model at all three sets, helpers
+   as proved overrides, and the model decodes every error-free block (SAW, bitwuzla,
+   `make hqc-rmdec`, A-HQC item 19). Next: that the model corrects up to 32 * n2/128 - 1 errors
+   (Isabelle), then Reed-Solomon decoding.
 
 ## v1 — the Montgomery-reduction primitive (DONE) + the reduce.c layer
 - Delivered: `montgomery_reduce` in **PQClean's reference ML-DSA C**, proven end-to-end

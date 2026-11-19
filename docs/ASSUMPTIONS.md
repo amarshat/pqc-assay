@@ -1331,6 +1331,33 @@ What that rests on:
     15193 MB. The first attempt, on the zip from 11d922f, failed at `hqc-avx` because the packaging
     script had dropped the Makefile block defining `AVX_CLANG`; f5e6f72 keeps those blocks and makes
     the packaging fail when a documented target expands an undefined variable.
+19. **Reed-Muller decoding (`proof/hqc/rmdec_<p>.saw`, `make hqc-rmdec`, recorded 2026-11-19).**
+    `reed_muller_decode` and its static helpers in `target/hqc/reed_muller.c`, on the same bitcode
+    as item 13 (`build/hqc/code_<p>.bc`, `-O0`).
+    - The model (`model/cryptol/hqc/RMDec.cry`) follows the C step by step; it is not an independent
+      decoding specification. `expandSum` adds bit k of the n2/128 copies (3, 5, 5) of a received
+      block into entry k; `hadStep` is one butterfly pass (q[i] = p[2i] + p[2i+1], q[i+64] =
+      p[2i] - p[2i+1]) in 16-bit arithmetic, and `hadamard` leaves pass 7 in its second buffer and
+      pass 6 in its first, which the spec states; `findPeaks` returns the first position of the
+      largest absolute value (strict `>`), plus 128 when that value is positive; `rmDecodeBlock`
+      subtracts 64 * n2/128 from entry 0 first and keeps the low byte.
+    - Proved (bitwuzla), per parameter set: each helper equals its model for every input, then
+      `reed_muller_decode` equals `rmDecode` with the three helpers as proved overrides. The input is
+      the `VEC_N1N2_SIZE_64` words (276, 560, 900); the output is the first n1 bytes (46, 56, 90) of
+      the `VEC_N1_SIZE_64`-word message array. Each spec has a mutant that must fail: entry 5 of
+      `expand_and_sum` plus one, bit 0 of `hadamard`'s entry 77, bit 0 of `find_peaks`' result, bit 0
+      of byte 17 of the decoded message. In the 2026-11-19 runs each failed with a counterexample.
+    - Also proved in the same script, at the model level: for every byte m, the block of n2/128
+      copies of `rmWords m` (the RM(1,7) codeword of item 13) decodes to m. With items 13 and 14 this
+      makes decode after encode the identity on error-free blocks; it says nothing about blocks
+      with errors. Its mutant (the decoded byte off in bit 0) fails with the
+      counterexample m = 255.
+    - Not proved: that the decoder corrects errors (returns the sent byte for at most
+      32 * n2/128 - 1 bit errors in a block), its behaviour on ties between peaks beyond what the
+      model states, and `code_decode` or Reed-Solomon decoding.
+    - Solver: z3 proves the same `find_peaks` spec in about 16.8 hours (2026-11-18, M2 Max) and
+      bitwuzla in 3 s; on the full script yices took 70 s and abc 694 s for `find_peaks` alone.
+      `make hqc-rmdec` therefore uses bitwuzla throughout.
 
 
 ## A-HQC-FFT: the additive-FFT multiplier, GF(2^64) reference (recorded 2026-10-25, SAW layer complete 2026-10-26)

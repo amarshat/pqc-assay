@@ -87,6 +87,7 @@ the same day, exit 0.
 | `reed_solomon_encode` writes a Reed-Solomon codeword: the message in the top k bytes, and the codeword polynomial vanishes at α^1 … α^2δ (α = 2), which fixes the parity bytes; [46,16], [56,24], [90,32] | SAW + rme, `make hqc` |
 | `reed_muller_encode` writes the duplicated RM(1,7) code: for each of the n1 message bytes, n2/128 copies of the 128 values of the affine function the byte defines over F_2^7 (a property, not the C's generator masks); n2/128 = 3, 5, 5 | SAW + z3, `make hqc` |
 | `code_encode` (the concatenated code) writes the Reed-Muller encoding of a Reed-Solomon codeword that carries the k message bytes, with the two encoders as proved overrides and the zeroizing `memset` executed | SAW + z3, `make hqc` |
+| `reed_muller_decode` = `rmDecode`, a step-for-step model of the C (expand the n2/128 copies into 128 counters, seven Hadamard butterfly passes in 16-bit arithmetic, subtract 64·n2/128 from entry 0, take the first largest absolute value with bit 7 for its sign), with `expand_and_sum`, `hadamard` and `find_peaks` proved first and used as overrides; and the model decodes every error-free block the encoder model writes back to its byte. Nothing is proved about inputs with errors | SAW + bitwuzla, `make hqc-rmdec` |
 
 Together: on inputs stored the way HQC stores them (no bit at or above n), the reference `vect_mul`
 multiplies in GF(2)[x]/(x^n − 1). The GF(2^8) and Reed-Solomon rows use the field of v5.0.0 and of
@@ -170,7 +171,8 @@ meet the mutant policy the Proved table holds to.
 
 | Item | Status |
 |---|---|
-| HQC: both decoders, sampling, the KEM | not started |
+| HQC: Reed-Solomon decoding, `code_decode`, sampling, the KEM | not started |
+| HQC: that `reed_muller_decode` returns the sent byte when a block has at most 32·n2/128 − 1 errors | not started; the C equals its model (above), the model's error correction is not proved |
 | signing in `sign.c` when the `goto rej` loop runs three or more passes | not proved (one and two passes are, above); [`docs/COMPOSITION.md`](docs/COMPOSITION.md) |
 | input ranges the theorems take, at the call sites: that `packing.c` and `poly_uniform_gamma1` get `t1`, `t0`, `s1`, `s2`, `z`, `y` from the unpack functions above; `\|A\| < 9q` (23-bit mask in `rej_uniform`), keygen's `s1`, `s2` (`rej_eta`) and `\|c\| <= 1` (`poly_challenge`) | read from the source (the three samplers are not verified) |
 | two builds are the same program apart from `nsw` / `inbounds` flags | checked by a script (`scripts/check_wrapv_diff.sh`), not proved |
